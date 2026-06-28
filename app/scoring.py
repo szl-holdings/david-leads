@@ -19,6 +19,7 @@ PRODUCT_MAP = {
     "mid_career":      ("Retirement / Annuity", "Prime lifetime-income planning window (35–50)"),
     "near_retirement": ("Annuity / Long-Term Care", "Income + care-cost protection (55–65)"),
     "college_age":     ("College Funding Strategy", "Funding gap — tax-advantaged growth"),
+    "new_professional":("Starter Term + Disability Income", "First real income, no coverage yet — lock low rates young"),
 }
 
 MOMENTS_MAP = {
@@ -40,9 +41,14 @@ MOMENTS_MAP = {
     "college_age":     [("Census ACS", "College-age dependents in HH"),
                         ("BLS Wages", "Tuition-affordability window"),
                         ("SEC EDGAR 8-K", "Regional employer stability")],
+    "new_professional":[("NYS License Registries", "Newly licensed → first earning year"),
+                        ("NY Real Estate / DCWP", "New agent / business owner"),
+                        ("BLS Wages", "Entry-level income trajectory")],
 }
 
 NBA_MAP = {
+    "new_professional":dict(action="Reach out within the first 90 days of licensure; offer a quick starter-coverage + DI review.",
+                            talk_track="Congrats on the license — the smartest move now is locking in low rates while you're young and protecting that new income."),
     "new_baby":        dict(action="Call within 24h; offer a 15-min family-coverage review.",
                             talk_track="New baby changes everything — let's make sure they're protected if anything happens to you."),
     "job_change":      dict(action="Congratulate on the role; propose protecting the new income + a retirement contribution review.",
@@ -96,6 +102,9 @@ PROSPECTS = [
     dict(id="L6", name="Parent of college-age dependents", event="college_age",
          axes=dict(life_event_strength=0.60, income_fit=0.75, age_window_fit=0.65,
                    product_propensity=0.70, recency=0.50)),
+    dict(id="L7", name="Newly-licensed professional (new grad / first earning year)", event="new_professional",
+         axes=dict(life_event_strength=0.80, income_fit=0.65, age_window_fit=0.70,
+                   product_propensity=0.78, recency=0.92)),
 ]
 
 
@@ -105,7 +114,7 @@ def build_leads(meta: dict[str, Any]) -> list[dict[str, Any]]:
     live_lift = min(0.05 * meta.get("live_count", 0), 0.15)
     # FRESHNESS EDGE: events backed by fresh DAILY public triggers get a recency boost + a 'fresh' flag.
     fresh_daily = meta.get("fresh_daily", 0)
-    fresh_events = {"home_purchase", "job_change"} if fresh_daily else set()
+    fresh_events = {"home_purchase", "job_change", "new_professional"} if fresh_daily else set()
     leads = []
     for p in PROSPECTS:
         axes = dict(p["axes"])
@@ -133,6 +142,7 @@ def _premium_band(event: str, score: float) -> int:
     base = {
         "new_baby": 1800, "job_change": 2600, "home_purchase": 1500,
         "mid_career": 3800, "near_retirement": 6500, "college_age": 2200,
+        "new_professional": 1400,
     }.get(event, 2000)
     return int(base * (0.6 + score / 100 * 0.8))
 

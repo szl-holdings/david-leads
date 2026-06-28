@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from . import signals as sig
 from . import signals_v3 as sig3
 from . import signals_v5 as sig5
+from . import signals_v6 as sig6
 from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
@@ -89,6 +90,16 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         meta["fresh_daily"] = sum(1 for s in sigs if s.get("freshness") == "updated daily" and s.get("live"))
     except Exception:
         sigs5, meta5 = [], {}
+    # V6: next-gen triggers — newly-licensed professionals & new business owners (the moments competitors ignore)
+    try:
+        sigs6, meta6 = sig6.gather_v6(live=req.live)
+        sigs = sigs + sigs6
+        meta["total_signals"] = meta.get("total_signals", 0) + meta6.get("total_signals", 0)
+        meta["live_count"] = meta.get("live_count", 0) + meta6.get("live_count", 0)
+        meta["v6_sources"] = meta6.get("sources", [])
+        meta["fresh_daily"] = sum(1 for s in sigs if s.get("freshness") == "updated daily" and s.get("live"))
+    except Exception:
+        sigs6, meta6 = [], {}
     leads = sc.build_leads(meta)
     receipts = {}
     for lead in leads:
