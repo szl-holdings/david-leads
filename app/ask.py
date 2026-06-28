@@ -19,6 +19,7 @@ from typing import Any
 # Order matters: more specific intents are checked before the generic 'top_leads'.
 INTENTS = [
     ("compliance",  r"(complian|\bpii\b|audit|defensib|provenance|receipt|fabricat|made up|where.*(from|come)|is this (legal|safe|private|public))"),
+    ("newpro",      r"(new grad|graduat|young|new(ly)? (licen|admit|profession|lawyer|attorney|agent|doctor|nurse)|first job|starting out|entry.level)"),
     ("fresh",       r"(fresh|new(est)?|latest|today|recent|just|home ?buyer|home purchase|deed|new building|moved|relocat)"),
     ("business",    r"(business|formation|self.?employ|new compan|corporation|incorporat|\bllc\b|owner|liquidit|award|grant)"),
     ("rates",       r"(rate|mortgage|interest|fed funds|treasury|\bcpi\b|inflation|yield)"),
@@ -92,8 +93,21 @@ def answer(question: str, state: dict[str, Any]) -> dict[str, Any]:
             return _wrap(intent, ans, cites, [])
         return _wrap(intent, "No live rate signal in this run — re-run live to pull FRED/Treasury rates.", [], [])
 
+    if intent == "newpro":
+        pro = [s for s in signals if s.get("scoring_axis") == "new_professional"]
+        l7 = next((l for l in leads if l.get("event") == "new_professional"), None)
+        if pro:
+            ans = "Next-generation prospects — newly-licensed professionals just starting to earn (no advisor yet):\n" + \
+                  "\n".join(f"• {s['detail']} [{s['source'].split('(')[0].strip()}]" for s in pro[:4])
+            if l7:
+                ans += f"\n\nPlay: {l7['nba']['action']}"
+            for s in pro[:3]:
+                cites.append(_cite(s["source"]))
+            return _wrap(intent, ans, cites, [l7["id"]] if l7 else [])
+        return _wrap(intent, "Re-run live to pull newly-licensed attorneys, agents, and new business owners.", [], [])
+
     if intent == "fresh":
-        fresh_sigs = [s for s in signals if s.get("freshness") in ("updated daily", "real-time") and s.get("live")]
+        fresh_sigs = [s for s in signals if s.get("freshness") in ("updated daily", "real-time")]
         if fresh_sigs:
             ans = "Freshest public triggers right now (updated daily — act before other advisors):\n" + \
                   "\n".join(f"• {s['detail']} [{s['source'].split('(')[0].strip()}]" for s in fresh_sigs[:5])
