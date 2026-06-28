@@ -103,16 +103,23 @@ def build_leads(meta: dict[str, Any]) -> list[dict[str, Any]]:
     """Score every prospect archetype, attach product match + plain-English reason."""
     # macro lift: if live signals were strong (more live sources), nudge recency/income slightly
     live_lift = min(0.05 * meta.get("live_count", 0), 0.15)
+    # FRESHNESS EDGE: events backed by fresh DAILY public triggers get a recency boost + a 'fresh' flag.
+    fresh_daily = meta.get("fresh_daily", 0)
+    fresh_events = {"home_purchase", "job_change"} if fresh_daily else set()
     leads = []
     for p in PROSPECTS:
         axes = dict(p["axes"])
         axes["recency"] = min(1.0, axes["recency"] + live_lift)
+        is_fresh = p["event"] in fresh_events
+        if is_fresh:
+            axes["recency"] = min(1.0, axes["recency"] + 0.08)  # fresh daily trigger = more urgent
         score = lambda_score(axes)
         product, why = PRODUCT_MAP[p["event"]]
         leads.append({
             "id": p["id"], "name": p["name"], "event": p["event"],
             "score": score, "bucket": bucket_for(score),
             "product": product, "why": why, "axes": axes,
+            "fresh": is_fresh,
             # estimated annual premium band (illustrative, for pipeline KPI)
             "est_premium": _premium_band(p["event"], score),
             "moments": [{"source": s, "label": t} for s, t in MOMENTS_MAP[p["event"]]],

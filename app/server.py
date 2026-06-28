@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from . import signals as sig
 from . import signals_v3 as sig3
+from . import signals_v5 as sig5
 from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
@@ -78,6 +79,16 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         meta["v3_axes"] = meta3.get("scoring_axes", [])
     except Exception:
         sigs3, meta3 = [], {}
+    # V5: freshest daily/real-time triggers (ACRIS deeds, DOB new builds, USAspending, biz velocity)
+    try:
+        sigs5, meta5 = sig5.gather_v5(live=req.live)
+        sigs = sigs + sigs5
+        meta["total_signals"] = meta.get("total_signals", 0) + meta5.get("total_signals", 0)
+        meta["live_count"] = meta.get("live_count", 0) + meta5.get("live_count", 0)
+        meta["v5_sources"] = meta5.get("sources", [])
+        meta["fresh_daily"] = sum(1 for s in sigs if s.get("freshness") == "updated daily" and s.get("live"))
+    except Exception:
+        sigs5, meta5 = [], {}
     leads = sc.build_leads(meta)
     receipts = {}
     for lead in leads:

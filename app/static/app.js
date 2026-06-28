@@ -122,7 +122,7 @@ function renderLeads(leads) {
     <tr class="lead-row" id="row-${l.id}">
       <td><span class="expander" onclick="toggleLeadDetail('${l.id}')">▸</span></td>
       <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
-      <td><div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}</div><div class="lead-why">${l.why}</div></td>
+      <td><div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div><div class="lead-why">${l.why}</div></td>
       <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
       <td><button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button></td>
     </tr>
@@ -159,13 +159,18 @@ function renderLeadDetail(l) {
 
 /* ---------- signals ---------- */
 function renderSignals(sigs, meta) {
-  $("sigMeta").textContent = meta.mode;
-  $("signals").innerHTML = sigs.map(s => `
+  $("sigMeta").textContent = (meta.fresh_daily ? meta.fresh_daily + " daily · " : "") + meta.mode;
+  // freshest first: daily/real-time signals float to the top
+  const rank = { "real-time": 0, "updated daily": 1, "updated weekly": 2, "updated monthly": 3, "updated annually": 4 };
+  const sorted = [...sigs].sort((a, b) => (rank[a.freshness] ?? 9) - (rank[b.freshness] ?? 9));
+  $("signals").innerHTML = sorted.map(s => {
+    const fresh = s.freshness ? `<span class="fresh-badge ${s.freshness === 'updated daily' || s.freshness === 'real-time' ? 'hot' : ''}">${s.freshness}</span>` : "";
+    return `
     <div class="sig">
-      <span class="src">${s.source.replace(/\[SAMPLE\]/,'')}</span>${s.live?'<span class="live">LIVE</span>':'<span class="live smp">PUBLIC</span>'}
+      <span class="src">${s.source.replace(/\[SAMPLE\]/,'')}</span>${s.live?'<span class="live">LIVE</span>':'<span class="live smp">PUBLIC</span>'}${fresh}
       <div class="txt">${s.signal}</div>
       <div class="det">${s.detail||''}</div>
-    </div>`).join("");
+    </div>`; }).join("");
 }
 
 /* ---------- governance ---------- */
