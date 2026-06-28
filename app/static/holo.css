@@ -1,0 +1,243 @@
+/* ============================================================================
+ * holo.css — David Leads · Holographic visualization styling
+ * © 2026 SZL Holdings · Apache-2.0
+ * Pairs with holo.js. Uses existing :root tokens from index.html
+ * (--navy, --gold, --teal, --hot, --warm, --nurture, --gold-300, --teal-300…).
+ * Self-contained: introduces only holo-* / .holo-mode classes — no collisions.
+ * ============================================================================ */
+
+/* ---------- holographic container shell ---------- */
+.holo-stage{
+  position:relative;
+  width:100%;
+  min-height:300px;
+  border-radius:14px;
+  overflow:hidden;
+  background:
+    radial-gradient(900px 420px at 70% -20%, #143a5e 0%, #0a2540 48%, #061626 100%);
+  border:1px solid rgba(92,196,191,.18);
+  box-shadow:
+    inset 0 0 60px rgba(22,143,137,.10),
+    inset 0 0 1px rgba(92,196,191,.5),
+    0 18px 50px rgba(6,22,38,.45);
+  isolation:isolate;
+}
+.holo-stage canvas{ display:block; }
+
+/* faint holographic grid behind the canvas (additive to the scene grid) */
+.holo-stage::before{
+  content:"";
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(92,196,191,.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92,196,191,.07) 1px, transparent 1px);
+  background-size:36px 36px;
+  mask-image:radial-gradient(circle at 50% 60%, #000 35%, transparent 78%);
+  -webkit-mask-image:radial-gradient(circle at 50% 60%, #000 35%, transparent 78%);
+}
+
+/* corner brackets — boardroom HUD flourish */
+.holo-stage::after{
+  content:"";
+  position:absolute; inset:10px; z-index:3; pointer-events:none;
+  border-radius:10px;
+  background:
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right bottom;
+  background-repeat:no-repeat;
+  background-size:16px 2px, 2px 16px;
+  opacity:.55;
+}
+
+/* ---------- scanline overlay (injected by holo.js as .holo-scanlines) ---------- */
+.holo-scanlines{
+  position:absolute; inset:0; z-index:2; pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(92,196,191,.05) 0px,
+    rgba(92,196,191,.05) 1px,
+    transparent 2px,
+    transparent 4px);
+  mix-blend-mode:screen;
+  opacity:.6;
+}
+.holo-scanlines::after{
+  /* moving sweep beam */
+  content:"";
+  position:absolute; left:0; right:0; height:24%;
+  background:linear-gradient(to bottom, transparent, rgba(92,196,191,.16), transparent);
+  animation:holo-sweep 6.5s linear infinite;
+}
+@keyframes holo-sweep{
+  0%{ transform:translateY(-30%); }
+  100%{ transform:translateY(430%); }
+}
+
+/* optional caption strip below a holo viz */
+.holo-caption{
+  position:absolute; left:12px; bottom:10px; z-index:4;
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--teal-300,#5cc4bf);
+  text-shadow:0 0 10px rgba(22,143,137,.6);
+  pointer-events:none;
+}
+
+/* ---------- hover tooltip (injected by holo.js as .holo-tip) ---------- */
+.holo-tip{
+  position:absolute; z-index:10; pointer-events:none;
+  min-width:140px; max-width:240px;
+  padding:10px 12px;
+  border-radius:10px;
+  font-family:'Inter',system-ui,sans-serif;
+  background:rgba(8,26,43,.82);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  border:1px solid rgba(92,196,191,.35);
+  box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.04);
+  color:#eaf2f8;
+}
+.holo-tip .ht-name{ font-weight:600; font-size:13px; color:#fff; line-height:1.25; margin-bottom:5px; }
+.holo-tip .ht-row{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.holo-tip .ht-score{ font-family:'Fraunces',Georgia,serif; font-size:18px; color:#fff; }
+.holo-tip .ht-meta{ font-size:11.5px; color:#9fb6c9; line-height:1.4; }
+.holo-tip .ht-badge{
+  display:inline-block; font-size:10px; font-weight:700; letter-spacing:.03em;
+  padding:2px 8px; border-radius:20px;
+}
+.holo-tip .ht-badge.HOT{ background:rgba(192,57,43,.22); color:#ff9b8f; border:1px solid rgba(192,57,43,.5); }
+.holo-tip .ht-badge.WARM{ background:rgba(192,143,47,.22); color:var(--gold-300,#d7b96b); border:1px solid rgba(192,143,47,.5); }
+.holo-tip .ht-badge.NURTURE{ background:rgba(90,107,124,.25); color:#aab8c6; border:1px solid rgba(90,107,124,.55); }
+
+/* ---------- holo viz card (when embedded in the dashboard) ---------- */
+.holo-card{
+  background:linear-gradient(160deg,#0a2540,#0d2c4a);
+  border:1px solid rgba(92,196,191,.18);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.holo-card .holo-card-head{
+  display:flex; align-items:center; gap:9px;
+  padding:14px 18px;
+  color:#fff;
+  font-family:'Fraunces',Georgia,serif; font-size:15px; font-weight:600;
+  border-bottom:1px solid rgba(92,196,191,.16);
+}
+.holo-card .holo-card-head .hc-meta{
+  margin-left:auto; font-family:'Inter',system-ui,sans-serif;
+  font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--teal-300,#5cc4bf);
+}
+.holo-card .holo-stage{ border:none; border-radius:0; box-shadow:inset 0 0 60px rgba(22,143,137,.10); }
+
+/* legend chips */
+.holo-legend{ display:flex; gap:14px; flex-wrap:wrap; padding:10px 18px 14px; }
+.holo-legend .hl{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:#bcd; font-family:'Inter',system-ui,sans-serif; }
+.holo-legend .hl .sw{ width:11px; height:11px; border-radius:3px; box-shadow:0 0 8px currentColor; }
+.holo-legend .hl.HOT .sw{ background:var(--hot,#c0392b); color:var(--hot,#c0392b); }
+.holo-legend .hl.WARM .sw{ background:var(--warm,#c08f2f); color:var(--warm,#c08f2f); }
+.holo-legend .hl.NURTURE .sw{ background:var(--nurture,#5a6b7c); color:var(--nurture,#5a6b7c); }
+.holo-legend .hl.TEAL .sw{ background:var(--teal,#168f89); color:var(--teal,#168f89); }
+
+/* ============================================================================
+ * HOLO-MODE TOGGLE — glassmorphic, on-brand switch
+ * Markup convention (wire into app.js / index.html):
+ *   <label class="holo-toggle">
+ *     <span class="ht-label">Holo mode</span>
+ *     <input type="checkbox" id="holoModeToggle">
+ *     <span class="ht-track"><span class="ht-thumb"></span></span>
+ *   </label>
+ * ========================================================================== */
+.holo-toggle{
+  display:inline-flex; align-items:center; gap:10px;
+  cursor:pointer; user-select:none;
+  font-family:'Inter',system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+.holo-toggle .ht-label{
+  font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--muted,#5a6b7c);
+  transition:color .2s ease;
+}
+.holo-toggle input{
+  position:absolute; opacity:0; width:0; height:0; pointer-events:none;
+}
+.holo-toggle .ht-track{
+  position:relative; display:inline-block;
+  width:50px; height:28px; border-radius:999px;
+  background:rgba(10,37,64,.10);
+  border:1px solid var(--line,#e0e6ee);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  transition:background .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+.holo-toggle .ht-thumb{
+  position:absolute; top:2px; left:2px;
+  width:22px; height:22px; border-radius:50%;
+  background:linear-gradient(160deg,#ffffff,#dfe7ef);
+  box-shadow:0 2px 6px rgba(10,37,64,.35);
+  transition:transform .25s cubic-bezier(.4,1.4,.5,1), background .25s ease, box-shadow .25s ease;
+}
+/* checked / ON state — teal→gold holographic glow */
+.holo-toggle input:checked + .ht-track{
+  background:linear-gradient(120deg, var(--teal,#168f89), var(--gold,#c08f2f));
+  border-color:rgba(92,196,191,.6);
+  box-shadow:
+    0 0 0 3px rgba(22,143,137,.18),
+    0 0 16px rgba(92,196,191,.55);
+}
+.holo-toggle input:checked + .ht-track .ht-thumb{
+  transform:translateX(22px);
+  background:linear-gradient(160deg,#ffffff,#eaf6f4);
+  box-shadow:0 0 12px rgba(92,196,191,.9), 0 2px 6px rgba(10,37,64,.35);
+}
+.holo-toggle input:focus-visible + .ht-track{
+  outline:none; box-shadow:0 0 0 3px rgba(92,196,191,.45);
+}
+.holo-toggle:hover .ht-label{ color:var(--navy,#0a2540); }
+/* when ON, label glows */
+.holo-toggle input:checked ~ .ht-label,
+.holo-toggle:has(input:checked) .ht-label{
+  color:var(--teal,#168f89);
+}
+
+/* ---------- dark-surface variant (for placing the toggle on the navy header) -------- */
+.holo-toggle.on-dark .ht-label{ color:#9fb6c9; }
+.holo-toggle.on-dark:hover .ht-label{ color:#fff; }
+.holo-toggle.on-dark .ht-track{ background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.22); }
+
+/* ---------- "HOLO" pill badge (optional, mark a viz as holographic) ---------- */
+.holo-badge{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  padding:3px 9px; border-radius:20px;
+  color:var(--teal-300,#5cc4bf);
+  background:rgba(22,143,137,.16);
+  border:1px solid rgba(92,196,191,.4);
+  box-shadow:0 0 12px rgba(22,143,137,.3);
+}
+.holo-badge::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--teal-300,#5cc4bf);
+  box-shadow:0 0 8px var(--teal-300,#5cc4bf);
+  animation:holo-blink 1.8s ease-in-out infinite;
+}
+@keyframes holo-blink{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }
+
+/* ---------- responsive ---------- */
+@media (max-width:880px){
+  .holo-stage{ min-height:260px; }
+  .holo-legend{ gap:10px; }
+}
+
+/* ---------- reduced motion: calm the sweep & blink ---------- */
+@media (prefers-reduced-motion:reduce){
+  .holo-scanlines::after,
+  .holo-badge::before{ animation:none; }
+}

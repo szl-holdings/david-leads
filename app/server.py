@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import signals as sig
+from . import signals_v3 as sig3
 from . import scoring as sc
 from . import receipts as rc
 
@@ -66,6 +67,16 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     _auth(authorization)
     rc.reset_chain()
     sigs, meta = sig.gather_all(live=req.live)
+    # V3: merge in expanded public-data signals (rates, business formation, ACS extras, county unemployment)
+    try:
+        sigs3, meta3 = sig3.gather_v3(live=req.live)
+        sigs = sigs + sigs3
+        meta["total_signals"] = meta.get("total_signals", 0) + meta3.get("total_signals", 0)
+        meta["live_count"] = meta.get("live_count", 0) + meta3.get("live_count", 0)
+        meta["v3_sources"] = meta3.get("sources", [])
+        meta["v3_axes"] = meta3.get("scoring_axes", [])
+    except Exception:
+        sigs3, meta3 = [], {}
     leads = sc.build_leads(meta)
     receipts = {}
     for lead in leads:
