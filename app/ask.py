@@ -19,7 +19,8 @@ from typing import Any
 # Order matters: more specific intents are checked before the generic 'top_leads'.
 INTENTS = [
     ("compliance",  r"(complian|\bpii\b|audit|defensib|provenance|receipt|fabricat|made up|where.*(from|come)|is this (legal|safe|private|public))"),
-    ("business",    r"(business|formation|self.?employ|new compan|corporation|incorporat|\bllc\b|owner)"),
+    ("fresh",       r"(fresh|new(est)?|latest|today|recent|just|home ?buyer|home purchase|deed|new building|moved|relocat)"),
+    ("business",    r"(business|formation|self.?employ|new compan|corporation|incorporat|\bllc\b|owner|liquidit|award|grant)"),
     ("rates",       r"(rate|mortgage|interest|fed funds|treasury|\bcpi\b|inflation|yield)"),
     ("territory",   r"(where|territor|count(y|ies)|area|prospect|\bzip\b|region|\bmap\b|geograph|focus)"),
     ("pipeline",    r"(pipeline|premium|revenue|dollar|forecast|appoint|\bkpi\b|how much|projected)"),
@@ -90,6 +91,16 @@ def answer(question: str, state: dict[str, Any]) -> dict[str, Any]:
                 cites.append(_cite(s["source"]))
             return _wrap(intent, ans, cites, [])
         return _wrap(intent, "No live rate signal in this run — re-run live to pull FRED/Treasury rates.", [], [])
+
+    if intent == "fresh":
+        fresh_sigs = [s for s in signals if s.get("freshness") in ("updated daily", "real-time") and s.get("live")]
+        if fresh_sigs:
+            ans = "Freshest public triggers right now (updated daily — act before other advisors):\n" + \
+                  "\n".join(f"• {s['detail']} [{s['source'].split('(')[0].strip()}]" for s in fresh_sigs[:5])
+            for s in fresh_sigs[:3]:
+                cites.append(_cite(s["source"]))
+            return _wrap(intent, ans, cites, [])
+        return _wrap(intent, "Re-run live to pull today's freshest triggers (home purchases, new buildings, new businesses).", [], [])
 
     if intent == "business":
         biz = [s for s in signals if s.get("scoring_axis") == "business_formation"]

@@ -154,7 +154,7 @@ def _tri_age_fit(age):
     return 1.0 - abs(a - 45) / 25.0
 
 
-def _build_territory(rows, live):
+def _build_territory(rows, live, vintage=None):
     incomes = [r[1] for r in rows]; fams = [r[3] for r in rows]
     def norm(v, lo, hi):
         return 0.0 if hi == lo else (v - lo) / (hi - lo)
@@ -165,9 +165,11 @@ def _build_territory(rows, live):
         areas.append({"name": name, "index": round(idx, 1), "median_income": int(inc),
                       "median_age": age, "family_households": int(fam), "public": True, "live": live})
     areas.sort(key=lambda a: a["index"], reverse=True)
+    src = "U.S. Census " + (vintage or "ACS 2023 5-year") + ", county level" + ("" if live else " [SAMPLE]")
     return {
         "state": "New York",
-        "source": "U.S. Census ACS 2023 (5-yr), county level" + ("" if live else " [SAMPLE]"),
+        "source": src,
+        "vintage": vintage or ("ACS 2023 5-year" if live else "SAMPLE"),
         "formula": "0.45*income + 0.25*age_fit + 0.30*family_households (each min-max normalized)",
         "areas": areas,
         "meta": {"count": len(areas), "all_public": True, "fabricated": 0,
@@ -181,35 +183,55 @@ _NY_METRO_FIPS = ["059", "103", "119", "087", "061", "081", "047", "005", "085",
 # Nassau, Suffolk, Westchester, Rockland, New York(Manhattan), Queens, Brooklyn, Bronx, Staten Is., Orange, Dutchess, Putnam
 
 
-def territory_index(state_fips: str = "36"):
-    """County-level opportunity index from live Census ACS5 (targeted NY metro for speed);
-    falls back to honest sample offline."""
-    try:
-        # Census key: prefer CENSUS_API_KEY, but also accept user-named secret variants.
-        key = (os.environ.get("CENSUS_API_KEY")
-               or os.environ.get("Newdave") or os.environ.get("NewDave")
-               or os.environ.get("new Dave") or os.environ.get("NEWDAVE") or "").strip()
-        keyq = f"&key={key}" if key else ""
-        county_q = ",".join(_NY_METRO_FIPS) if state_fips == "36" else "*"
-        url = (f"https://api.census.gov/data/2023/acs/acs5?get=NAME,B19013_001E,B01002_001E,B11003_001E"
-               f"&for=county:{county_q}&in=state:{state_fips}{keyq}")
-        data = _get(url, timeout=12)
-        rows = []
-        for r in data[1:]:
-            try:
-                inc = int(r[1]); age = float(r[2]); fam = int(r[3])
-                if inc <= 0:
-                    continue
-                rows.append((r[0], inc, age, fam))
-            except Exception:
+def _census_key():
+    return (os.environ.get("CENSUS_API_KEY")
+            or os.environ.get("Newdave") or os.environ.get("NewDave")
+            or os.environ.get("new Dave") or os.environ.get("NEWDAVE") or "").strip()
+
+
+def _fetch_acs(dataset, county_q, state_fips, keyq):
+    url = (f"https://api.census.gov/data/2023/acs/{dataset}?get=NAME,B19013_001E,B01002_001E,B11003_001E"
+           f"&for=county:{county_q}&in=state:{state_fips}{keyq}")
+    data = _get(url, timeout=12)
+    rows = []
+    for r in data[1:]:
+        try:
+            inc = int(r[1]); age = float(r[2]); fam = int(r[3])
+            if inc <= 0:
                 continue
-        rows.sort(key=lambda x: x[1], reverse=True)
-        rows = rows[:18]
-        if not rows:
-            return _sample_territory()
-        return _build_territory(rows, live=True)
+            rows.append((r[0], inc, age, fam))
+        except Exception:
+            continue
+    return rows
+
+
+def territory_index(state_fips: str = "36"):
+    """County-level opportunity index. Prefers the MORE-CURRENT ACS 1-year (single-year, big counties),
+    falls back to ACS 5-year (rolling avg, all counties), then honest sample offline. Tags the vintage."""
+    key = _census_key()
+    keyq = f"&key={key}" if key else ""
+    county_q = ",".join(_NY_METRO_FIPS) if state_fips == "36" else "*"
+    vintage = None; rows = []
+    # 1) try the most-current single-year estimates first
+    try:
+        rows = _fetch_acs("acs1", county_q, state_fips, keyq)
+        if rows:
+            vintage = "ACS 2023 1-year (most current)"
     except Exception:
+        rows = []
+    # 2) fall back to the 5-year (covers smaller counties the 1-yr omits)
+    if not rows:
+        try:
+            rows = _fetch_acs("acs5", county_q, state_fips, keyq)
+            if rows:
+                vintage = "ACS 2023 5-year"
+        except Exception:
+            rows = []
+    if not rows:
         return _sample_territory()
+    rows.sort(key=lambda x: x[1], reverse=True)
+    rows = rows[:18]
+    return _build_territory(rows, live=True, vintage=vintage)
 
 
 def gather_all(live: bool = True):
