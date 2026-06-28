@@ -187,8 +187,8 @@ function renderGov(g, meta) {
 
 /* ---------- Ask the Territory ---------- */
 const ASK_CHIPS = [
-  "Who should I call first?", "Where should I prospect?", "What are rates doing?",
-  "Any new businesses to reach out to?", "Why did the top lead score high?", "Is this compliant?"
+  "Who should I call first?", "Show me the affluent / estate prospects", "Expand to other East Coast states",
+  "Any new graduates to target?", "Any fresh home buyers today?", "Is this compliant?"
 ];
 let askGreeted = false;
 function showAsk() {
@@ -296,6 +296,42 @@ function renderPipeline(kpi) {
     return `<div class="pipe-row"><span class="pipe-lbl">${b}</span><div class="pipe-track"><div class="pipe-fill ${b}" style="width:${pct}%"></div></div><span class="pipe-val">${money(v)}</span></div>`;
   }).join("");
   $("pipelineCard").style.display = "";
+}
+
+/* ---------- Open the Black Box (scoring inspector) ---------- */
+async function openModel() {
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <button class="mclose" onclick="closeModal()">✕ Close</button>
+    <h3>🔓 Open the Black Box — Scoring Methodology</h3>
+    <div class="mbody" id="modelBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
+  try {
+    const m = await api("/api/model");
+    const axes = m.axes.map(a => `
+      <div style="padding:10px 0;border-top:1px solid var(--line)">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong style="color:var(--navy)">${a.key.replace(/_/g,' ')}</strong>
+          <span style="font-family:'Fraunces';color:var(--teal)">weight ${a.weight}</span>
+        </div>
+        <div style="font-size:13px;color:var(--ink);margin-top:3px">${a.meaning}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Sources: ${a.sources}</div>
+      </div>`).join("");
+    $("modelBody").innerHTML = `
+      <div style="background:#e6f7f6;border:1px solid #bfeae8;border-radius:10px;padding:12px 14px;font-size:13px;color:#0b5957;margin-bottom:14px">
+        <strong>${m.name}</strong><br>${m.summary}</div>
+      <div style="font-family:ui-monospace,monospace;font-size:12px;background:#0d2c4a;color:#bcd;padding:12px;border-radius:9px;margin-bottom:8px">${m.formula}</div>
+      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:12px">THE 5 AXES (every weight, every source — nothing hidden):</div>
+      ${axes}
+      <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+        <span class="badge HOT">${m.buckets.HOT}</span>
+        <span class="badge WARM">${m.buckets.WARM}</span>
+        <span class="badge NURTURE">${m.buckets.NURTURE}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:12px">Appointments model: ${m.appt_model}</div>
+      <div style="font-size:12.5px;color:var(--navy);font-weight:600;margin-top:12px;background:#fbf7ec;border-left:3px solid var(--gold);padding:10px 12px;border-radius:6px">${m.governance}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">${m.doctrine}</div>`;
+  } catch (e) {
+    $("modelBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
+  }
 }
 
 /* ---------- territory map ---------- */

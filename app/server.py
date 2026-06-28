@@ -13,6 +13,7 @@ from . import signals as sig
 from . import signals_v3 as sig3
 from . import signals_v5 as sig5
 from . import signals_v6 as sig6
+from . import signals_v7 as sig7
 from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
@@ -41,6 +42,7 @@ class LoginReq(BaseModel):
 
 class RunReq(BaseModel):
     live: bool = True
+    state: str = "NY"
 
 
 def _auth(authorization: str | None):
@@ -100,6 +102,16 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         meta["fresh_daily"] = sum(1 for s in sigs if s.get("freshness") == "updated daily" and s.get("live"))
     except Exception:
         sigs6, meta6 = [], {}
+    # V7: tax/wealth + multi-state East Coast expansion
+    try:
+        sigs7, meta7 = sig7.gather_v7(live=req.live, state=getattr(req, "state", "NY"))
+        sigs = sigs + sigs7
+        meta["total_signals"] = meta.get("total_signals", 0) + meta7.get("total_signals", 0)
+        meta["live_count"] = meta.get("live_count", 0) + meta7.get("live_count", 0)
+        meta["v7_sources"] = meta7.get("sources", [])
+        meta["states_covered"] = meta7.get("states_covered", ["NY"])
+    except Exception:
+        sigs7, meta7 = [], {}
     leads = sc.build_leads(meta)
     receipts = {}
     for lead in leads:
@@ -130,6 +142,13 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
             "verdict": "PASS — public-data-only, honest by design",
         },
     }
+
+
+@app.get("/api/model")
+def model(authorization: str | None = Header(default=None)):
+    """Open the black box: full transparent scoring methodology."""
+    _auth(authorization)
+    return sc.model_card()
 
 
 @app.get("/api/territory")

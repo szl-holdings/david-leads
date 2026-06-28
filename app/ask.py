@@ -19,6 +19,8 @@ from typing import Any
 # Order matters: more specific intents are checked before the generic 'top_leads'.
 INTENTS = [
     ("compliance",  r"(complian|\bpii\b|audit|defensib|provenance|receipt|fabricat|made up|where.*(from|come)|is this (legal|safe|private|public))"),
+    ("wealth",      r"(wealth|affluent|rich|high.?net|hnw|estate|legacy|tax|irs|990|nonprofit exec|insider|migration|moving in|high.?income|annuit)"),
+    ("states",      r"(state|states|connecticut|\bct\b|delaware|\bde\b|pennsylvania|\bpa\b|new jersey|\bnj\b|east coast|expand|territory beyond|other state)"),
     ("newpro",      r"(new grad|graduat|young|new(ly)? (licen|admit|profession|lawyer|attorney|agent|doctor|nurse)|first job|starting out|entry.level)"),
     ("fresh",       r"(fresh|new(est)?|latest|today|recent|just|home ?buyer|home purchase|deed|new building|moved|relocat)"),
     ("business",    r"(business|formation|self.?employ|new compan|corporation|incorporat|\bllc\b|owner|liquidit|award|grant)"),
@@ -92,6 +94,30 @@ def answer(question: str, state: dict[str, Any]) -> dict[str, Any]:
                 cites.append(_cite(s["source"]))
             return _wrap(intent, ans, cites, [])
         return _wrap(intent, "No live rate signal in this run — re-run live to pull FRED/Treasury rates.", [], [])
+
+    if intent == "wealth":
+        w = [s for s in signals if str(s.get("scoring_axis", "")).startswith("wealth")]
+        l8 = next((l for l in leads if l.get("event") == "affluent"), None)
+        if w:
+            ans = "Wealth & money-in-motion signals (estate / HNW prospecting):\n" + \
+                  "\n".join(f"• {s['detail']} [{s['source'].split('(')[0].strip()}]" for s in w[:5])
+            if l8:
+                ans += f"\n\nPlay: {l8['nba']['action']}"
+            for s in w[:3]:
+                cites.append(_cite(s["source"]))
+            return _wrap(intent, ans, cites, [l8["id"]] if l8 else [])
+        return _wrap(intent, "Re-run live to pull IRS income-by-ZIP, 990 execs, migration, and insider liquidity.", [], [])
+
+    if intent == "states":
+        st = [s for s in signals if any(k in s.get("source", "") for k in ("Connecticut", "Delaware", "Pennsylvania", "data.ct", "data.de", "data.pa"))]
+        covered = state.get("meta", {}).get("states_covered", ["NY"]) if isinstance(state, dict) else ["NY"]
+        if st:
+            ans = f"East Coast expansion — live coverage across {', '.join(covered)}:\n" + \
+                  "\n".join(f"• {s['detail']} [{s['source'].split('(')[0].strip()}]" for s in st[:6])
+            for s in st[:3]:
+                cites.append(_cite(s["source"]))
+            return _wrap(intent, ans, cites, [])
+        return _wrap(intent, "Re-run live to pull Connecticut, Delaware, and Pennsylvania business + license velocity.", [], [])
 
     if intent == "newpro":
         pro = [s for s in signals if s.get("scoring_axis") == "new_professional"]

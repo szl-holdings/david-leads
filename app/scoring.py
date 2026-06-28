@@ -20,6 +20,7 @@ PRODUCT_MAP = {
     "near_retirement": ("Annuity / Long-Term Care", "Income + care-cost protection (55–65)"),
     "college_age":     ("College Funding Strategy", "Funding gap — tax-advantaged growth"),
     "new_professional":("Starter Term + Disability Income", "First real income, no coverage yet — lock low rates young"),
+    "affluent":        ("Estate Planning + Premium-Finance / Annuity", "High income/assets — estate, legacy, tax-advantaged growth"),
 }
 
 MOMENTS_MAP = {
@@ -44,11 +45,16 @@ MOMENTS_MAP = {
     "new_professional":[("NYS License Registries", "Newly licensed → first earning year"),
                         ("NY Real Estate / DCWP", "New agent / business owner"),
                         ("BLS Wages", "Entry-level income trajectory")],
+    "affluent":        [("IRS SOI Income-by-ZIP", "$200k+ household density"),
+                        ("ProPublica 990", "Nonprofit exec compensation"),
+                        ("IRS Migration", "High-AGI inflows")],
 }
 
 NBA_MAP = {
     "new_professional":dict(action="Reach out within the first 90 days of licensure; offer a quick starter-coverage + DI review.",
                             talk_track="Congrats on the license — the smartest move now is locking in low rates while you're young and protecting that new income."),
+    "affluent":        dict(action="Lead with an estate & legacy review; introduce premium-financed life and annuity options.",
+                            talk_track="At your level, the conversation isn't if you're covered — it's protecting your estate and passing it on tax-efficiently."),
     "new_baby":        dict(action="Call within 24h; offer a 15-min family-coverage review.",
                             talk_track="New baby changes everything — let's make sure they're protected if anything happens to you."),
     "job_change":      dict(action="Congratulate on the role; propose protecting the new income + a retirement contribution review.",
@@ -73,6 +79,39 @@ def lambda_score(axes: dict[str, float]) -> float:
     eps = 1e-6
     log_sum = sum(WEIGHTS[a] * math.log(max(axes.get(a, 0.0), eps)) for a in AXES)
     return round(math.exp(log_sum) * 100, 1)
+
+
+def model_card() -> dict:
+    """OPEN THE BLACK BOX: full transparent disclosure of how every score is computed.
+    This is the anti-LexisNexis/Verisk differentiator — nothing hidden, everything inspectable."""
+    return {
+        "name": "David Leads Λ-Score (open methodology)",
+        "summary": "Weighted geometric mean of 5 transparent axes → 0–100. A single weak axis pulls "
+                   "the whole score down, so nothing scores HOT unless every dimension is strong.",
+        "formula": "score = 100 × exp( Σ weight_i × ln(axis_i) ),  axis_i ∈ [0,1]",
+        "axes": [
+            {"key": "life_event_strength", "weight": WEIGHTS["life_event_strength"],
+             "meaning": "How strong/recent the triggering life event is",
+             "sources": "CDC natality, SEC 8-K, NY DOS filings, ACRIS deeds, license registries"},
+            {"key": "income_fit", "weight": WEIGHTS["income_fit"],
+             "meaning": "Income level vs. the matched product's ideal buyer",
+             "sources": "Census ACS income, BLS wages, IRS SOI ZIP income"},
+            {"key": "age_window_fit", "weight": WEIGHTS["age_window_fit"],
+             "meaning": "How well the prospect's age fits the product's planning window",
+             "sources": "Census ACS median age (triangular fit, peak ~45)"},
+            {"key": "product_propensity", "weight": WEIGHTS["product_propensity"],
+             "meaning": "Historical propensity of this segment to buy this product",
+             "sources": "NYL product mapping per life event"},
+            {"key": "recency", "weight": WEIGHTS["recency"],
+             "meaning": "Freshness of the signal — boosted by daily/real-time triggers",
+             "sources": "ACRIS, DOB, license registries, business filings (daily)"},
+        ],
+        "buckets": {"HOT": "score ≥ 80", "WARM": "60–79", "NURTURE": "< 60"},
+        "appt_model": "qualified appts/week = HOT×0.70 + WARM×0.35",
+        "governance": "Public-data-only. Zero fabricated signals. Every lead carries a signed receipt. "
+                      "No proprietary black box — this card IS the model.",
+        "doctrine": "honest by design · open methodology · cryptographically receipted",
+    }
 
 
 def bucket_for(score: float) -> str:
@@ -105,6 +144,9 @@ PROSPECTS = [
     dict(id="L7", name="Newly-licensed professional (new grad / first earning year)", event="new_professional",
          axes=dict(life_event_strength=0.80, income_fit=0.65, age_window_fit=0.70,
                    product_propensity=0.78, recency=0.92)),
+    dict(id="L8", name="Affluent household / HNW (estate & legacy)", event="affluent",
+         axes=dict(life_event_strength=0.70, income_fit=0.98, age_window_fit=0.88,
+                   product_propensity=0.82, recency=0.65)),
 ]
 
 
@@ -142,7 +184,7 @@ def _premium_band(event: str, score: float) -> int:
     base = {
         "new_baby": 1800, "job_change": 2600, "home_purchase": 1500,
         "mid_career": 3800, "near_retirement": 6500, "college_age": 2200,
-        "new_professional": 1400,
+        "new_professional": 1400, "affluent": 12000,
     }.get(event, 2000)
     return int(base * (0.6 + score / 100 * 0.8))
 
