@@ -16,7 +16,8 @@
   --shadow:0 1px 3px rgba(10,37,64,.08),0 8px 28px rgba(10,37,64,.07);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}
+.wrap{overflow-x:clip}
 h1,h2,h3,.display{font-family:'Fraunces',Georgia,serif;font-weight:600;letter-spacing:-.01em}
 .hidden{display:none!important}
 button{font-family:inherit;cursor:pointer;border:none}
@@ -116,7 +117,47 @@ tr.lead-row:hover{background:#fafcff}
 .codeblock{background:#0d2c4a;color:#bcd;font-family:ui-monospace,monospace;font-size:11.5px;padding:14px;border-radius:10px;overflow:auto;line-height:1.5;margin-top:10px;white-space:pre-wrap;word-break:break-all}
 .mclose{position:sticky;top:0;float:right;margin:14px 16px 0 0;background:#eef1f5;border-radius:8px;padding:6px 12px;font-weight:600;color:var(--navy)}
 footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px;line-height:1.6}
-@media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.lead-why{max-width:none}.brief-items{grid-template-columns:1fr}.detail-inner{grid-template-columns:1fr}}
+/* ===== Responsive ===== */
+@media(max-width:980px){
+  #holoSection > div{grid-template-columns:1fr!important}
+}
+@media(max-width:880px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .grid2{grid-template-columns:1fr}
+  .lead-why{max-width:none}
+  .brief-items{grid-template-columns:1fr}
+  .detail-inner{grid-template-columns:1fr}
+  .wrap{padding:18px 14px 60px}
+}
+@media(max-width:600px){
+  header.top{padding:11px 14px;gap:9px;flex-wrap:wrap}
+  header.top h2{font-size:15px}
+  .top .tag{display:none}
+  .holo-toggle .holo-toggle-label{font-size:9px}
+  .who{font-size:11px;margin-left:8px!important}
+  .kpis{grid-template-columns:1fr 1fr;gap:10px}
+  .kpi .val{font-size:26px}
+  .kpi .val[style]{font-size:22px!important}
+  .toolbar{gap:8px}
+  .toolbar .btn{flex:1 1 100%;text-align:center}
+  .toolbar .hint{display:none}
+  .brief-head{font-size:14px;flex-wrap:wrap}
+  .card h3{font-size:14px;padding:13px 14px;flex-wrap:wrap}
+  th,td{padding:9px 10px;font-size:13px}
+  .leadsWrap-scroll, #leadsWrap{overflow-x:auto}
+  .modal{width:96vw}
+  .codeblock{font-size:10px}
+  .terr-grid{grid-template-columns:repeat(2,1fr)}
+  .ticker{font-size:11px}
+  .ask-msg{max-width:97%}
+  .holo-stage{height:280px!important}
+  .brief-score{font-size:15px}
+  footer.legal{font-size:10px}
+}
+@media(max-width:380px){
+  .kpis{grid-template-columns:1fr}
+  .terr-grid{grid-template-columns:1fr}
+}
 /* ===== V2 additions ===== */
 #briefBar{background:linear-gradient(135deg,#0a2540,#143a5e);color:#fff;border-radius:14px;padding:18px 22px;margin-bottom:18px;box-shadow:var(--shadow);display:none}
 #briefBar.show{display:block}
@@ -164,6 +205,26 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .terr-name{font-size:12px;font-weight:600;line-height:1.2}
 .terr-idx{font-family:'Fraunces';font-size:21px}
 .terr-stat{font-size:10.5px;opacity:.92;margin-top:3px}
+/* ===== Ask the Territory ===== */
+.ask-card{background:linear-gradient(160deg,#0a2540,#102f4f);color:#fff;border:none}
+.ask-card h3{color:#fff;border-bottom:1px solid rgba(255,255,255,.12)}
+.ask-body{padding:16px 18px}
+.ask-log{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
+.ask-msg{font-size:13.5px;line-height:1.5;border-radius:12px;padding:11px 14px;max-width:92%;white-space:pre-wrap;word-wrap:break-word}
+.ask-msg.user{align-self:flex-end;background:var(--gold);color:var(--ink);font-weight:500}
+.ask-msg.bot{align-self:flex-start;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
+.ask-cites{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.ask-cite{font-size:10.5px;background:rgba(22,143,137,.25);color:var(--teal-300);border:1px solid rgba(92,196,191,.3);padding:2px 8px;border-radius:20px}
+.ask-receipt{font-size:10.5px;color:var(--gold-300);margin-top:7px;cursor:pointer;text-decoration:underline}
+.ask-form{display:flex;gap:8px}
+.ask-input{flex:1;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:14px;font-family:inherit}
+.ask-input::placeholder{color:#8fa6bd}
+.ask-input:focus{outline:none;border-color:var(--teal-300)}
+.ask-send{background:var(--teal);color:#fff;border-radius:10px;padding:0 18px;font-weight:600}
+.ask-send:hover{background:var(--teal-300);color:var(--ink)}
+.ask-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
+.ask-chip{font-size:11.5px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#cdd9e6;padding:5px 11px;border-radius:18px;cursor:pointer;transition:background .15s}
+.ask-chip:hover{background:rgba(22,143,137,.3);color:#fff}
 .loader{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
 .btn.gold .loader{border-color:rgba(11,26,43,.3);border-top-color:#0b1a2b}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -240,6 +301,19 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       </div>
       <div class="card holo-card"><h3>🌐 Territory Opportunity Field <span class="sec-title-meta">live Census · height = opportunity</span></h3>
         <div id="holoGlobe" class="holo-stage" style="height:380px"></div></div>
+    </div>
+
+    <!-- Ask the Territory -->
+    <div class="card ask-card" id="askCard" style="display:none;margin-bottom:22px">
+      <h3>💬 Ask the Territory <span class="sec-title-meta" style="color:var(--teal-300)">conversational · public-data · cited · signed</span></h3>
+      <div class="ask-body">
+        <div class="ask-chips" id="askChips"></div>
+        <div class="ask-log" id="askLog"></div>
+        <form class="ask-form" onsubmit="sendAsk(event)">
+          <input class="ask-input" id="askInput" placeholder="Ask: who to call, where to prospect, rates, new businesses, compliance…" autocomplete="off">
+          <button type="submit" class="ask-send" id="askSend">Ask</button>
+        </form>
+      </div>
     </div>
 
     <div class="grid2" id="grid2">

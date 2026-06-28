@@ -56,6 +56,7 @@ async function runIntel(live) {
     renderBrief(data.brief);
     renderTicker(data.signals);
     renderPipeline(data.kpi);
+    showAsk();
     if (holoOn) renderHolo();
     $("runHint").textContent = data.meta.mode === "LIVE"
       ? `Live run · ${data.meta.live_count} live source(s) · ${data.meta.total_signals} signals · ${data.meta.gathered_at.slice(11,19)} UTC`
@@ -177,6 +178,55 @@ function renderGov(g, meta) {
       <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public signals rejected</div>
       <div class="verdict">🛡️ ${g.verdict}</div>
     </div>`;
+}
+
+/* ---------- Ask the Territory ---------- */
+const ASK_CHIPS = [
+  "Who should I call first?", "Where should I prospect?", "What are rates doing?",
+  "Any new businesses to reach out to?", "Why did the top lead score high?", "Is this compliant?"
+];
+let askGreeted = false;
+function showAsk() {
+  const card = $("askCard"); if (!card) return;
+  card.style.display = "";
+  if (!askGreeted) {
+    $("askChips").innerHTML = ASK_CHIPS.map(c => `<span class="ask-chip" onclick="askChip(this)">${c}</span>`).join("");
+    addAskMsg("bot", "Ask me anything about your live public-data intelligence — who to call, where to prospect, rates, new businesses, or compliance. Every answer is cited and signed.", [], null);
+    askGreeted = true;
+  }
+}
+function askChip(el) { $("askInput").value = el.textContent; sendAsk(); }
+function addAskMsg(who, text, cites, receiptId) {
+  const log = $("askLog");
+  const div = document.createElement("div");
+  div.className = "ask-msg " + who;
+  div.textContent = text;
+  if (cites && cites.length) {
+    const c = document.createElement("div"); c.className = "ask-cites";
+    c.innerHTML = cites.map(x => `<span class="ask-cite">\u25c6 ${x.label}</span>`).join("");
+    div.appendChild(c);
+  }
+  if (receiptId) {
+    const r = document.createElement("div"); r.className = "ask-receipt";
+    r.textContent = "\ud83d\udd0f Verify this answer";
+    r.onclick = () => openReceipt(receiptId);
+    div.appendChild(r);
+  }
+  log.appendChild(div); log.scrollTop = log.scrollHeight;
+}
+async function sendAsk(e) {
+  if (e) e.preventDefault();
+  const inp = $("askInput"); const q = inp.value.trim(); if (!q) return;
+  addAskMsg("user", q, [], null); inp.value = "";
+  const btn = $("askSend"); btn.disabled = true; btn.innerHTML = '<span class="loader"></span>';
+  try {
+    const r = await api("/api/ask", { method: "POST", body: JSON.stringify({ question: q }) });
+    addAskMsg("bot", r.answer, r.citations, r.receipt_id);
+  } catch (err) {
+    addAskMsg("bot", "\u2717 " + err.message, [], null);
+  } finally {
+    btn.disabled = false; btn.textContent = "Ask";
+  }
 }
 
 /* ---------- holographic mode ---------- */

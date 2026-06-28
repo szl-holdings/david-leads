@@ -13,6 +13,7 @@ from . import signals as sig
 from . import signals_v3 as sig3
 from . import scoring as sc
 from . import receipts as rc
+from . import ask as ask_engine
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -112,7 +113,41 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
 @app.get("/api/territory")
 def territory(state: str = "36", authorization: str | None = Header(default=None)):
     _auth(authorization)
-    return sig.territory_index(state)
+    terr = sig.territory_index(state)
+    _STATE["territory"] = terr  # cache so Ask the Territory can ground on it
+    return terr
+
+
+class AskReq(BaseModel):
+    question: str
+
+
+@app.post("/api/ask")
+def ask(req: AskReq, authorization: str | None = Header(default=None)):
+    """Ask the Territory — governed, citation-grounded answer over live public data + a signed receipt."""
+    _auth(authorization)
+    # ensure territory is available for grounding
+    if not _STATE.get("territory"):
+        try:
+            _STATE["territory"] = sig.territory_index("36")
+        except Exception:
+            _STATE["territory"] = {}
+    result = ask_engine.answer(req.question, _STATE)
+    # sign the answer (WILLAY-style: the answer + its citations are bound to a tamper-evident receipt)
+    pseudo_lead = {
+        "id": "ask_" + str(abs(hash(req.question)) % 10**8),
+        "name": "Ask the Territory query",
+        "bucket": result["intent"].upper(),
+        "product": "conversational-intelligence",
+    }
+    sigs_used = [{"source": c["label"], "signal": "grounding citation", "public": True} for c in result["citations"]] or \
+               [{"source": "public-data session state", "signal": "grounding", "public": True}]
+    receipt = rc.make_receipt(pseudo_lead, sigs_used, 100.0 if result["grounded"] else 0.0)
+    result["receipt_id"] = receipt["id"]
+    result["receipt_signed"] = receipt["signed"]
+    _STATE.setdefault("ask_receipts", {})[receipt["id"]] = receipt
+    _STATE["receipts"][receipt["id"]] = receipt  # so /api/verify works on ask receipts too
+    return result
 
 
 @app.get("/api/leads")
