@@ -170,6 +170,250 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .skeleton{background:linear-gradient(90deg,#eef1f5 25%,#f6f8fb 50%,#eef1f5 75%);background-size:200% 100%;animation:sk 1.3s infinite;border-radius:6px;height:14px}
 @keyframes sk{to{background-position:-200% 0}}
 </style>
+<style>/* ============================================================================
+ * holo.css — David Leads · Holographic visualization styling
+ * © 2026 SZL Holdings · Apache-2.0
+ * Pairs with holo.js. Uses existing :root tokens from index.html
+ * (--navy, --gold, --teal, --hot, --warm, --nurture, --gold-300, --teal-300…).
+ * Self-contained: introduces only holo-* / .holo-mode classes — no collisions.
+ * ============================================================================ */
+
+/* ---------- holographic container shell ---------- */
+.holo-stage{
+  position:relative;
+  width:100%;
+  min-height:300px;
+  border-radius:14px;
+  overflow:hidden;
+  background:
+    radial-gradient(900px 420px at 70% -20%, #143a5e 0%, #0a2540 48%, #061626 100%);
+  border:1px solid rgba(92,196,191,.18);
+  box-shadow:
+    inset 0 0 60px rgba(22,143,137,.10),
+    inset 0 0 1px rgba(92,196,191,.5),
+    0 18px 50px rgba(6,22,38,.45);
+  isolation:isolate;
+}
+.holo-stage canvas{ display:block; }
+
+/* faint holographic grid behind the canvas (additive to the scene grid) */
+.holo-stage::before{
+  content:"";
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:
+    linear-gradient(rgba(92,196,191,.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(92,196,191,.07) 1px, transparent 1px);
+  background-size:36px 36px;
+  mask-image:radial-gradient(circle at 50% 60%, #000 35%, transparent 78%);
+  -webkit-mask-image:radial-gradient(circle at 50% 60%, #000 35%, transparent 78%);
+}
+
+/* corner brackets — boardroom HUD flourish */
+.holo-stage::after{
+  content:"";
+  position:absolute; inset:10px; z-index:3; pointer-events:none;
+  border-radius:10px;
+  background:
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right top,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) left bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right bottom,
+    linear-gradient(var(--gold-300,#d7b96b),var(--gold-300,#d7b96b)) right bottom;
+  background-repeat:no-repeat;
+  background-size:16px 2px, 2px 16px;
+  opacity:.55;
+}
+
+/* ---------- scanline overlay (injected by holo.js as .holo-scanlines) ---------- */
+.holo-scanlines{
+  position:absolute; inset:0; z-index:2; pointer-events:none;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(92,196,191,.05) 0px,
+    rgba(92,196,191,.05) 1px,
+    transparent 2px,
+    transparent 4px);
+  mix-blend-mode:screen;
+  opacity:.6;
+}
+.holo-scanlines::after{
+  /* moving sweep beam */
+  content:"";
+  position:absolute; left:0; right:0; height:24%;
+  background:linear-gradient(to bottom, transparent, rgba(92,196,191,.16), transparent);
+  animation:holo-sweep 6.5s linear infinite;
+}
+@keyframes holo-sweep{
+  0%{ transform:translateY(-30%); }
+  100%{ transform:translateY(430%); }
+}
+
+/* optional caption strip below a holo viz */
+.holo-caption{
+  position:absolute; left:12px; bottom:10px; z-index:4;
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:11px; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--teal-300,#5cc4bf);
+  text-shadow:0 0 10px rgba(22,143,137,.6);
+  pointer-events:none;
+}
+
+/* ---------- hover tooltip (injected by holo.js as .holo-tip) ---------- */
+.holo-tip{
+  position:absolute; z-index:10; pointer-events:none;
+  min-width:140px; max-width:240px;
+  padding:10px 12px;
+  border-radius:10px;
+  font-family:'Inter',system-ui,sans-serif;
+  background:rgba(8,26,43,.82);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  border:1px solid rgba(92,196,191,.35);
+  box-shadow:0 10px 30px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.04);
+  color:#eaf2f8;
+}
+.holo-tip .ht-name{ font-weight:600; font-size:13px; color:#fff; line-height:1.25; margin-bottom:5px; }
+.holo-tip .ht-row{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.holo-tip .ht-score{ font-family:'Fraunces',Georgia,serif; font-size:18px; color:#fff; }
+.holo-tip .ht-meta{ font-size:11.5px; color:#9fb6c9; line-height:1.4; }
+.holo-tip .ht-badge{
+  display:inline-block; font-size:10px; font-weight:700; letter-spacing:.03em;
+  padding:2px 8px; border-radius:20px;
+}
+.holo-tip .ht-badge.HOT{ background:rgba(192,57,43,.22); color:#ff9b8f; border:1px solid rgba(192,57,43,.5); }
+.holo-tip .ht-badge.WARM{ background:rgba(192,143,47,.22); color:var(--gold-300,#d7b96b); border:1px solid rgba(192,143,47,.5); }
+.holo-tip .ht-badge.NURTURE{ background:rgba(90,107,124,.25); color:#aab8c6; border:1px solid rgba(90,107,124,.55); }
+
+/* ---------- holo viz card (when embedded in the dashboard) ---------- */
+.holo-card{
+  background:linear-gradient(160deg,#0a2540,#0d2c4a);
+  border:1px solid rgba(92,196,191,.18);
+  border-radius:16px;
+  box-shadow:var(--shadow);
+  overflow:hidden;
+}
+.holo-card .holo-card-head{
+  display:flex; align-items:center; gap:9px;
+  padding:14px 18px;
+  color:#fff;
+  font-family:'Fraunces',Georgia,serif; font-size:15px; font-weight:600;
+  border-bottom:1px solid rgba(92,196,191,.16);
+}
+.holo-card .holo-card-head .hc-meta{
+  margin-left:auto; font-family:'Inter',system-ui,sans-serif;
+  font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--teal-300,#5cc4bf);
+}
+.holo-card .holo-stage{ border:none; border-radius:0; box-shadow:inset 0 0 60px rgba(22,143,137,.10); }
+
+/* legend chips */
+.holo-legend{ display:flex; gap:14px; flex-wrap:wrap; padding:10px 18px 14px; }
+.holo-legend .hl{ display:flex; align-items:center; gap:6px; font-size:11.5px; color:#bcd; font-family:'Inter',system-ui,sans-serif; }
+.holo-legend .hl .sw{ width:11px; height:11px; border-radius:3px; box-shadow:0 0 8px currentColor; }
+.holo-legend .hl.HOT .sw{ background:var(--hot,#c0392b); color:var(--hot,#c0392b); }
+.holo-legend .hl.WARM .sw{ background:var(--warm,#c08f2f); color:var(--warm,#c08f2f); }
+.holo-legend .hl.NURTURE .sw{ background:var(--nurture,#5a6b7c); color:var(--nurture,#5a6b7c); }
+.holo-legend .hl.TEAL .sw{ background:var(--teal,#168f89); color:var(--teal,#168f89); }
+
+/* ============================================================================
+ * HOLO-MODE TOGGLE — glassmorphic, on-brand switch
+ * Markup convention (wire into app.js / index.html):
+ *   <label class="holo-toggle">
+ *     <span class="ht-label">Holo mode</span>
+ *     <input type="checkbox" id="holoModeToggle">
+ *     <span class="ht-track"><span class="ht-thumb"></span></span>
+ *   </label>
+ * ========================================================================== */
+.holo-toggle{
+  display:inline-flex; align-items:center; gap:10px;
+  cursor:pointer; user-select:none;
+  font-family:'Inter',system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+.holo-toggle .ht-label{
+  font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+  color:var(--muted,#5a6b7c);
+  transition:color .2s ease;
+}
+.holo-toggle input{
+  position:absolute; opacity:0; width:0; height:0; pointer-events:none;
+}
+.holo-toggle .ht-track{
+  position:relative; display:inline-block;
+  width:50px; height:28px; border-radius:999px;
+  background:rgba(10,37,64,.10);
+  border:1px solid var(--line,#e0e6ee);
+  -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);
+  transition:background .25s ease, border-color .25s ease, box-shadow .25s ease;
+}
+.holo-toggle .ht-thumb{
+  position:absolute; top:2px; left:2px;
+  width:22px; height:22px; border-radius:50%;
+  background:linear-gradient(160deg,#ffffff,#dfe7ef);
+  box-shadow:0 2px 6px rgba(10,37,64,.35);
+  transition:transform .25s cubic-bezier(.4,1.4,.5,1), background .25s ease, box-shadow .25s ease;
+}
+/* checked / ON state — teal→gold holographic glow */
+.holo-toggle input:checked + .ht-track{
+  background:linear-gradient(120deg, var(--teal,#168f89), var(--gold,#c08f2f));
+  border-color:rgba(92,196,191,.6);
+  box-shadow:
+    0 0 0 3px rgba(22,143,137,.18),
+    0 0 16px rgba(92,196,191,.55);
+}
+.holo-toggle input:checked + .ht-track .ht-thumb{
+  transform:translateX(22px);
+  background:linear-gradient(160deg,#ffffff,#eaf6f4);
+  box-shadow:0 0 12px rgba(92,196,191,.9), 0 2px 6px rgba(10,37,64,.35);
+}
+.holo-toggle input:focus-visible + .ht-track{
+  outline:none; box-shadow:0 0 0 3px rgba(92,196,191,.45);
+}
+.holo-toggle:hover .ht-label{ color:var(--navy,#0a2540); }
+/* when ON, label glows */
+.holo-toggle input:checked ~ .ht-label,
+.holo-toggle:has(input:checked) .ht-label{
+  color:var(--teal,#168f89);
+}
+
+/* ---------- dark-surface variant (for placing the toggle on the navy header) -------- */
+.holo-toggle.on-dark .ht-label{ color:#9fb6c9; }
+.holo-toggle.on-dark:hover .ht-label{ color:#fff; }
+.holo-toggle.on-dark .ht-track{ background:rgba(255,255,255,.10); border-color:rgba(255,255,255,.22); }
+
+/* ---------- "HOLO" pill badge (optional, mark a viz as holographic) ---------- */
+.holo-badge{
+  display:inline-flex; align-items:center; gap:5px;
+  font-family:'Inter',system-ui,sans-serif;
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  padding:3px 9px; border-radius:20px;
+  color:var(--teal-300,#5cc4bf);
+  background:rgba(22,143,137,.16);
+  border:1px solid rgba(92,196,191,.4);
+  box-shadow:0 0 12px rgba(22,143,137,.3);
+}
+.holo-badge::before{
+  content:""; width:6px; height:6px; border-radius:50%;
+  background:var(--teal-300,#5cc4bf);
+  box-shadow:0 0 8px var(--teal-300,#5cc4bf);
+  animation:holo-blink 1.8s ease-in-out infinite;
+}
+@keyframes holo-blink{ 0%,100%{ opacity:.4; } 50%{ opacity:1; } }
+
+/* ---------- responsive ---------- */
+@media (max-width:880px){
+  .holo-stage{ min-height:260px; }
+  .holo-legend{ gap:10px; }
+}
+
+/* ---------- reduced motion: calm the sweep & blink ---------- */
+@media (prefers-reduced-motion:reduce){
+  .holo-scanlines::after,
+  .holo-badge::before{ animation:none; }
+}
+</style>
 </head>
 <body>
 
@@ -206,7 +450,12 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     <h2>David Leads</h2>
     <span class="tag">Sovereign Insurance Intelligence</span>
     <div class="spacer"></div>
-    <span class="who" id="who"></span>
+    <label class="holo-toggle" title="Switch the visuals to holographic 3D">
+      <input type="checkbox" id="holoModeToggle" onchange="toggleHolo(this.checked)">
+      <span class="holo-toggle-track"><span class="holo-toggle-thumb"></span></span>
+      <span class="holo-toggle-label">HOLO MODE</span>
+    </label>
+    <span class="who" id="who" style="margin-left:14px"></span>
   </header>
 
   <div class="wrap">
@@ -224,7 +473,19 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 
     <div class="ticker" id="tickerBar"></div>
 
-    <div class="grid2">
+    <!-- Holographic 3D section (shown in Holo mode) -->
+    <div id="holoSection" style="display:none;margin-bottom:22px">
+      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card holo-card"><h3>🛰️ Lead Constellation <span class="sec-title-meta">score · bucket · shared signals</span></h3>
+          <div id="holoConstellation" class="holo-stage" style="height:340px"></div></div>
+        <div class="card holo-card"><h3>💠 Premium Pipeline 3D</h3>
+          <div id="holoPipe" class="holo-stage" style="height:340px"></div></div>
+      </div>
+      <div class="card holo-card"><h3>🌐 Territory Opportunity Field <span class="sec-title-meta">live Census · height = opportunity</span></h3>
+        <div id="holoGlobe" class="holo-stage" style="height:380px"></div></div>
+    </div>
+
+    <div class="grid2" id="grid2">
       <div class="card">
         <h3>🎯 Ranked Leads <span class="sec-title-meta" id="leadMeta"></span></h3>
         <div class="body" id="leadsWrap">
@@ -263,13 +524,670 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 <div id="modalMount"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>/* David Leads V2 — PORTABLE OFFLINE (no server) */
-const EMBEDDED = {"meta": {"total_signals": 4, "rejected_nonpublic": 0, "fabricated": 0, "live_count": 0, "gathered_at": "2026-06-28T05:19:31.972832+00:00", "mode": "SAMPLE (offline)"}, "signals": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "detail": "Sample: regional employer filed 8-K on executive compensation plan", "public": true, "live": false}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "detail": "Sample: avg weekly earnings ~$1,200 (+4.2% YoY)", "public": true, "live": false}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "detail": "Sample: New York median HH income ~$81,600, median age ~39.8", "public": true, "live": false}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "detail": "New dependents are the #1 life-insurance purchase trigger (national aggregate)", "public": true, "live": false, "note": "public aggregate (CDC disallows location via API)"}], "leads": [{"id": "L1", "name": "New-parent household (NY metro)", "event": "new_baby", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "why": "New dependents \u2014 coverage need spikes", "axes": {"life_event_strength": 0.95, "income_fit": 0.75, "age_window_fit": 0.85, "product_propensity": 0.9, "recency": 0.9}, "est_premium": 2335, "moments": [{"source": "CDC Natality", "label": "Birth uptick \u2192 new dependents"}, {"source": "BLS Wages", "label": "Earnings rising \u2192 coverage budget"}, {"source": "Census ACS", "label": "Family-formation age band"}], "nba": {"action": "Call within 24h; offer a 15-min family-coverage review.", "talk_track": "New baby changes everything \u2014 let's make sure they're protected if anything happens to you."}, "receipt_id": "rcpt_f6b95ababcbbb4e0", "receipt_signed": true}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "event": "job_change", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "why": "Income up \u2014 protect the new earnings and invest", "axes": {"life_event_strength": 0.85, "income_fit": 0.85, "age_window_fit": 0.8, "product_propensity": 0.8, "recency": 0.85}, "est_premium": 3286, "moments": [{"source": "SEC EDGAR 8-K", "label": "Officer/comp change \u2192 income up"}, {"source": "BLS Wages", "label": "Sector wage growth"}, {"source": "Census ACS", "label": "Prime-earner age band"}], "nba": {"action": "Congratulate on the role; propose protecting the new income + a retirement contribution review.", "talk_track": "Your income just grew \u2014 let's protect it and put some to work for retirement."}, "receipt_id": "rcpt_3f7961cfd5b4a51f", "receipt_signed": true}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "event": "mid_career", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "why": "Prime lifetime-income planning window (35\u201350)", "axes": {"life_event_strength": 0.7, "income_fit": 0.9, "age_window_fit": 0.9, "product_propensity": 0.85, "recency": 0.6}, "est_premium": 4687, "moments": [{"source": "Census ACS", "label": "35\u201350 income window"}, {"source": "BLS Wages", "label": "Peak-earning trend"}, {"source": "SEC EDGAR 8-K", "label": "Employer comp signals"}], "nba": {"action": "Book a lifetime-income planning session; lead with the peak-earning window.", "talk_track": "These are your peak earning years \u2014 the best time to lock in lifetime income."}, "receipt_id": "rcpt_3fd38dedf577c6bd", "receipt_signed": true}, {"id": "L4", "name": "Pre-retiree, high earnings (55\u201362)", "event": "near_retirement", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "why": "Income + care-cost protection (55\u201365)", "axes": {"life_event_strength": 0.65, "income_fit": 0.95, "age_window_fit": 0.95, "product_propensity": 0.8, "recency": 0.55}, "est_premium": 7935, "moments": [{"source": "Census ACS", "label": "55\u201365 age band"}, {"source": "BLS Wages", "label": "Pre-retirement income"}, {"source": "CDC Natality", "label": "Multi-gen household context"}], "nba": {"action": "Offer an annuity + LTC review; lead with guaranteed lifetime income.", "talk_track": "Let's turn your savings into income you can't outlive, and protect against care costs."}, "receipt_id": "rcpt_0bce6915d9cda2c1", "receipt_signed": true}, {"id": "L5", "name": "New homeowner, young family", "event": "home_purchase", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "why": "New debt obligation \u2014 income replacement need", "axes": {"life_event_strength": 0.8, "income_fit": 0.7, "age_window_fit": 0.75, "product_propensity": 0.75, "recency": 0.8}, "est_premium": 1810, "moments": [{"source": "Census ACS", "label": "Homeownership / mortgage band"}, {"source": "BLS Wages", "label": "Income supports new debt"}, {"source": "CDC Natality", "label": "Young-family formation"}], "nba": {"action": "Position mortgage-protection / term tied to the new loan balance.", "talk_track": "A mortgage is a 30-year promise \u2014 term coverage makes sure your family keeps the home."}, "receipt_id": "rcpt_5d7621f183b3bf1c", "receipt_signed": true}, {"id": "L6", "name": "Parent of college-age dependents", "event": "college_age", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "why": "Funding gap \u2014 tax-advantaged growth", "axes": {"life_event_strength": 0.6, "income_fit": 0.75, "age_window_fit": 0.65, "product_propensity": 0.7, "recency": 0.5}, "est_premium": 2456, "moments": [{"source": "Census ACS", "label": "College-age dependents in HH"}, {"source": "BLS Wages", "label": "Tuition-affordability window"}, {"source": "SEC EDGAR 8-K", "label": "Regional employer stability"}], "nba": {"action": "Present a tax-advantaged college funding strategy now.", "talk_track": "Tuition is coming fast \u2014 here's a tax-smart way to be ready without derailing retirement."}, "receipt_id": "rcpt_c2697e84f29524ae", "receipt_signed": true}], "kpi": {"qualified_appts_per_week": 2.8, "hot_count": 2, "warm_count": 4, "total_leads": 6, "pipeline_premium": 22509, "avg_score": 77.9, "pipeline_by_bucket": {"HOT": 5621, "WARM": 16888, "NURTURE": 0}}, "brief": {"top_ids": ["L1", "L2", "L3"], "headline": "2 HOT leads ready to call today \u2014 lead with New-parent household (NY metro).", "items": [{"id": "L1", "name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "action": "Call within 24h; offer a 15-min family-coverage review."}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "action": "Congratulate on the role; propose protecting the new income + a retirement contribution review."}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "action": "Book a lifetime-income planning session; lead with the peak-earning window."}]}, "territory": {"state": "New York", "source": "U.S. Census ACS 2023 (5-yr), county level [SAMPLE]", "formula": "0.45*income + 0.25*age_fit + 0.30*family_households (each min-max normalized)", "areas": [{"name": "Nassau County, New York", "index": 82.0, "median_income": 126000, "median_age": 41.8, "family_households": 145000, "public": true, "live": false}, {"name": "Suffolk County, New York", "index": 73.8, "median_income": 113000, "median_age": 41.0, "family_households": 162000, "public": true, "live": false}, {"name": "Westchester County, New York", "index": 63.2, "median_income": 112000, "median_age": 41.2, "family_households": 118000, "public": true, "live": false}, {"name": "Kings County, New York", "index": 45.6, "median_income": 74000, "median_age": 35.6, "family_households": 210000, "public": true, "live": false}, {"name": "Rockland County, New York", "index": 44.9, "median_income": 104000, "median_age": 38.9, "family_households": 78000, "public": true, "live": false}, {"name": "New York County, New York", "index": 42.3, "median_income": 99000, "median_age": 37.5, "family_households": 92000, "public": true, "live": false}], "meta": {"count": 6, "all_public": true, "fabricated": 0, "mode": "SAMPLE (offline)", "gathered_at": "2026-06-28T05:19:31.998068+00:00"}}, "governance": {"signals_checked": 4, "all_public": true, "fabricated": 0, "rejected_nonpublic": 0, "verdict": "PASS \u2014 public-data-only, honest by design"}, "receipts": {"L1": {"receipt": {"id": "rcpt_f6b95ababcbbb4e0", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L1", "lead_name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.972910+00:00", "prev_receipt_hash": "0000000000000000000000000000000000000000000000000000000000000000", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEYCIQD+IbGsvp48I0xMZpz0vMej7ESf7aa8hbGNpXHpYH38VAIhAMuYQr2tbbawrf8C6MFy+C/XkCcqiVww3d4W4eONXzdM"}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_f6b95ababcbbb4e0", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92"}}, "L2": {"receipt": {"id": "rcpt_3f7961cfd5b4a51f", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L2", "lead_name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.996823+00:00", "prev_receipt_hash": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCZGjqo1G2vsO67e/E8kJHN0kJPC7asK5L2xA4HvoNs7gIgZFY2uFq/h6k2Ugeyy/9V0wuQRnjcZ9aedmmds8P+/xw="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_3f7961cfd5b4a51f", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca"}}, "L3": {"receipt": {"id": "rcpt_3fd38dedf577c6bd", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L3", "lead_name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997140+00:00", "prev_receipt_hash": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCH5Ftx0+SOC0tTS3JvZ2smaH+35orx+nj138+vChMPjQIgDmJbMAk5qRaiaqhE3DJwngPvPu+Ewb35xUqtuEw0hN0="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_3fd38dedf577c6bd", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8"}}, "L4": {"receipt": {"id": "rcpt_0bce6915d9cda2c1", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L4", "lead_name": "Pre-retiree, high earnings (55\u201362)", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997378+00:00", "prev_receipt_hash": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEYCIQCDfGpUL4KCLhJbkHx5jqm38P5yOtViMlsvboF1AxsaMQIhAN3nXsr7t0c26vEQSI5zUGdFy6WqZVrkV/b7CNiAQ/nb"}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_0bce6915d9cda2c1", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1"}}, "L5": {"receipt": {"id": "rcpt_5d7621f183b3bf1c", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L5", "lead_name": "New homeowner, young family", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997598+00:00", "prev_receipt_hash": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIA+VvC4hcRyt4kx5N9fI/ztnTrzFJ6/kZBLfzK8xkjljAiEAqGqzUACaktA8kmamOwbbWbd0Le7RQ6AvM8DRjIBoOUc="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_5d7621f183b3bf1c", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390"}}, "L6": {"receipt": {"id": "rcpt_c2697e84f29524ae", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L6", "lead_name": "Parent of college-age dependents", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997807+00:00", "prev_receipt_hash": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "c2697e84f29524ae0cae427dc55763857f4d72b50cb00d382d3532fd12aabd37", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCSRJwp9BKTM9ZRNvwnxrn1Tepb6uywiaXMBhi7g/8Q7AIgQeTRUw4FAdeg5nmStXa7mjQXmLOllCKcMh8jAxptrJ8="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_c2697e84f29524ae", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "c2697e84f29524ae0cae427dc55763857f4d72b50cb00d382d3532fd12aabd37"}}}};
+<script>/* ============================================================================
+ * holo.js — David Leads · Holographic 3D Visualization Module
+ * © 2026 SZL Holdings · Apache-2.0
+ * Self-contained. Pure Three.js (r128 globals via window.THREE). No external data.
+ * Exposes a single global: window.Holo
+ * ----------------------------------------------------------------------------
+ * Visual identity: navy #0a2540 · gold #c08f2f · teal #168f89
+ * Buckets: HOT #c0392b · WARM #c08f2f · NURTURE #5a6b7c
+ * ============================================================================
+ *
+ * ─── SELF-TEST / USAGE EXAMPLE ───────────────────────────────────────────────
+ * Each function returns a handle: { dispose(), resize(), el } so you can clean
+ * up before re-render. Call dispose() on the previous handle (Holo also tracks
+ * the last handle per container automatically and disposes it on re-init).
+ *
+ *   <div id="holoConstellation" style="height:420px"></div>
+ *   <div id="holoGlobe"         style="height:420px"></div>
+ *   <div id="holoPipe"          style="height:300px"></div>
+ *
+ *   const SAMPLE_LEADS = [
+ *     { id:"L1", name:"New-parent household (NY metro)", score:91.2, bucket:"HOT",
+ *       product:"Term / Whole Life (Family Coverage)", est_premium:3200,
+ *       axes:{life_event_strength:.95,income_fit:.75,age_window_fit:.85,product_propensity:.9,recency:.9},
+ *       moments:[{source:"CDC Natality",label:"Birth uptick"},{source:"BLS Wages",label:"Earnings rising"},{source:"Census ACS",label:"Family-formation band"}],
+ *       nba:{action:"Call within 24h",talk_track:"New baby changes everything."} },
+ *     { id:"L2", name:"Recently-promoted professional", score:84.0, bucket:"HOT",
+ *       est_premium:4100, axes:{life_event_strength:.85,income_fit:.85,age_window_fit:.8,product_propensity:.8,recency:.85},
+ *       moments:[{source:"SEC EDGAR 8-K",label:"Comp change"},{source:"BLS Wages",label:"Wage growth"},{source:"Census ACS",label:"Prime-earner band"}] },
+ *     { id:"L3", name:"Mid-career dual-income family", score:78.5, bucket:"WARM",
+ *       est_premium:5200, axes:{life_event_strength:.7,income_fit:.9,age_window_fit:.9,product_propensity:.85,recency:.6},
+ *       moments:[{source:"Census ACS",label:"35–50 window"},{source:"BLS Wages",label:"Peak-earning"}] },
+ *     { id:"L6", name:"Parent of college-age dependents", score:55.0, bucket:"NURTURE",
+ *       est_premium:2400, axes:{life_event_strength:.6,income_fit:.75,age_window_fit:.65,product_propensity:.7,recency:.5},
+ *       moments:[{source:"Census ACS",label:"College-age HH"},{source:"BLS Wages",label:"Tuition window"}] },
+ *   ];
+ *   const c = Holo.leadConstellation("holoConstellation", SAMPLE_LEADS);
+ *
+ *   const SAMPLE_AREAS = [
+ *     { name:"New York County, New York", index:88, median_income:99000, median_age:37 },
+ *     { name:"Westchester County, New York", index:74, median_income:103000, median_age:41 },
+ *     { name:"Kings County, New York", index:69, median_income:67000, median_age:35 },
+ *     { name:"Nassau County, New York", index:81, median_income:121000, median_age:42 },
+ *     { name:"Suffolk County, New York", index:63, median_income:110000, median_age:43 },
+ *   ];
+ *   const g = Holo.territoryGlobe("holoGlobe", SAMPLE_AREAS);
+ *
+ *   const SAMPLE_PIPE = { HOT: 7300, WARM: 5200, NURTURE: 2400 };
+ *   const p = Holo.pipeline3D("holoPipe", SAMPLE_PIPE);
+ *
+ *   // cleanup: c.dispose(); g.dispose(); p.dispose();
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+(function (global) {
+  "use strict";
+  var THREE = global.THREE;
+
+  /* ---------- brand palette ---------- */
+  var COL = {
+    navy: 0x0a2540, navy700: 0x143a5e, navy800: 0x0d2c4a,
+    gold: 0xc08f2f, gold300: 0xd7b96b,
+    teal: 0x168f89, teal300: 0x5cc4bf,
+    hot: 0xc0392b, warm: 0xc08f2f, nurture: 0x5a6b7c
+  };
+  var BUCKET_COLOR = { HOT: COL.hot, WARM: COL.warm, NURTURE: COL.nurture };
+
+  /* ---------- per-container handle registry (auto-dispose on re-init) ---------- */
+  var REGISTRY = {};
+
+  function disposeExisting(id) {
+    if (REGISTRY[id] && typeof REGISTRY[id].dispose === "function") {
+      try { REGISTRY[id].dispose(); } catch (e) { /* noop */ }
+    }
+    delete REGISTRY[id];
+  }
+
+  /* ---------- shared scene scaffold ---------- */
+  function makeStage(containerId, opts) {
+    opts = opts || {};
+    var el = typeof containerId === "string" ? document.getElementById(containerId) : containerId;
+    if (!el) { console.warn("[Holo] container not found:", containerId); return null; }
+    if (!THREE) { console.warn("[Holo] THREE not loaded"); return null; }
+
+    var w = el.clientWidth || 600, h = el.clientHeight || 400;
+
+    var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    el.appendChild(renderer.domElement);
+
+    var scene = new THREE.Scene();
+    var cam = new THREE.PerspectiveCamera(opts.fov || 55, w / h, 0.1, 1000);
+    cam.position.set(opts.camX || 0, opts.camY || 0, opts.camZ || 14);
+    if (opts.lookAt) cam.lookAt(opts.lookAt);
+
+    /* tooltip element */
+    var tip = document.createElement("div");
+    tip.className = "holo-tip";
+    tip.style.display = "none";
+    el.appendChild(tip);
+
+    /* scanline + grid overlays (CSS-driven; toggled by holo.css classes) */
+    var scan = document.createElement("div");
+    scan.className = "holo-scanlines";
+    el.appendChild(scan);
+
+    return {
+      el: el, renderer: renderer, scene: scene, cam: cam, tip: tip, scan: scan,
+      w: w, h: h, disposables: []
+    };
+  }
+
+  /* ---------- bloom-ish glow sprite (cheap radial gradient, no postprocessing) ---------- */
+  var _glowTex = null;
+  function glowTexture() {
+    if (_glowTex) return _glowTex;
+    var c = document.createElement("canvas");
+    c.width = c.height = 128;
+    var ctx = c.getContext("2d");
+    var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    g.addColorStop(0.0, "rgba(255,255,255,1)");
+    g.addColorStop(0.2, "rgba(255,255,255,0.55)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.18)");
+    g.addColorStop(1.0, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    _glowTex = new THREE.CanvasTexture(c);
+    return _glowTex;
+  }
+
+  /* ---------- ambient particle field (capped) ---------- */
+  function ambientParticles(scene, count, spread, color, disposables) {
+    count = Math.min(count || 220, 400);
+    var geo = new THREE.BufferGeometry();
+    var pos = new Float32Array(count * 3);
+    for (var i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * spread;
+      pos[i * 3 + 1] = (Math.random() - 0.5) * spread;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * spread;
+    }
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    var mat = new THREE.PointsMaterial({
+      color: color, size: 0.06, transparent: true, opacity: 0.5,
+      depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    var pts = new THREE.Points(geo, mat);
+    scene.add(pts);
+    disposables.push(geo, mat);
+    return pts;
+  }
+
+  /* ---------- offscreen-aware RAF loop with cleanup ---------- */
+  function runLoop(stage, step, extraDispose) {
+    var rafId = null, running = true, paused = false;
+
+    var io = null;
+    if (global.IntersectionObserver) {
+      io = new IntersectionObserver(function (entries) {
+        paused = !entries[0].isIntersecting;
+      }, { threshold: 0.01 });
+      io.observe(stage.el);
+    }
+
+    var clock = new THREE.Clock();
+    function frame() {
+      if (!running) return;
+      rafId = requestAnimationFrame(frame);
+      if (paused || document.hidden) return;
+      var dt = clock.getDelta(), t = clock.getElapsedTime();
+      step(dt, t);
+      stage.renderer.render(stage.scene, stage.cam);
+    }
+    frame();
+
+    function resize() {
+      var w = stage.el.clientWidth || stage.w, h = stage.el.clientHeight || stage.h;
+      if (!w || !h) return;
+      stage.w = w; stage.h = h;
+      stage.renderer.setSize(w, h);
+      stage.cam.aspect = w / h;
+      stage.cam.updateProjectionMatrix();
+    }
+    var onResize = function () { resize(); };
+    global.addEventListener("resize", onResize);
+
+    function dispose() {
+      running = false;
+      if (rafId) cancelAnimationFrame(rafId);
+      global.removeEventListener("resize", onResize);
+      if (io) io.disconnect();
+      // dispose tracked geometries/materials/textures
+      (stage.disposables || []).forEach(function (d) {
+        if (d && typeof d.dispose === "function") { try { d.dispose(); } catch (e) {} }
+      });
+      // walk the scene and dispose anything left
+      stage.scene.traverse(function (o) {
+        if (o.geometry && o.geometry.dispose) try { o.geometry.dispose(); } catch (e) {}
+        if (o.material) {
+          var mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach(function (m) {
+            if (m.map && m.map.dispose) try { m.map.dispose(); } catch (e) {}
+            if (m.dispose) try { m.dispose(); } catch (e) {}
+          });
+        }
+      });
+      if (typeof extraDispose === "function") { try { extraDispose(); } catch (e) {} }
+      try { stage.renderer.dispose(); } catch (e) {}
+      var dom = stage.renderer.domElement;
+      if (dom && dom.parentNode) dom.parentNode.removeChild(dom);
+      if (stage.tip && stage.tip.parentNode) stage.tip.parentNode.removeChild(stage.tip);
+      if (stage.scan && stage.scan.parentNode) stage.scan.parentNode.removeChild(stage.scan);
+    }
+
+    return { dispose: dispose, resize: resize, el: stage.el, scene: stage.scene, cam: stage.cam };
+  }
+
+  function positionTip(stage, clientX, clientY, html) {
+    var rect = stage.el.getBoundingClientRect();
+    stage.tip.innerHTML = html;
+    stage.tip.style.display = "block";
+    var x = clientX - rect.left + 14, y = clientY - rect.top + 14;
+    // keep inside container
+    x = Math.min(x, stage.el.clientWidth - stage.tip.offsetWidth - 6);
+    y = Math.min(y, stage.el.clientHeight - stage.tip.offsetHeight - 6);
+    stage.tip.style.left = Math.max(4, x) + "px";
+    stage.tip.style.top = Math.max(4, y) + "px";
+  }
+
+  function hideTip(stage) { stage.tip.style.display = "none"; }
+
+  function money(n) { return "$" + Number(n || 0).toLocaleString(); }
+
+  /* ===========================================================================
+   * 1) LEAD CONSTELLATION
+   * Glowing 3D node cloud. node = lead, size ∝ score, color by bucket,
+   * links between leads sharing a moment.source. Auto-rotate + hover raycaster.
+   * ========================================================================= */
+  function leadConstellation(containerId, leads) {
+    disposeExisting(containerId);
+    var stage = makeStage(containerId, { fov: 55, camZ: 16 });
+    if (!stage) return { dispose: function () {}, resize: function () {} };
+    leads = (leads || []).slice();
+
+    stage.scene.fog = new THREE.FogExp2(0x071a2e, 0.022);
+    ambientParticles(stage.scene, 200, 34, COL.teal300, stage.disposables);
+
+    var root = new THREE.Group();
+    stage.scene.add(root);
+
+    /* lay nodes on a fibonacci-ish sphere so they spread evenly */
+    var N = leads.length, nodes = [];
+    var glow = glowTexture();
+    var maxScore = 1;
+    leads.forEach(function (l) { maxScore = Math.max(maxScore, +l.score || 0); });
+
+    var nodeGeoCache = {}; // share geometry by quantized radius
+    function nodeGeo(r) {
+      var key = r.toFixed(2);
+      if (!nodeGeoCache[key]) { nodeGeoCache[key] = new THREE.SphereGeometry(r, 18, 18); stage.disposables.push(nodeGeoCache[key]); }
+      return nodeGeoCache[key];
+    }
+
+    var R = 8;
+    for (var i = 0; i < N; i++) {
+      var l = leads[i];
+      var y = N > 1 ? 1 - (i / (N - 1)) * 2 : 0;          // -1..1
+      var radAtY = Math.sqrt(Math.max(0, 1 - y * y));
+      var theta = i * 2.399963; // golden angle
+      var px = Math.cos(theta) * radAtY * R;
+      var pz = Math.sin(theta) * radAtY * R;
+      var py = y * R * 0.72;
+
+      var sc = (+l.score || 0) / 100;
+      var radius = 0.28 + sc * 0.78;                       // size ∝ score
+      var color = BUCKET_COLOR[l.bucket] || COL.teal;
+
+      var coreMat = new THREE.MeshBasicMaterial({ color: color });
+      var core = new THREE.Mesh(nodeGeo(radius), coreMat);
+      core.position.set(px, py, pz);
+      stage.disposables.push(coreMat);
+
+      // wireframe accent shell
+      var wireMat = new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true, opacity: 0.28 });
+      var wire = new THREE.Mesh(nodeGeo(radius * 1.35), wireMat);
+      wire.position.copy(core.position);
+      stage.disposables.push(wireMat);
+
+      // glow sprite
+      var spriteMat = new THREE.SpriteMaterial({ map: glow, color: color, transparent: true, opacity: 0.7, depthWrite: false, blending: THREE.AdditiveBlending });
+      var sprite = new THREE.Sprite(spriteMat);
+      sprite.scale.setScalar(radius * 5.2);
+      sprite.position.copy(core.position);
+      stage.disposables.push(spriteMat);
+
+      root.add(core); root.add(wire); root.add(sprite);
+      core.userData = { lead: l, baseScale: 1, sprite: sprite, wire: wire, phase: Math.random() * 6.28 };
+      nodes.push(core);
+    }
+
+    /* links between leads sharing a moment source */
+    var linePts = [];
+    function sourcesOf(l) {
+      return (l.moments || []).map(function (m) { return (m.source || "").trim(); }).filter(Boolean);
+    }
+    for (var a = 0; a < N; a++) {
+      var sa = sourcesOf(leads[a]);
+      for (var b = a + 1; b < N; b++) {
+        var sb = sourcesOf(leads[b]);
+        var shared = sa.some(function (s) { return sb.indexOf(s) !== -1; });
+        if (shared) {
+          var pa = nodes[a].position, pb = nodes[b].position;
+          linePts.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
+        }
+      }
+    }
+    if (linePts.length) {
+      var lgeo = new THREE.BufferGeometry();
+      lgeo.setAttribute("position", new THREE.Float32BufferAttribute(linePts, 3));
+      var lmat = new THREE.LineBasicMaterial({ color: COL.teal300, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending });
+      var links = new THREE.LineSegments(lgeo, lmat);
+      root.add(links);
+      stage.disposables.push(lgeo, lmat);
+    }
+
+    /* hover raycaster */
+    var ray = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var hovered = null, lastClientX = 0, lastClientY = 0, autoRotate = true;
+
+    function onMove(ev) {
+      var rect = stage.el.getBoundingClientRect();
+      lastClientX = ev.clientX; lastClientY = ev.clientY;
+      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(mouse, stage.cam);
+      var hits = ray.intersectObjects(nodes, false);
+      if (hits.length) {
+        var l = hits[0].object.userData.lead;
+        hovered = hits[0].object;
+        autoRotate = false;
+        var html = '<div class="ht-name">' + escapeHtml(l.name) + '</div>' +
+          '<div class="ht-row"><span class="ht-badge ' + l.bucket + '">' + l.bucket + '</span>' +
+          '<span class="ht-score">' + (l.score) + '</span></div>' +
+          (l.product ? '<div class="ht-meta">' + escapeHtml(l.product) + '</div>' : '') +
+          (l.est_premium ? '<div class="ht-meta">~' + money(l.est_premium) + '/yr est.</div>' : '');
+        positionTip(stage, ev.clientX, ev.clientY, html);
+        stage.el.style.cursor = "pointer";
+      } else {
+        hovered = null; autoRotate = true; hideTip(stage); stage.el.style.cursor = "default";
+      }
+    }
+    function onLeave() { hovered = null; autoRotate = true; hideTip(stage); stage.el.style.cursor = "default"; }
+    stage.el.addEventListener("mousemove", onMove);
+    stage.el.addEventListener("mouseleave", onLeave);
+
+    var handle = runLoop(stage, function (dt, t) {
+      if (autoRotate) root.rotation.y += dt * 0.22;
+      root.rotation.x = Math.sin(t * 0.25) * 0.12;
+      // pulse nodes (hovered pulses brighter/larger)
+      for (var k = 0; k < nodes.length; k++) {
+        var n = nodes[k], ph = n.userData.phase;
+        var pulse = 1 + 0.12 * Math.sin(t * 2 + ph);
+        var hi = (n === hovered) ? 1.45 : 1;
+        n.scale.setScalar(pulse * hi);
+        n.userData.sprite.material.opacity = (n === hovered ? 0.95 : 0.6) + 0.15 * Math.sin(t * 2 + ph);
+        n.userData.wire.rotation.y += dt * 0.4;
+      }
+    }, function () {
+      stage.el.removeEventListener("mousemove", onMove);
+      stage.el.removeEventListener("mouseleave", onLeave);
+    });
+
+    REGISTRY[containerId] = handle;
+    return handle;
+  }
+
+  /* ===========================================================================
+   * 2) TERRITORY GLOBE — extruded bars (height ∝ index) over a stylized grid.
+   * teal gradient, labels on hover.
+   * ========================================================================= */
+  function territoryGlobe(containerId, areas) {
+    disposeExisting(containerId);
+    var stage = makeStage(containerId, { fov: 52, camX: 0, camY: 16, camZ: 22, lookAt: new THREE.Vector3(0, 1.5, 0) });
+    if (!stage) return { dispose: function () {}, resize: function () {} };
+    areas = (areas || []).slice();
+
+    stage.scene.fog = new THREE.FogExp2(0x071a2e, 0.018);
+    ambientParticles(stage.scene, 160, 40, COL.teal300, stage.disposables);
+
+    var root = new THREE.Group();
+    stage.scene.add(root);
+
+    /* glowing grid plane */
+    var gridSpan = 18;
+    var grid = new THREE.GridHelper(gridSpan, 18, COL.teal, COL.navy700);
+    grid.material.transparent = true; grid.material.opacity = 0.35;
+    root.add(grid);
+    stage.disposables.push(grid.geometry, grid.material);
+
+    // subtle dark base plane
+    var planeGeo = new THREE.PlaneGeometry(gridSpan, gridSpan);
+    var planeMat = new THREE.MeshBasicMaterial({ color: 0x07223a, transparent: true, opacity: 0.55 });
+    var plane = new THREE.Mesh(planeGeo, planeMat);
+    plane.rotation.x = -Math.PI / 2; plane.position.y = -0.02;
+    root.add(plane);
+    stage.disposables.push(planeGeo, planeMat);
+
+    /* layout bars on a grid */
+    var n = areas.length;
+    var cols = Math.max(1, Math.ceil(Math.sqrt(n)));
+    var rows = Math.max(1, Math.ceil(n / cols));
+    var cell = gridSpan / (Math.max(cols, rows) + 1);
+    var maxIdx = 1;
+    areas.forEach(function (a) { maxIdx = Math.max(maxIdx, +a.index || 0); });
+
+    var bars = [];
+    var barGeo = new THREE.BoxGeometry(cell * 0.55, 1, cell * 0.55);
+    stage.disposables.push(barGeo);
+
+    function tealGrad(t) {
+      // navy -> teal -> teal300 by height fraction t
+      var c0 = new THREE.Color(COL.navy700), c1 = new THREE.Color(COL.teal), c2 = new THREE.Color(COL.teal300);
+      var c = t < 0.5 ? c0.lerp(c1, t / 0.5) : c1.lerp(c2, (t - 0.5) / 0.5);
+      return c;
+    }
+
+    for (var i = 0; i < n; i++) {
+      var a = areas[i];
+      var r = Math.floor(i / cols), cc = i % cols;
+      var x = (cc - (cols - 1) / 2) * cell * 1.7;
+      var z = (r - (rows - 1) / 2) * cell * 1.7;
+      var frac = (+a.index || 0) / maxIdx;
+      var height = 0.5 + frac * 4.5;
+      var col = tealGrad(frac);
+
+      var mat = new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92 });
+      var bar = new THREE.Mesh(barGeo, mat);
+      bar.scale.y = height;
+      bar.position.set(x, height / 2, z);
+      stage.disposables.push(mat);
+
+      // wireframe halo
+      var wmat = new THREE.MeshBasicMaterial({ color: COL.teal300, wireframe: true, transparent: true, opacity: 0.3 });
+      var wire = new THREE.Mesh(barGeo, wmat);
+      wire.scale.set(1.08, height * 1.01, 1.08);
+      wire.position.copy(bar.position);
+      stage.disposables.push(wmat);
+
+      root.add(bar); root.add(wire);
+      bar.userData = { area: a, baseH: height };
+      bars.push(bar);
+    }
+
+    /* hover raycaster */
+    var ray = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var hovered = null, autoRotate = true;
+
+    function onMove(ev) {
+      var rect = stage.el.getBoundingClientRect();
+      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(mouse, stage.cam);
+      var hits = ray.intersectObjects(bars, false);
+      if (hits.length) {
+        var a = hits[0].object.userData.area;
+        hovered = hits[0].object; autoRotate = false;
+        var nm = (a.name || "").replace(", New York", "");
+        var html = '<div class="ht-name">' + escapeHtml(nm) + '</div>' +
+          '<div class="ht-row"><span class="ht-score" style="color:var(--teal-300)">Index ' + a.index + '</span></div>' +
+          (a.median_income != null ? '<div class="ht-meta">' + money(a.median_income) + ' median income</div>' : '') +
+          (a.median_age != null ? '<div class="ht-meta">median age ' + a.median_age + '</div>' : '');
+        positionTip(stage, ev.clientX, ev.clientY, html);
+        stage.el.style.cursor = "pointer";
+      } else {
+        hovered = null; autoRotate = true; hideTip(stage); stage.el.style.cursor = "default";
+      }
+    }
+    function onLeave() { hovered = null; autoRotate = true; hideTip(stage); stage.el.style.cursor = "default"; }
+    stage.el.addEventListener("mousemove", onMove);
+    stage.el.addEventListener("mouseleave", onLeave);
+
+    var handle = runLoop(stage, function (dt, t) {
+      if (autoRotate) root.rotation.y += dt * 0.18;
+      for (var k = 0; k < bars.length; k++) {
+        var b = bars[k];
+        var lift = (b === hovered) ? 1.12 : 1;
+        var breathe = 1 + 0.02 * Math.sin(t * 1.5 + k);
+        var h = b.userData.baseH * lift * breathe;
+        b.scale.y = h; b.position.y = h / 2;
+        b.material.opacity = (b === hovered) ? 1 : 0.92;
+      }
+      grid.material.opacity = 0.3 + 0.08 * Math.sin(t * 1.2);
+    }, function () {
+      stage.el.removeEventListener("mousemove", onMove);
+      stage.el.removeEventListener("mouseleave", onLeave);
+    });
+
+    REGISTRY[containerId] = handle;
+    return handle;
+  }
+
+  /* ===========================================================================
+   * 3) PIPELINE 3D — extruded bars for HOT / WARM / NURTURE premium.
+   * Accepts { HOT, WARM, NURTURE } premium dollars.
+   * ========================================================================= */
+  function pipeline3D(containerId, pipelineByBucket) {
+    disposeExisting(containerId);
+    var stage = makeStage(containerId, { fov: 50, camX: 0, camY: 5.5, camZ: 12, lookAt: new THREE.Vector3(0, 1.5, 0) });
+    if (!stage) return { dispose: function () {}, resize: function () {} };
+    var data = pipelineByBucket || {};
+
+    stage.scene.fog = new THREE.FogExp2(0x071a2e, 0.02);
+    ambientParticles(stage.scene, 140, 26, COL.gold300, stage.disposables);
+
+    var root = new THREE.Group();
+    stage.scene.add(root);
+
+    // base grid
+    var grid = new THREE.GridHelper(14, 14, COL.navy700, COL.navy800);
+    grid.material.transparent = true; grid.material.opacity = 0.3;
+    root.add(grid);
+    stage.disposables.push(grid.geometry, grid.material);
+
+    var buckets = ["HOT", "WARM", "NURTURE"];
+    var vals = buckets.map(function (b) { return +data[b] || 0; });
+    var maxV = Math.max(1, Math.max.apply(null, vals));
+
+    var bars = [], labels = [];
+    var barGeo = new THREE.BoxGeometry(1.6, 1, 1.6);
+    stage.disposables.push(barGeo);
+    var glow = glowTexture();
+
+    buckets.forEach(function (b, i) {
+      var v = +data[b] || 0;
+      var frac = v / maxV;
+      var height = 0.4 + frac * 6.5;
+      var x = (i - 1) * 3.0;
+      var color = BUCKET_COLOR[b];
+
+      var mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.9 });
+      var bar = new THREE.Mesh(barGeo, mat);
+      bar.scale.y = height; bar.position.set(x, height / 2, 0);
+      stage.disposables.push(mat);
+
+      var wmat = new THREE.MeshBasicMaterial({ color: color, wireframe: true, transparent: true, opacity: 0.35 });
+      var wire = new THREE.Mesh(barGeo, wmat);
+      wire.scale.set(1.06, height * 1.01, 1.06); wire.position.copy(bar.position);
+      stage.disposables.push(wmat);
+
+      // glow column at base
+      var spMat = new THREE.SpriteMaterial({ map: glow, color: color, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+      var sp = new THREE.Sprite(spMat);
+      sp.scale.setScalar(3.2); sp.position.set(x, 0.2, 0);
+      stage.disposables.push(spMat);
+
+      root.add(bar); root.add(wire); root.add(sp);
+      bar.userData = { bucket: b, value: v, baseH: height };
+      bars.push(bar);
+
+      // floating text label sprite
+      var lab = makeTextSprite(b + "  " + money(v), color);
+      lab.position.set(x, height + 1.1, 0);
+      lab.userData = { bar: bar };
+      root.add(lab); labels.push(lab);
+      stage.disposables.push(lab.material.map, lab.material);
+    });
+
+    /* hover raycaster (highlight) */
+    var ray = new THREE.Raycaster();
+    var mouse = new THREE.Vector2();
+    var hovered = null;
+    function onMove(ev) {
+      var rect = stage.el.getBoundingClientRect();
+      mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      ray.setFromCamera(mouse, stage.cam);
+      var hits = ray.intersectObjects(bars, false);
+      if (hits.length) {
+        hovered = hits[0].object;
+        var u = hovered.userData;
+        positionTip(stage, ev.clientX, ev.clientY,
+          '<div class="ht-name">' + u.bucket + ' Pipeline</div>' +
+          '<div class="ht-meta"><span class="ht-score">' + money(u.value) + '</span> est. annualized premium</div>');
+        stage.el.style.cursor = "pointer";
+      } else { hovered = null; hideTip(stage); stage.el.style.cursor = "default"; }
+    }
+    function onLeave() { hovered = null; hideTip(stage); stage.el.style.cursor = "default"; }
+    stage.el.addEventListener("mousemove", onMove);
+    stage.el.addEventListener("mouseleave", onLeave);
+
+    var handle = runLoop(stage, function (dt, t) {
+      root.rotation.y = Math.sin(t * 0.18) * 0.5; // gentle oscillating turntable
+      for (var k = 0; k < bars.length; k++) {
+        var b = bars[k];
+        var hi = (b === hovered) ? 1.08 : 1;
+        var breathe = 1 + 0.025 * Math.sin(t * 1.8 + k);
+        var h = b.userData.baseH * hi * breathe;
+        b.scale.y = h; b.position.y = h / 2;
+        if (labels[k]) labels[k].position.y = h + 1.1;
+        b.material.opacity = (b === hovered) ? 1 : 0.9;
+      }
+    }, function () {
+      stage.el.removeEventListener("mousemove", onMove);
+      stage.el.removeEventListener("mouseleave", onLeave);
+    });
+
+    REGISTRY[containerId] = handle;
+    return handle;
+  }
+
+  /* ---------- text label sprite (canvas) ---------- */
+  function makeTextSprite(text, color) {
+    var pad = 24, fs = 44;
+    var c = document.createElement("canvas");
+    var ctx = c.getContext("2d");
+    ctx.font = "600 " + fs + "px Inter, system-ui, sans-serif";
+    var tw = ctx.measureText(text).width;
+    c.width = Math.ceil(tw + pad * 2);
+    c.height = fs + pad;
+    ctx = c.getContext("2d");
+    ctx.font = "600 " + fs + "px Inter, system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+    // glow
+    var hex = "#" + new THREE.Color(color).getHexString();
+    ctx.shadowColor = hex; ctx.shadowBlur = 16;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(text, pad, c.height / 2);
+    var tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.LinearFilter;
+    var mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    var sp = new THREE.Sprite(mat);
+    var scale = 0.012;
+    sp.scale.set(c.width * scale, c.height * scale, 1);
+    return sp;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  /* ---------- public API ---------- */
+  global.Holo = {
+    leadConstellation: leadConstellation,
+    territoryGlobe: territoryGlobe,
+    pipeline3D: pipeline3D,
+    dispose: function (containerId) { disposeExisting(containerId); },
+    disposeAll: function () { Object.keys(REGISTRY).forEach(disposeExisting); },
+    _registry: REGISTRY,
+    version: "1.0.0"
+  };
+})(typeof window !== "undefined" ? window : this);
+</script>
+<script>/* David Leads V3 — PORTABLE OFFLINE (no server) */
+const EMBEDDED = {"meta": {"total_signals": 16, "rejected_nonpublic": 0, "fabricated": 0, "live_count": 0, "gathered_at": "2026-06-28T06:36:12.536804+00:00", "mode": "SAMPLE (offline)"}, "signals": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "detail": "Sample: regional employer filed 8-K on executive compensation plan", "public": true, "live": false}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "detail": "Sample: avg weekly earnings ~$1,200 (+4.2% YoY)", "public": true, "live": false}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "detail": "Sample: New York median HH income ~$81,600, median age ~39.8", "public": true, "live": false}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "detail": "New dependents are the #1 life-insurance purchase trigger (national aggregate)", "public": true, "live": false, "note": "public aggregate (CDC disallows location via API)"}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Bills: 3.690% avg interest", "value": "3.690", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Notes: 3.248% avg interest", "value": "3.248", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Bonds: 3.413% avg interest", "value": "3.413", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Bills: 3.690% avg interest", "value": "3.690", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Notes: 3.248% avg interest", "value": "3.248", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "detail": "Sample: Treasury Bonds: 3.413% avg interest", "value": "3.413", "product": "RET", "scoring_axis": "rate_environment", "public": true, "live": false}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "detail": "Sample: SUNGUARD SOLAR SERVICES, INC. (DOMESTIC BUSINESS CORPORATION) filed 2026-06-26 in Rockland \u2014 Bardonia, NY 10954", "entity_name": "SUNGUARD SOLAR SERVICES, INC.", "filing_date": "2026-06-26", "county": "Rockland", "entity_type": "DOMESTIC BUSINESS CORPORATION", "address": "Bardonia, NY 10954", "product": "FAM/RET/COL", "scoring_axis": "business_formation", "public": true, "live": false}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "detail": "Sample: HUDSON VALLEY ADVISORY LLC (DOMESTIC LIMITED LIABILITY COMPANY) filed 2026-06-25 in Westchester \u2014 White Plains, NY 10601", "entity_name": "HUDSON VALLEY ADVISORY LLC", "filing_date": "2026-06-25", "county": "Westchester", "entity_type": "DOMESTIC LIMITED LIABILITY COMPANY", "address": "White Plains, NY 10601", "product": "FAM/RET/COL", "scoring_axis": "business_formation", "public": true, "live": false}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "detail": "Sample: New York ~53.5% owner-occupied", "value": 53.5, "product": "FAM", "scoring_axis": "homeownership", "public": true, "live": false}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "detail": "Sample: New York ~38% hold a bachelor's+ degree", "value": 38.0, "product": "COL", "scoring_axis": "education_funding", "public": true, "live": false}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "detail": "Sample: New York ~46% now-married, ~6% widowed (pop 15+)", "value": {"married_pct": 46.0, "widowed_pct": 6.0}, "product": "FAM", "scoring_axis": "marital_composition", "public": true, "live": false}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "detail": "Sample: Westchester County, NY: 3.3% unemployment (April 2026, preliminary)", "value": 3.3, "county": "Westchester County, NY", "product": "FAM", "scoring_axis": "income_security", "public": true, "live": false}], "leads": [{"id": "L1", "name": "New-parent household (NY metro)", "event": "new_baby", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "why": "New dependents \u2014 coverage need spikes", "axes": {"life_event_strength": 0.95, "income_fit": 0.75, "age_window_fit": 0.85, "product_propensity": 0.9, "recency": 0.9}, "est_premium": 2335, "moments": [{"source": "CDC Natality", "label": "Birth uptick \u2192 new dependents"}, {"source": "BLS Wages", "label": "Earnings rising \u2192 coverage budget"}, {"source": "Census ACS", "label": "Family-formation age band"}], "nba": {"action": "Call within 24h; offer a 15-min family-coverage review.", "talk_track": "New baby changes everything \u2014 let's make sure they're protected if anything happens to you."}, "receipt_id": "rcpt_4d14e3ac69eecabc", "receipt_signed": true}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "event": "job_change", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "why": "Income up \u2014 protect the new earnings and invest", "axes": {"life_event_strength": 0.85, "income_fit": 0.85, "age_window_fit": 0.8, "product_propensity": 0.8, "recency": 0.85}, "est_premium": 3286, "moments": [{"source": "SEC EDGAR 8-K", "label": "Officer/comp change \u2192 income up"}, {"source": "BLS Wages", "label": "Sector wage growth"}, {"source": "Census ACS", "label": "Prime-earner age band"}], "nba": {"action": "Congratulate on the role; propose protecting the new income + a retirement contribution review.", "talk_track": "Your income just grew \u2014 let's protect it and put some to work for retirement."}, "receipt_id": "rcpt_9b2d0d7076fa37ee", "receipt_signed": true}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "event": "mid_career", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "why": "Prime lifetime-income planning window (35\u201350)", "axes": {"life_event_strength": 0.7, "income_fit": 0.9, "age_window_fit": 0.9, "product_propensity": 0.85, "recency": 0.6}, "est_premium": 4687, "moments": [{"source": "Census ACS", "label": "35\u201350 income window"}, {"source": "BLS Wages", "label": "Peak-earning trend"}, {"source": "SEC EDGAR 8-K", "label": "Employer comp signals"}], "nba": {"action": "Book a lifetime-income planning session; lead with the peak-earning window.", "talk_track": "These are your peak earning years \u2014 the best time to lock in lifetime income."}, "receipt_id": "rcpt_680543f6ac929a13", "receipt_signed": true}, {"id": "L4", "name": "Pre-retiree, high earnings (55\u201362)", "event": "near_retirement", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "why": "Income + care-cost protection (55\u201365)", "axes": {"life_event_strength": 0.65, "income_fit": 0.95, "age_window_fit": 0.95, "product_propensity": 0.8, "recency": 0.55}, "est_premium": 7935, "moments": [{"source": "Census ACS", "label": "55\u201365 age band"}, {"source": "BLS Wages", "label": "Pre-retirement income"}, {"source": "CDC Natality", "label": "Multi-gen household context"}], "nba": {"action": "Offer an annuity + LTC review; lead with guaranteed lifetime income.", "talk_track": "Let's turn your savings into income you can't outlive, and protect against care costs."}, "receipt_id": "rcpt_53690b105891cb04", "receipt_signed": true}, {"id": "L5", "name": "New homeowner, young family", "event": "home_purchase", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "why": "New debt obligation \u2014 income replacement need", "axes": {"life_event_strength": 0.8, "income_fit": 0.7, "age_window_fit": 0.75, "product_propensity": 0.75, "recency": 0.8}, "est_premium": 1810, "moments": [{"source": "Census ACS", "label": "Homeownership / mortgage band"}, {"source": "BLS Wages", "label": "Income supports new debt"}, {"source": "CDC Natality", "label": "Young-family formation"}], "nba": {"action": "Position mortgage-protection / term tied to the new loan balance.", "talk_track": "A mortgage is a 30-year promise \u2014 term coverage makes sure your family keeps the home."}, "receipt_id": "rcpt_7a2604efa14250ab", "receipt_signed": true}, {"id": "L6", "name": "Parent of college-age dependents", "event": "college_age", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "why": "Funding gap \u2014 tax-advantaged growth", "axes": {"life_event_strength": 0.6, "income_fit": 0.75, "age_window_fit": 0.65, "product_propensity": 0.7, "recency": 0.5}, "est_premium": 2456, "moments": [{"source": "Census ACS", "label": "College-age dependents in HH"}, {"source": "BLS Wages", "label": "Tuition-affordability window"}, {"source": "SEC EDGAR 8-K", "label": "Regional employer stability"}], "nba": {"action": "Present a tax-advantaged college funding strategy now.", "talk_track": "Tuition is coming fast \u2014 here's a tax-smart way to be ready without derailing retirement."}, "receipt_id": "rcpt_98ba942af64d3885", "receipt_signed": true}], "kpi": {"qualified_appts_per_week": 2.8, "hot_count": 2, "warm_count": 4, "total_leads": 6, "pipeline_premium": 22509, "avg_score": 77.9, "pipeline_by_bucket": {"HOT": 5621, "WARM": 16888, "NURTURE": 0}}, "brief": {"top_ids": ["L1", "L2", "L3"], "headline": "2 HOT leads ready to call today \u2014 lead with New-parent household (NY metro).", "items": [{"id": "L1", "name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "action": "Call within 24h; offer a 15-min family-coverage review."}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "action": "Congratulate on the role; propose protecting the new income + a retirement contribution review."}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "action": "Book a lifetime-income planning session; lead with the peak-earning window."}]}, "territory": {"state": "New York", "source": "U.S. Census ACS 2023 (5-yr), county level [SAMPLE]", "formula": "0.45*income + 0.25*age_fit + 0.30*family_households (each min-max normalized)", "areas": [{"name": "Nassau County, New York", "index": 82.0, "median_income": 126000, "median_age": 41.8, "family_households": 145000, "public": true, "live": false}, {"name": "Suffolk County, New York", "index": 73.8, "median_income": 113000, "median_age": 41.0, "family_households": 162000, "public": true, "live": false}, {"name": "Westchester County, New York", "index": 63.2, "median_income": 112000, "median_age": 41.2, "family_households": 118000, "public": true, "live": false}, {"name": "Kings County, New York", "index": 45.6, "median_income": 74000, "median_age": 35.6, "family_households": 210000, "public": true, "live": false}, {"name": "Rockland County, New York", "index": 44.9, "median_income": 104000, "median_age": 38.9, "family_households": 78000, "public": true, "live": false}, {"name": "New York County, New York", "index": 42.3, "median_income": 99000, "median_age": 37.5, "family_households": 92000, "public": true, "live": false}], "meta": {"count": 6, "all_public": true, "fabricated": 0, "mode": "SAMPLE (offline)", "gathered_at": "2026-06-28T06:36:12.561289+00:00"}}, "governance": {"signals_checked": 16, "all_public": true, "fabricated": 0, "rejected_nonpublic": 0, "verdict": "PASS \u2014 public-data-only, honest by design"}, "receipts": {"L1": {"receipt": {"id": "rcpt_4d14e3ac69eecabc", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L1", "lead_name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.536904+00:00", "prev_receipt_hash": "0000000000000000000000000000000000000000000000000000000000000000", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "4d14e3ac69eecabc3f907300a5fa7bc92c08b126f4a75571ec244d001ae0c4d9", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIEkfgIgsHy4rj2Msiy1Kfn1thSBvCIgQiWUXVS+clXjVAiEAuA+mcXnYBpuoeYQWccp45WyCKGvY/Ga/1lQRMNHdwnE="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_4d14e3ac69eecabc", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "4d14e3ac69eecabc3f907300a5fa7bc92c08b126f4a75571ec244d001ae0c4d9"}}, "L2": {"receipt": {"id": "rcpt_9b2d0d7076fa37ee", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L2", "lead_name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.559973+00:00", "prev_receipt_hash": "4d14e3ac69eecabc3f907300a5fa7bc92c08b126f4a75571ec244d001ae0c4d9", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "9b2d0d7076fa37eea98449e574c65fcccecf1c279710ac679aad8ad4df13c148", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQDJ4I5pgi3FOg0dofQXMnWiAjM59BdGe+kfLuhnc64eRAIgPoNaTD/Ki4FdXI3+Gun0tj6qe75zyrUJLDO7t2MXkWg="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_9b2d0d7076fa37ee", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "9b2d0d7076fa37eea98449e574c65fcccecf1c279710ac679aad8ad4df13c148"}}, "L3": {"receipt": {"id": "rcpt_680543f6ac929a13", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L3", "lead_name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.560265+00:00", "prev_receipt_hash": "9b2d0d7076fa37eea98449e574c65fcccecf1c279710ac679aad8ad4df13c148", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "680543f6ac929a13add05353248fd25f2d04eb4077e044313198d2759fbad481", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEYCIQD6sZVom233e58hBvWTpO1asJuq9ew4Zfo1vaELfGJN8gIhAOhDNcyt7AyFH8m6FwwftDvq6gFJRHHuAYi3THo5SXL8"}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_680543f6ac929a13", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "680543f6ac929a13add05353248fd25f2d04eb4077e044313198d2759fbad481"}}, "L4": {"receipt": {"id": "rcpt_53690b105891cb04", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L4", "lead_name": "Pre-retiree, high earnings (55\u201362)", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.560531+00:00", "prev_receipt_hash": "680543f6ac929a13add05353248fd25f2d04eb4077e044313198d2759fbad481", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "53690b105891cb0478c27ac48c33e80ec7efa52cce32f194bd5f2a13bbec965b", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIC/N9pZFZC0IUkeQV4FCtZVPVjN9bgp8IxhlfELWXv8KAiEAqJmOxM45f5owJafmupfORgpxkj9gdD/d47wm2a2CbDE="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_53690b105891cb04", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "53690b105891cb0478c27ac48c33e80ec7efa52cce32f194bd5f2a13bbec965b"}}, "L5": {"receipt": {"id": "rcpt_7a2604efa14250ab", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L5", "lead_name": "New homeowner, young family", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.560773+00:00", "prev_receipt_hash": "53690b105891cb0478c27ac48c33e80ec7efa52cce32f194bd5f2a13bbec965b", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "7a2604efa14250abc4b48542d2ce3fee704964f95f7193a7a1c4b44f312bd52e", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCaov3Rn6s+ykSaQjy8ChNKFextLJ+6wIELluH1p2T5rgIgGszI80v1QITq5l1F+Ifi0Gg5y77zLRhiZfb6RstkuKU="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_7a2604efa14250ab", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "7a2604efa14250abc4b48542d2ce3fee704964f95f7193a7a1c4b44f312bd52e"}}, "L6": {"receipt": {"id": "rcpt_98ba942af64d3885", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L6", "lead_name": "Parent of college-age dependents", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "U.S. Treasury FiscalData (avg_interest_rates) [SAMPLE]", "signal": "Government-backed yield baseline \u2192 annuity / whole-life positioning", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "NY DOS Active Corporations (data.ny.gov) [SAMPLE]", "signal": "New business formation \u2192 buy-sell / key-person / owner retirement X-Date trigger", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B25003 tenure) [SAMPLE]", "signal": "Homeownership density \u2192 mortgage-protection coverage opportunity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B15003 education) [SAMPLE]", "signal": "College-degree share \u2192 income proxy + college-funding propensity", "public": true}, {"source": "U.S. Census ACS 2023 5-yr (B12001 marital) [SAMPLE]", "signal": "Marital composition \u2192 married=beneficiary/income-protection, widowed=bereavement need", "public": true}, {"source": "BLS LAUS (LAUCN361190000000003) [SAMPLE]", "signal": "County unemployment rate \u2192 income-protection urgency dial (rising=urgency, falling=capacity)", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T06:36:12.561015+00:00", "prev_receipt_hash": "7a2604efa14250abc4b48542d2ce3fee704964f95f7193a7a1c4b44f312bd52e", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "98ba942af64d3885555b0264abdb971b19ad22e0751697380d1a65b2b40e2329", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCYhzzcUh6AhlgvHjhYaVlWsJgfJMPGmHNJYYNkAmr5DgIgeGDMv2v8kiHZKx+AvMJLvd68Q0O8LfrDTSDUWMxP2uI="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_98ba942af64d3885", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "98ba942af64d3885555b0264abdb971b19ad22e0751697380d1a65b2b40e2329"}}}};
 const ACCESS={u:"david",p:"David2026!",k:"DAVID-2026-SECURE-DEMO"};
 let TOKEN="offline";
 const $=(id)=>document.getElementById(id);
 const money=(n)=>"$"+Number(n).toLocaleString();
-let lastData=null,apptHistory=[],leadsById={};
+let lastData=null,apptHistory=[],leadsById={},holoOn=false;
 function doLogin(){const err=$("loginErr");err.textContent="";
   if(!($("u").value.trim()===ACCESS.u&&$("p").value===ACCESS.p&&$("k").value.trim()===ACCESS.k)){err.textContent="\u2717 Invalid credentials or access key";return;}
   $("who").textContent="Signed in as "+ACCESS.u;$("login").classList.add("hidden");$("bg3d").classList.add("hidden");$("app").classList.remove("hidden");renderKpis(null);}
@@ -278,9 +1196,13 @@ function runIntel(live){const b1=$("runLive"),b2=$("runSample");b1.disabled=b2.d
   setTimeout(()=>{const d=EMBEDDED;lastData=d;leadsById={};d.leads.forEach(l=>leadsById[l.id]=l);
     apptHistory.push(d.kpi.qualified_appts_per_week);if(apptHistory.length>12)apptHistory.shift();
     renderKpis(d.kpi);renderLeads(d.leads);renderSignals(d.signals,d.meta);renderGov(d.governance,d.meta);
-    renderBrief(d.brief);renderTicker(d.signals);renderPipeline(d.kpi);
-    $("runHint").textContent="Portable offline build \u2014 runs with zero network. (Live build pulls SEC/BLS/Census/CDC.)";
+    renderBrief(d.brief);renderTicker(d.signals);renderPipeline(d.kpi);if(holoOn)renderHolo();
+    $("runHint").textContent="Portable offline build \u2014 runs with zero network.";
     b1.disabled=b2.disabled=false;},650);}
+function toggleHolo(on){holoOn=on;$("holoSection").style.display=on?"":"none";if(on){renderHolo();}else if(window.Holo){Holo.disposeAll();}}
+function renderHolo(){if(!window.Holo||!lastData)return;
+  try{Holo.leadConstellation("holoConstellation",lastData.leads||[]);Holo.pipeline3D("holoPipe",(lastData.kpi&&lastData.kpi.pipeline_by_bucket)||{});}catch(e){console.error(e);}
+  try{Holo.territoryGlobe("holoGlobe",(EMBEDDED.territory&&EMBEDDED.territory.areas)||[]);}catch(e){console.error(e);}}
 async function openTerritory(){const d=EMBEDDED.territory;
   const idxs=d.areas.map(a=>a.index),mx=Math.max(...idxs),mn=Math.min(...idxs),rng=mx-mn||1;
   const tiles=d.areas.map(a=>{const norm=(a.index-mn)/rng;const bg="rgba(22,143,137,"+(0.25+0.7*norm).toFixed(2)+")";
@@ -288,7 +1210,7 @@ async function openTerritory(){const d=EMBEDDED.territory;
   $("modalMount").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="mclose" onclick="closeModal()">\u2715 Close</button><h3>\ud83d\uddfa\ufe0f Territory Opportunity Map</h3><div class="mbody"><div style="font-size:13px;color:var(--muted)">'+d.state+' \u00b7 '+d.meta.mode+' \u00b7 '+d.meta.count+' areas. Darker = higher opportunity.</div><div class="terr-grid">'+tiles+'</div><div style="font-size:11px;color:var(--muted);margin-top:14px">Formula: '+d.formula+'<br>Source: '+d.source+' \u00b7 all public \u00b7 0 fabricated</div></div></div></div>';}
 function openReceipt(rid){const key=Object.keys(EMBEDDED.receipts).find(k=>EMBEDDED.receipts[k].receipt.id===rid);const r=EMBEDDED.receipts[key];const rec=r.receipt,v=r.verify;
   const checks=v.checks.map(c=>'<div class="vcheck"><span class="ic '+(c.pass?'p':'f')+'">'+(c.pass?'\u2713':'\u2717')+'</span> '+c.check+'</div>').join("");
-  $("modalMount").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="mclose" onclick="closeModal()">\u2715 Close</button><h3>\ud83d\udd0f Compliance-Grade Lead Receipt</h3><div class="mbody"><div class="vverdict '+(v.verdict==="VERIFIED"?"ok":"bad")+'">'+(v.verdict==="VERIFIED"?"\u2713 VERIFIED":"\u2717 FAILED")+'</div><div style="font-size:13px;color:var(--muted);margin-bottom:4px">Receipt <code>'+rec.id+'</code> \u00b7 '+rec.signature_status+'</div>'+checks+'<div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">Tamper-evident payload (re-derivable hash):</div><div class="codeblock">'+JSON.stringify(rec.payload,null,2)+'</div><div style="font-size:12px;color:var(--muted);margin-top:10px">payload SHA-256: <code>'+rec.payload_sha256+'</code></div></div></div></div>';}
+  $("modalMount").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="mclose" onclick="closeModal()">\u2715 Close</button><h3>\ud83d\udd0f Compliance-Grade Lead Receipt</h3><div class="mbody"><div class="vverdict '+(v.verdict==="VERIFIED"?"ok":"bad")+'">'+(v.verdict==="VERIFIED"?"\u2713 VERIFIED":"\u2717 FAILED")+'</div><div style="font-size:13px;color:var(--muted);margin-bottom:4px">Receipt <code>'+rec.id+'</code> \u00b7 '+rec.signature_status+'</div>'+checks+'<div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">Tamper-evident payload:</div><div class="codeblock">'+JSON.stringify(rec.payload,null,2)+'</div><div style="font-size:12px;color:var(--muted);margin-top:10px">payload SHA-256: <code>'+rec.payload_sha256+'</code></div></div></div></div>';}
 function closeModal(){$("modalMount").innerHTML="";}
 
 function renderKpis(k) {
@@ -402,6 +1324,8 @@ function renderGov(g, meta) {
     </div>`;
 }
 
+/* ---------- holographic mode ---------- */
+
 /* ---------- morning brief ---------- */
 function renderBrief(brief) {
   if (!brief || !brief.items || !brief.items.length) return;
@@ -446,6 +1370,16 @@ function renderPipeline(kpi) {
 /* ---------- territory map ---------- */
 
 /* ---------- export call list (CSV) ---------- */
+function exportCSV() {
+  if (!lastData || !lastData.leads) { alert("Run intelligence first."); return; }
+  const rows = [["Rank","Score","Bucket","Lead Segment","NYL Product","Est Premium/yr","Next Best Action","Receipt ID"]];
+  lastData.leads.forEach((l, i) => rows.push([i+1, l.score, l.bucket, l.name, l.product, l.est_premium, l.nba.action, l.receipt_id]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "david_leads_call_list.csv"; a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 /* ---------- receipt modal ---------- */
 function exportCSV(){if(!lastData||!lastData.leads){alert("Run intelligence first.");return;}
