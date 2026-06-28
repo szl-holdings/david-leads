@@ -14,6 +14,7 @@ from . import signals_v3 as sig3
 from . import signals_v5 as sig5
 from . import signals_v6 as sig6
 from . import signals_v7 as sig7
+from . import signals_v8 as sig8
 from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
@@ -43,6 +44,7 @@ class LoginReq(BaseModel):
 class RunReq(BaseModel):
     live: bool = True
     state: str = "NY"
+    age_min: float = 0.0  # V8: demonstrate Λ time-decay live (minutes since trigger observed)
 
 
 def _auth(authorization: str | None):
@@ -112,7 +114,8 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         meta["states_covered"] = meta7.get("states_covered", ["NY"])
     except Exception:
         sigs7, meta7 = [], {}
-    leads = sc.build_leads(meta)
+    # V8: Λ time-decay applied via age_min (0 = fresh run)
+    leads = sc.build_leads(meta, age_minutes=getattr(req, "age_min", 0.0))
     receipts = {}
     for lead in leads:
         # each lead's receipt binds the signals that justify its segment
@@ -213,6 +216,40 @@ def verify(rid: str, authorization: str | None = Header(default=None)):
         if r["id"] == rid:
             return rc.verify_receipt(r)
     raise HTTPException(404, "Receipt not found")
+
+
+@app.get("/api/pulse")
+def pulse(states: str | None = None, authorization: str | None = Header(default=None)):
+    """V8 Territory Pulse: live ranked pulse of the 13-state Atlantic seaboard."""
+    _auth(authorization)
+    state_list = [x.strip().upper() for x in states.split(",")] if states else None
+    rc.reset_chain()
+    result = sig8.territory_pulse(state_list)
+    sigs_used = sig8.all_pulse_signals(state_list)
+    pseudo = {"id": "pulse_seaboard", "name": "Territory Pulse (13-state seaboard)",
+              "bucket": result["summary"]["top_state"] or "PULSE",
+              "product": "territory-intelligence"}
+    receipt = rc.make_receipt(pseudo, sigs_used, float(len(result["seaboard"])))
+    result["receipt_id"] = receipt["id"]
+    result["receipt_signed"] = receipt["signed"]
+    _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    _STATE["pulse"] = result
+    return result
+
+
+@app.get("/api/brief/{lead_id}")
+def brief(lead_id: str, authorization: str | None = Header(default=None)):
+    """V8 Signed 4-Part Brief for a single lead (WHO / WHY NOW / PRODUCT / NEXT ACTION)."""
+    _auth(authorization)
+    lead = next((l for l in _STATE.get("leads", []) if l["id"] == lead_id), None)
+    if not lead:
+        raise HTTPException(404, "Lead not found - run intelligence first")
+    b = sc.build_brief(lead, _STATE.get("signals", []))
+    receipt = rc.make_brief_receipt(b, _STATE.get("signals", []))
+    b["receipt_id"] = receipt["id"]
+    b["receipt_signed"] = receipt["signed"]
+    _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    return b
 
 
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)
