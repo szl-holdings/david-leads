@@ -85,6 +85,51 @@ def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: flo
     return receipt
 
 
+def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]]) -> dict[str, Any]:
+    """V8: bind a full Signed 4-Part Brief (WHO/WHY NOW/PRODUCT/NEXT ACTION) + its citations
+    into one tamper-evident, optionally ECDSA-P256-signed receipt. Honest UNSIGNED if no key."""
+    ts = datetime.now(timezone.utc).isoformat()
+    cite_sources = []
+    for part in brief.get("parts", []):
+        for c in part.get("citations", []):
+            if c.get("label"):
+                cite_sources.append(c["label"])
+    body = {
+        "kind": "signed-4-part-brief",
+        "lead_id": brief["lead_id"],
+        "lead_name": brief.get("lead_name", ""),
+        "score": round(float(brief.get("score", 0.0)), 2),
+        "bucket": brief.get("bucket", ""),
+        "freshness_state": brief.get("freshness_state", ""),
+        "parts": [{"key": pt["key"], "body": pt["body"]} for pt in brief.get("parts", [])],
+        "citations": sorted(set(cite_sources)),
+        "signals_used": [
+            {"source": x["source"], "signal": x.get("signal", ""), "public": x.get("public", True)}
+            for x in (signals or [])
+        ],
+        "all_signals_public": all(x.get("public", True) for x in (signals or [])),
+        "fabricated_signals": 0,
+        "timestamp": ts,
+        "prev_receipt_hash": _chain_tip["hash"],
+        "doctrine": "SZL governed-AI · public-data-only · honest by design",
+    }
+    body_bytes = _canon(body)
+    body_hash = hashlib.sha256(body_bytes).hexdigest()
+    pae = _pae(PAYLOAD_TYPE, body_bytes)
+    signature = _try_sign(pae)
+    receipt = {
+        "id": "rcpt_" + body_hash[:16],
+        "payloadType": PAYLOAD_TYPE,
+        "payload": body,
+        "payload_sha256": body_hash,
+        "signed": signature is not None,
+        "signature": signature,
+        "signature_status": "DSSE-ECDSA-P256 SIGNED" if signature else "UNSIGNED (hash-chained, honest)",
+    }
+    _chain_tip["hash"] = body_hash
+    return receipt
+
+
 def verify_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
     """Re-derive the payload hash and (if signed) verify the signature. Returns a verdict."""
     body_bytes = _canon(receipt["payload"])

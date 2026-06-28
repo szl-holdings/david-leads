@@ -26,6 +26,12 @@ audit-defensible. No agent-level competitor offers signed lead provenance.
 - A **governance gate** enforces public-data-only, zero-fabrication (honest by design).
 - KPI dashboard: qualified appts/week, HOT leads, pipeline premium.
 
+
+## V8 — Genius Seaboard (latest)
+- **Territory Pulse** (`GET /api/pulse`): live ranked pulse of the 13-state Atlantic seaboard (CT→ME), grounded in verified free open-data richness. MA/NH/ME honestly flagged as data GAPs.
+- **Signed 4-Part Brief** (`GET /api/brief/{lead_id}`): every lead → WHO / WHY NOW / PRODUCT / NEXT ACTION, citation-grounded, bound to one tamper-evident signed receipt.
+- **Λ with time-decay**: the recency axis now decays as `recency × exp(−0.005·age_min)` (half-life ≈ 139 min), operationalizing speed-to-lead < 60s. Fully disclosed in `/api/model`. Λ remains Conjecture 1.
+
 ## Access (login-gated)
 Set as Space secrets (Settings → Variables and secrets):
 - `DAVID_USER`, `DAVID_PASS`, `DAVID_ACCESS_KEY`
