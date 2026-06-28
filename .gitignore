@@ -1,0 +1,21 @@
+# secrets / keys — NEVER commit
+.cosign.key
+.cosign.pub
+*.pem
+*.key
+.env
+.env.*
+# build/runtime
+__pycache__/
+*.pyc
+*.log
+srv*.log
+backend.log
+server.log
+/tmp/
+# QA artifacts
+qa_*.png
+recover_*.png
+deploy_build/
+hf_space/
+PY
