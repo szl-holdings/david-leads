@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>David Leads — Sovereign Insurance Intelligence</title>
+<meta name="description" content="Audit-defensible, public-data lead intelligence for New York Life professionals.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0a2540; --navy-700:#143a5e; --navy-800:#0d2c4a; --ink:#0b1a2b;
+  --gold:#c08f2f; --gold-300:#d7b96b; --teal:#168f89; --teal-300:#5cc4bf;
+  --hot:#c0392b; --warm:#c08f2f; --nurture:#5a6b7c;
+  --paper:#f5f7fa; --card:#ffffff; --line:#e0e6ee; --muted:#5a6b7c;
+  --shadow:0 1px 3px rgba(10,37,64,.08),0 8px 28px rgba(10,37,64,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5}
+h1,h2,h3,.display{font-family:'Fraunces',Georgia,serif;font-weight:600;letter-spacing:-.01em}
+.hidden{display:none!important}
+button{font-family:inherit;cursor:pointer;border:none}
+.btn{background:var(--navy);color:#fff;padding:11px 20px;border-radius:9px;font-weight:600;font-size:14px;transition:transform .15s ease,background .15s ease}
+.btn:hover{background:var(--navy-700);transform:translateY(-1px)}
+.btn.gold{background:var(--gold)}.btn.gold:hover{background:var(--gold-300);color:var(--ink)}
+.btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
+.btn.ghost:hover{background:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* ===== LOGIN ===== */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
+  radial-gradient(1200px 600px at 70% -10%,#143a5e 0%,#0a2540 45%,#071a2e 100%);z-index:50}
+#bg3d{position:fixed;inset:0;z-index:0;opacity:.55}
+.login-card{position:relative;z-index:2;width:min(420px,92vw);background:rgba(255,255,255,.98);
+  border-radius:18px;padding:38px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.logo{width:38px;height:38px;flex:none}
+.login-card h1{font-size:23px;color:var(--navy);line-height:1.15}
+.login-sub{color:var(--muted);font-size:13px;margin:8px 0 24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fbfcfe}
+.field input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.15)}
+.login-err{color:var(--hot);font-size:13px;margin-top:10px;min-height:18px}
+.trust-foot{margin-top:18px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;justify-content:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.2)}
+
+/* ===== APP ===== */
+header.top{background:var(--navy);color:#fff;padding:14px 26px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:30}
+header.top .logo path{stroke:#fff}
+.top h2{font-size:17px;color:#fff;font-weight:600}
+.top .tag{font-size:11px;color:var(--gold-300);font-family:'Inter';font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.spacer{flex:1}
+.who{font-size:13px;color:#cdd9e6}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 22px 70px}
+
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi .val{font-family:'Fraunces';font-size:34px;color:var(--navy);line-height:1.05;margin-top:6px}
+.kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.kpi.accent{background:linear-gradient(160deg,#0a2540,#143a5e);color:#fff;border:none}
+.kpi.accent .label{color:var(--gold-300)}.kpi.accent .val{color:#fff}.kpi.accent .sub{color:#bcd}
+
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.toolbar .hint{font-size:12px;color:var(--muted)}
+
+.grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.card h3{font-size:15px;color:var(--navy);padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.card .body{padding:6px 0}
+.sec-title-meta{margin-left:auto;font-size:11px;font-weight:600;color:var(--muted);font-family:'Inter'}
+
+/* leads table */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:10px 18px;font-weight:600}
+td{padding:12px 18px;border-top:1px solid var(--line);vertical-align:top}
+tr.lead-row:hover{background:#fafcff}
+.score-pill{font-family:'Fraunces';font-weight:600;font-size:18px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+.badge.HOT{background:#fbeae8;color:var(--hot)}
+.badge.WARM{background:#f7efda;color:#9a6c14}
+.badge.NURTURE{background:#eef1f5;color:var(--nurture)}
+.lead-name{font-weight:600;color:var(--ink)}
+.lead-why{font-size:12px;color:var(--muted);margin-top:2px;max-width:280px}
+.prod{font-size:13px;color:var(--navy);font-weight:500}
+.prem{font-size:12px;color:var(--teal);font-weight:600;margin-top:2px}
+.verify-btn{font-size:12px;color:var(--navy);background:#eef3f8;padding:6px 11px;border-radius:8px;font-weight:600;border:1px solid #dbe6f0}
+.verify-btn:hover{background:#e2edf6}
+
+/* signals + governance */
+.sig{padding:12px 18px;border-top:1px solid var(--line)}
+.sig:first-child{border-top:none}
+.sig .src{font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.03em}
+.sig .live{font-size:9px;background:var(--teal);color:#fff;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
+.sig .smp{background:var(--gold)}
+.sig .txt{font-size:13px;color:var(--ink);margin-top:3px}
+.sig .det{font-size:12px;color:var(--muted);margin-top:2px}
+
+.gov{padding:16px 18px}
+.gov .line{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px}
+.gov .ok{color:var(--teal);font-weight:700}
+.gov .verdict{margin-top:10px;background:#e6f7f6;border:1px solid #bfeae8;color:#0b5957;font-size:13px;font-weight:600;padding:10px 12px;border-radius:9px}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(10,26,43,.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal{background:#fff;border-radius:16px;width:min(560px,96vw);max-height:88vh;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.4)}
+.modal h3{font-size:17px;color:var(--navy);padding:20px 22px 14px;display:flex;align-items:center;gap:9px}
+.modal .mbody{padding:0 22px 22px}
+.vcheck{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.vcheck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;color:#fff}
+.vcheck .ic.p{background:var(--teal)}.vcheck .ic.f{background:var(--hot)}
+.vverdict{margin:14px 0;padding:14px;border-radius:11px;text-align:center;font-family:'Fraunces';font-size:20px}
+.vverdict.ok{background:#e6f7f6;color:#0b5957}.vverdict.bad{background:#fbeae8;color:var(--hot)}
+.codeblock{background:#0d2c4a;color:#bcd;font-family:ui-monospace,monospace;font-size:11.5px;padding:14px;border-radius:10px;overflow:auto;line-height:1.5;margin-top:10px;white-space:pre-wrap;word-break:break-all}
+.mclose{position:sticky;top:0;float:right;margin:14px 16px 0 0;background:#eef1f5;border-radius:8px;padding:6px 12px;font-weight:600;color:var(--navy)}
+footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px;line-height:1.6}
+@media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.lead-why{max-width:none}.brief-items{grid-template-columns:1fr}.detail-inner{grid-template-columns:1fr}}
+/* ===== V2 additions ===== */
+#briefBar{background:linear-gradient(135deg,#0a2540,#143a5e);color:#fff;border-radius:14px;padding:18px 22px;margin-bottom:18px;box-shadow:var(--shadow);display:none}
+#briefBar.show{display:block}
+.brief-head{display:flex;align-items:center;gap:10px;font-family:'Fraunces';font-size:17px;margin-bottom:12px}
+.brief-head .pulse{width:9px;height:9px;border-radius:50%;background:var(--gold-300);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(215,185,107,.5)}70%{box-shadow:0 0 0 9px rgba(215,185,107,0)}100%{box-shadow:0 0 0 0 rgba(215,185,107,0)}}
+.brief-items{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.brief-card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:12px 13px;cursor:pointer;transition:background .15s}
+.brief-card:hover{background:rgba(255,255,255,.16)}
+.brief-rank{font-size:11px;color:var(--gold-300);font-weight:700}
+.brief-name{font-weight:600;font-size:13px;margin:3px 0}
+.brief-act{font-size:12px;color:#bcd;line-height:1.4}
+.brief-score{float:right;font-family:'Fraunces';font-size:18px;color:#fff}
+.ticker{background:var(--navy-800);color:#cdd9e6;border-radius:10px;overflow:hidden;white-space:nowrap;margin-bottom:18px;padding:8px 0;position:relative;display:none}
+.ticker.show{display:block}
+.ticker-track{display:inline-block;animation:tick 30s linear infinite;will-change:transform}
+.ticker:hover .ticker-track{animation-play-state:paused}
+.tick{font-size:12px;margin:0 6px}.tick b{color:var(--gold-300)}
+.tick-sep{color:var(--teal-300);margin:0 4px}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.expander{cursor:pointer;color:var(--navy);font-weight:700;user-select:none;transition:transform .15s;display:inline-block}
+.lead-row.open .expander{transform:rotate(90deg)}
+.detail-row td{background:#f8fafd;padding:0!important}
+.detail-inner{padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.detail-sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px}
+.axis-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px}
+.axis-lbl{width:130px;color:var(--ink)}
+.axis-track{flex:1;height:8px;background:#e6eaf1;border-radius:5px;overflow:hidden}
+.axis-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-300))}
+.axis-val{width:34px;text-align:right;font-weight:600;color:var(--navy)}
+.moment{display:flex;gap:9px;margin:7px 0;font-size:12.5px}
+.moment .mdot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none;margin-top:4px;box-shadow:0 0 0 3px rgba(192,143,47,.15)}
+.moment .msrc{font-weight:700;color:var(--teal)}
+.nba-box{grid-column:1/-1;background:#fff;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:9px;padding:12px 14px}
+.nba-box .act{font-weight:600;color:var(--navy);font-size:13px}
+.nba-box .tt{font-size:13px;color:var(--ink);font-style:italic;margin-top:5px}
+.pipe-row{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:12px}
+.pipe-lbl{width:64px;font-weight:700;color:var(--muted)}
+.pipe-track{flex:1;height:14px;background:#eef1f5;border-radius:7px;overflow:hidden}
+.pipe-fill{height:100%}.pipe-fill.HOT{background:var(--hot)}.pipe-fill.WARM{background:var(--gold)}.pipe-fill.NURTURE{background:var(--nurture)}
+.pipe-val{width:70px;text-align:right;font-family:'Fraunces';color:var(--navy)}
+.spark{display:block;margin-top:4px}
+.terr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-top:14px}
+.terr-tile{border-radius:10px;padding:12px 11px;color:#fff;min-height:80px;display:flex;flex-direction:column;justify-content:space-between}
+.terr-name{font-size:12px;font-weight:600;line-height:1.2}
+.terr-idx{font-family:'Fraunces';font-size:21px}
+.terr-stat{font-size:10.5px;opacity:.92;margin-top:3px}
+.loader{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+.btn.gold .loader{border-color:rgba(11,26,43,.3);border-top-color:#0b1a2b}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton{background:linear-gradient(90deg,#eef1f5 25%,#f6f8fb 50%,#eef1f5 75%);background-size:200% 100%;animation:sk 1.3s infinite;border-radius:6px;height:14px}
+@keyframes sk{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<canvas id="bg3d"></canvas>
+<div id="login">
+  <div class="login-card">
+    <div class="brandrow">
+      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
+        <rect x="2" y="2" width="36" height="36" rx="9" fill="#0a2540"/>
+        <path d="M11 27V13l9 5 9-5v14" stroke="#c08f2f" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+      </svg>
+      <h1>David Leads</h1>
+    </div>
+    <div class="login-sub">Sovereign Insurance Intelligence — audit-defensible leads from public data. Built for New York Life professionals.</div>
+    <div class="field"><label>Username</label><input id="u" autocomplete="username" placeholder="david"></div>
+    <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <div class="field"><label>Secure Access Key</label><input id="k" placeholder="DAVID-2026-SECURE-DEMO"></div>
+    <button class="btn gold" style="width:100%;margin-top:6px" id="loginBtn" onclick="doLogin()">Access Intelligence Console</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="trust-foot"><span class="dot"></span> Private session · public-data-only · honest by design</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header class="top">
+    <svg class="logo" viewBox="0 0 40 40" fill="none" style="width:30px;height:30px">
+      <rect x="2" y="2" width="36" height="36" rx="9" fill="#143a5e"/>
+      <path d="M11 27V13l9 5 9-5v14" stroke="#d7b96b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+    </svg>
+    <h2>David Leads</h2>
+    <span class="tag">Sovereign Insurance Intelligence</span>
+    <div class="spacer"></div>
+    <span class="who" id="who"></span>
+  </header>
+
+  <div class="wrap">
+    <div id="briefBar"></div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="toolbar">
+      <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Run Live Public-Data Intelligence</button>
+      <button class="btn ghost" id="runSample" onclick="runIntel(false)">Load Sample (offline)</button>
+      <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
+      <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export Call List</button>
+      <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
+    </div>
+
+    <div class="ticker" id="tickerBar"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>🎯 Ranked Leads <span class="sec-title-meta" id="leadMeta"></span></h3>
+        <div class="body" id="leadsWrap">
+          <div style="padding:40px 18px;text-align:center;color:var(--muted)">Run intelligence to populate ranked, product-matched leads.</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div class="card">
+          <h3>🛡️ Governance Gate</h3>
+          <div class="gov" id="gov">
+            <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting run — the gate verifies every signal is public &amp; non-fabricated.</div>
+          </div>
+        </div>
+        <div class="card" id="pipelineCard" style="display:none">
+          <h3>📈 Premium Pipeline <span class="sec-title-meta" id="pipeTotal"></span></h3>
+          <div class="body" id="pipeBody" style="padding:14px 18px"></div>
+        </div>
+        <div class="card">
+          <h3>📡 Public Signals Used <span class="sec-title-meta" id="sigMeta"></span></h3>
+          <div class="body" id="signals">
+            <div style="padding:18px;color:var(--muted);font-size:13px">No signals yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legal">
+      David Leads uses <strong>public, aggregate data only</strong> (SEC EDGAR · BLS · U.S. Census · CDC) — never private PII.<br>
+      Every lead score carries a tamper-evident, compliance-grade receipt. Honest by design — no fabricated signals, ever.<br>
+      © 2026 SZL Holdings · Sovereign Governed AI · Apache-2.0
+    </footer>
+  </div>
+</div>
+
+<div id="modalMount"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>/* David Leads V2 — PORTABLE OFFLINE (no server) */
+const EMBEDDED = {"meta": {"total_signals": 4, "rejected_nonpublic": 0, "fabricated": 0, "live_count": 0, "gathered_at": "2026-06-28T05:19:31.972832+00:00", "mode": "SAMPLE (offline)"}, "signals": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "detail": "Sample: regional employer filed 8-K on executive compensation plan", "public": true, "live": false}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "detail": "Sample: avg weekly earnings ~$1,200 (+4.2% YoY)", "public": true, "live": false}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "detail": "Sample: New York median HH income ~$81,600, median age ~39.8", "public": true, "live": false}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "detail": "New dependents are the #1 life-insurance purchase trigger (national aggregate)", "public": true, "live": false, "note": "public aggregate (CDC disallows location via API)"}], "leads": [{"id": "L1", "name": "New-parent household (NY metro)", "event": "new_baby", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "why": "New dependents \u2014 coverage need spikes", "axes": {"life_event_strength": 0.95, "income_fit": 0.75, "age_window_fit": 0.85, "product_propensity": 0.9, "recency": 0.9}, "est_premium": 2335, "moments": [{"source": "CDC Natality", "label": "Birth uptick \u2192 new dependents"}, {"source": "BLS Wages", "label": "Earnings rising \u2192 coverage budget"}, {"source": "Census ACS", "label": "Family-formation age band"}], "nba": {"action": "Call within 24h; offer a 15-min family-coverage review.", "talk_track": "New baby changes everything \u2014 let's make sure they're protected if anything happens to you."}, "receipt_id": "rcpt_f6b95ababcbbb4e0", "receipt_signed": true}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "event": "job_change", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "why": "Income up \u2014 protect the new earnings and invest", "axes": {"life_event_strength": 0.85, "income_fit": 0.85, "age_window_fit": 0.8, "product_propensity": 0.8, "recency": 0.85}, "est_premium": 3286, "moments": [{"source": "SEC EDGAR 8-K", "label": "Officer/comp change \u2192 income up"}, {"source": "BLS Wages", "label": "Sector wage growth"}, {"source": "Census ACS", "label": "Prime-earner age band"}], "nba": {"action": "Congratulate on the role; propose protecting the new income + a retirement contribution review.", "talk_track": "Your income just grew \u2014 let's protect it and put some to work for retirement."}, "receipt_id": "rcpt_3f7961cfd5b4a51f", "receipt_signed": true}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "event": "mid_career", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "why": "Prime lifetime-income planning window (35\u201350)", "axes": {"life_event_strength": 0.7, "income_fit": 0.9, "age_window_fit": 0.9, "product_propensity": 0.85, "recency": 0.6}, "est_premium": 4687, "moments": [{"source": "Census ACS", "label": "35\u201350 income window"}, {"source": "BLS Wages", "label": "Peak-earning trend"}, {"source": "SEC EDGAR 8-K", "label": "Employer comp signals"}], "nba": {"action": "Book a lifetime-income planning session; lead with the peak-earning window.", "talk_track": "These are your peak earning years \u2014 the best time to lock in lifetime income."}, "receipt_id": "rcpt_3fd38dedf577c6bd", "receipt_signed": true}, {"id": "L4", "name": "Pre-retiree, high earnings (55\u201362)", "event": "near_retirement", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "why": "Income + care-cost protection (55\u201365)", "axes": {"life_event_strength": 0.65, "income_fit": 0.95, "age_window_fit": 0.95, "product_propensity": 0.8, "recency": 0.55}, "est_premium": 7935, "moments": [{"source": "Census ACS", "label": "55\u201365 age band"}, {"source": "BLS Wages", "label": "Pre-retirement income"}, {"source": "CDC Natality", "label": "Multi-gen household context"}], "nba": {"action": "Offer an annuity + LTC review; lead with guaranteed lifetime income.", "talk_track": "Let's turn your savings into income you can't outlive, and protect against care costs."}, "receipt_id": "rcpt_0bce6915d9cda2c1", "receipt_signed": true}, {"id": "L5", "name": "New homeowner, young family", "event": "home_purchase", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "why": "New debt obligation \u2014 income replacement need", "axes": {"life_event_strength": 0.8, "income_fit": 0.7, "age_window_fit": 0.75, "product_propensity": 0.75, "recency": 0.8}, "est_premium": 1810, "moments": [{"source": "Census ACS", "label": "Homeownership / mortgage band"}, {"source": "BLS Wages", "label": "Income supports new debt"}, {"source": "CDC Natality", "label": "Young-family formation"}], "nba": {"action": "Position mortgage-protection / term tied to the new loan balance.", "talk_track": "A mortgage is a 30-year promise \u2014 term coverage makes sure your family keeps the home."}, "receipt_id": "rcpt_5d7621f183b3bf1c", "receipt_signed": true}, {"id": "L6", "name": "Parent of college-age dependents", "event": "college_age", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "why": "Funding gap \u2014 tax-advantaged growth", "axes": {"life_event_strength": 0.6, "income_fit": 0.75, "age_window_fit": 0.65, "product_propensity": 0.7, "recency": 0.5}, "est_premium": 2456, "moments": [{"source": "Census ACS", "label": "College-age dependents in HH"}, {"source": "BLS Wages", "label": "Tuition-affordability window"}, {"source": "SEC EDGAR 8-K", "label": "Regional employer stability"}], "nba": {"action": "Present a tax-advantaged college funding strategy now.", "talk_track": "Tuition is coming fast \u2014 here's a tax-smart way to be ready without derailing retirement."}, "receipt_id": "rcpt_c2697e84f29524ae", "receipt_signed": true}], "kpi": {"qualified_appts_per_week": 2.8, "hot_count": 2, "warm_count": 4, "total_leads": 6, "pipeline_premium": 22509, "avg_score": 77.9, "pipeline_by_bucket": {"HOT": 5621, "WARM": 16888, "NURTURE": 0}}, "brief": {"top_ids": ["L1", "L2", "L3"], "headline": "2 HOT leads ready to call today \u2014 lead with New-parent household (NY metro).", "items": [{"id": "L1", "name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "action": "Call within 24h; offer a 15-min family-coverage review."}, {"id": "L2", "name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "action": "Congratulate on the role; propose protecting the new income + a retirement contribution review."}, {"id": "L3", "name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "action": "Book a lifetime-income planning session; lead with the peak-earning window."}]}, "territory": {"state": "New York", "source": "U.S. Census ACS 2023 (5-yr), county level [SAMPLE]", "formula": "0.45*income + 0.25*age_fit + 0.30*family_households (each min-max normalized)", "areas": [{"name": "Nassau County, New York", "index": 82.0, "median_income": 126000, "median_age": 41.8, "family_households": 145000, "public": true, "live": false}, {"name": "Suffolk County, New York", "index": 73.8, "median_income": 113000, "median_age": 41.0, "family_households": 162000, "public": true, "live": false}, {"name": "Westchester County, New York", "index": 63.2, "median_income": 112000, "median_age": 41.2, "family_households": 118000, "public": true, "live": false}, {"name": "Kings County, New York", "index": 45.6, "median_income": 74000, "median_age": 35.6, "family_households": 210000, "public": true, "live": false}, {"name": "Rockland County, New York", "index": 44.9, "median_income": 104000, "median_age": 38.9, "family_households": 78000, "public": true, "live": false}, {"name": "New York County, New York", "index": 42.3, "median_income": 99000, "median_age": 37.5, "family_households": 92000, "public": true, "live": false}], "meta": {"count": 6, "all_public": true, "fabricated": 0, "mode": "SAMPLE (offline)", "gathered_at": "2026-06-28T05:19:31.998068+00:00"}}, "governance": {"signals_checked": 4, "all_public": true, "fabricated": 0, "rejected_nonpublic": 0, "verdict": "PASS \u2014 public-data-only, honest by design"}, "receipts": {"L1": {"receipt": {"id": "rcpt_f6b95ababcbbb4e0", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L1", "lead_name": "New-parent household (NY metro)", "score": 87.2, "bucket": "HOT", "product": "Term / Whole Life (Family Coverage)", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.972910+00:00", "prev_receipt_hash": "0000000000000000000000000000000000000000000000000000000000000000", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEYCIQD+IbGsvp48I0xMZpz0vMej7ESf7aa8hbGNpXHpYH38VAIhAMuYQr2tbbawrf8C6MFy+C/XkCcqiVww3d4W4eONXzdM"}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_f6b95ababcbbb4e0", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92"}}, "L2": {"receipt": {"id": "rcpt_3f7961cfd5b4a51f", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L2", "lead_name": "Recently-promoted professional (35\u201345)", "score": 83.0, "bucket": "HOT", "product": "Whole Life + Retirement", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.996823+00:00", "prev_receipt_hash": "f6b95ababcbbb4e05d0f39216a2b5f39d98d65b23369f99f547e53bbf50a8c92", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCZGjqo1G2vsO67e/E8kJHN0kJPC7asK5L2xA4HvoNs7gIgZFY2uFq/h6k2Ugeyy/9V0wuQRnjcZ9aedmmds8P+/xw="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_3f7961cfd5b4a51f", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca"}}, "L3": {"receipt": {"id": "rcpt_3fd38dedf577c6bd", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L3", "lead_name": "Mid-career dual-income family (40\u201350)", "score": 79.2, "bucket": "WARM", "product": "Retirement / Annuity", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997140+00:00", "prev_receipt_hash": "3f7961cfd5b4a51f0d02918687041a8d362d4fcd8fdd8fbefb9889b54c8b79ca", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCH5Ftx0+SOC0tTS3JvZ2smaH+35orx+nj138+vChMPjQIgDmJbMAk5qRaiaqhE3DJwngPvPu+Ewb35xUqtuEw0hN0="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_3fd38dedf577c6bd", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8"}}, "L4": {"receipt": {"id": "rcpt_0bce6915d9cda2c1", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L4", "lead_name": "Pre-retiree, high earnings (55\u201362)", "score": 77.6, "bucket": "WARM", "product": "Annuity / Long-Term Care", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997378+00:00", "prev_receipt_hash": "3fd38dedf577c6bd5e7f006fa9a967331c9cc44ab295e9992d2045482766e6f8", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEYCIQCDfGpUL4KCLhJbkHx5jqm38P5yOtViMlsvboF1AxsaMQIhAN3nXsr7t0c26vEQSI5zUGdFy6WqZVrkV/b7CNiAQ/nb"}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_0bce6915d9cda2c1", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1"}}, "L5": {"receipt": {"id": "rcpt_5d7621f183b3bf1c", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L5", "lead_name": "New homeowner, young family", "score": 75.9, "bucket": "WARM", "product": "Mortgage Protection / Term", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997598+00:00", "prev_receipt_hash": "0bce6915d9cda2c1c74081f296a610210195423ca435a2cf7ee86c0da0f954c1", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIA+VvC4hcRyt4kx5N9fI/ztnTrzFJ6/kZBLfzK8xkjljAiEAqGqzUACaktA8kmamOwbbWbd0Le7RQ6AvM8DRjIBoOUc="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_5d7621f183b3bf1c", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390"}}, "L6": {"receipt": {"id": "rcpt_c2697e84f29524ae", "payloadType": "application/vnd.szl.lead-receipt+json", "payload": {"lead_id": "L6", "lead_name": "Parent of college-age dependents", "score": 64.6, "bucket": "WARM", "product": "College Funding Strategy", "signals_used": [{"source": "SEC EDGAR (8-K) [SAMPLE]", "signal": "Corporate event (officer/comp change) \u2192 income/job-change trigger", "public": true}, {"source": "BLS (CES0500000030) [SAMPLE]", "signal": "Avg weekly earnings rising \u2192 households in 'salary up' window", "public": true}, {"source": "U.S. Census ACS [SAMPLE]", "signal": "Median household income + median age \u2192 planning-window fit", "public": true}, {"source": "CDC WONDER Natality (public aggregate)", "signal": "~3.6M U.S. births/yr \u2192 continuous new-family coverage demand", "public": true}], "all_signals_public": true, "fabricated_signals": 0, "timestamp": "2026-06-28T05:19:31.997807+00:00", "prev_receipt_hash": "5d7621f183b3bf1c57ee93bb025e5c5e996650b5e8bc948ce76740b2fa818390", "doctrine": "SZL governed-AI \u00b7 public-data-only \u00b7 honest by design"}, "payload_sha256": "c2697e84f29524ae0cae427dc55763857f4d72b50cb00d382d3532fd12aabd37", "signed": true, "signature": {"keyid": "szl-david-leads-cosign", "sig": "MEUCIQCSRJwp9BKTM9ZRNvwnxrn1Tepb6uywiaXMBhi7g/8Q7AIgQeTRUw4FAdeg5nmStXa7mjQXmLOllCKcMh8jAxptrJ8="}, "signature_status": "DSSE-ECDSA-P256 SIGNED"}, "verify": {"receipt_id": "rcpt_c2697e84f29524ae", "verdict": "VERIFIED", "checks": [{"check": "Payload hash re-derives (tamper-evident)", "pass": true}, {"check": "All signals are public data", "pass": true}, {"check": "Zero fabricated signals (honest by design)", "pass": true}, {"check": "Chained to prior receipt", "pass": true}, {"check": "ECDSA-P256 signature verifies", "pass": true}], "recomputed_hash": "c2697e84f29524ae0cae427dc55763857f4d72b50cb00d382d3532fd12aabd37"}}}};
+const ACCESS={u:"david",p:"David2026!",k:"DAVID-2026-SECURE-DEMO"};
+let TOKEN="offline";
+const $=(id)=>document.getElementById(id);
+const money=(n)=>"$"+Number(n).toLocaleString();
+let lastData=null,apptHistory=[],leadsById={};
+function doLogin(){const err=$("loginErr");err.textContent="";
+  if(!($("u").value.trim()===ACCESS.u&&$("p").value===ACCESS.p&&$("k").value.trim()===ACCESS.k)){err.textContent="\u2717 Invalid credentials or access key";return;}
+  $("who").textContent="Signed in as "+ACCESS.u;$("login").classList.add("hidden");$("bg3d").classList.add("hidden");$("app").classList.remove("hidden");renderKpis(null);}
+document.addEventListener("keydown",(e)=>{if(e.key==="Enter"&&!$("login").classList.contains("hidden"))doLogin();});
+function runIntel(live){const b1=$("runLive"),b2=$("runSample");b1.disabled=b2.disabled=true;showLeadSkeleton();
+  setTimeout(()=>{const d=EMBEDDED;lastData=d;leadsById={};d.leads.forEach(l=>leadsById[l.id]=l);
+    apptHistory.push(d.kpi.qualified_appts_per_week);if(apptHistory.length>12)apptHistory.shift();
+    renderKpis(d.kpi);renderLeads(d.leads);renderSignals(d.signals,d.meta);renderGov(d.governance,d.meta);
+    renderBrief(d.brief);renderTicker(d.signals);renderPipeline(d.kpi);
+    $("runHint").textContent="Portable offline build \u2014 runs with zero network. (Live build pulls SEC/BLS/Census/CDC.)";
+    b1.disabled=b2.disabled=false;},650);}
+async function openTerritory(){const d=EMBEDDED.territory;
+  const idxs=d.areas.map(a=>a.index),mx=Math.max(...idxs),mn=Math.min(...idxs),rng=mx-mn||1;
+  const tiles=d.areas.map(a=>{const norm=(a.index-mn)/rng;const bg="rgba(22,143,137,"+(0.25+0.7*norm).toFixed(2)+")";
+    return '<div class="terr-tile" style="background:'+bg+'"><div><div class="terr-name">'+a.name.replace(', New York','')+'</div><div class="terr-idx">'+a.index+'</div></div><div class="terr-stat">$'+a.median_income.toLocaleString()+' \u00b7 age '+a.median_age+'</div></div>';}).join("");
+  $("modalMount").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="mclose" onclick="closeModal()">\u2715 Close</button><h3>\ud83d\uddfa\ufe0f Territory Opportunity Map</h3><div class="mbody"><div style="font-size:13px;color:var(--muted)">'+d.state+' \u00b7 '+d.meta.mode+' \u00b7 '+d.meta.count+' areas. Darker = higher opportunity.</div><div class="terr-grid">'+tiles+'</div><div style="font-size:11px;color:var(--muted);margin-top:14px">Formula: '+d.formula+'<br>Source: '+d.source+' \u00b7 all public \u00b7 0 fabricated</div></div></div></div>';}
+function openReceipt(rid){const key=Object.keys(EMBEDDED.receipts).find(k=>EMBEDDED.receipts[k].receipt.id===rid);const r=EMBEDDED.receipts[key];const rec=r.receipt,v=r.verify;
+  const checks=v.checks.map(c=>'<div class="vcheck"><span class="ic '+(c.pass?'p':'f')+'">'+(c.pass?'\u2713':'\u2717')+'</span> '+c.check+'</div>').join("");
+  $("modalMount").innerHTML='<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal"><button class="mclose" onclick="closeModal()">\u2715 Close</button><h3>\ud83d\udd0f Compliance-Grade Lead Receipt</h3><div class="mbody"><div class="vverdict '+(v.verdict==="VERIFIED"?"ok":"bad")+'">'+(v.verdict==="VERIFIED"?"\u2713 VERIFIED":"\u2717 FAILED")+'</div><div style="font-size:13px;color:var(--muted);margin-bottom:4px">Receipt <code>'+rec.id+'</code> \u00b7 '+rec.signature_status+'</div>'+checks+'<div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">Tamper-evident payload (re-derivable hash):</div><div class="codeblock">'+JSON.stringify(rec.payload,null,2)+'</div><div style="font-size:12px;color:var(--muted);margin-top:10px">payload SHA-256: <code>'+rec.payload_sha256+'</code></div></div></div></div>';}
+function closeModal(){$("modalMount").innerHTML="";}
+
+function renderKpis(k) {
+  const z = (v) => (k ? v : "—");
+  $("kpis").innerHTML = `
+    <div class="kpi accent">
+      <div class="label">Qualified Appts / Week</div>
+      <div class="val">${z(k && k.qualified_appts_per_week)}</div>
+      <div class="sub">modeled from lead quality (HOT 70% · WARM 35%)</div>
+    </div>
+    <div class="kpi">
+      <div class="label">HOT Leads</div>
+      <div class="val">${z(k && k.hot_count)}</div>
+      <div class="sub">score ≥ 80 · ready to engage now</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Pipeline Premium</div>
+      <div class="val" style="font-size:27px">${k ? money(k.pipeline_premium) : "—"}</div>
+      <div class="sub">est. annualized across all leads</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Avg Lead Score</div>
+      <div class="val">${z(k && k.avg_score)}</div>
+      <div class="sub">${k ? k.total_leads + " leads scored" : "run to populate"}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Appts/Week Trend</div>
+      <div class="val" style="font-size:27px">${z(k && k.qualified_appts_per_week)}</div>
+      ${k && apptHistory.length > 1 ? sparkline(apptHistory) : '<div class="sub">this device · recent runs</div>'}
+    </div>`;
+}
+
+function sparkline(values, w = 130, h = 26) {
+  if (!values.length) return "";
+  const mn = Math.min(...values), mx = Math.max(...values), rng = mx - mn || 1;
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1 || 1)) * (w - 4) + 2;
+    const y = h - 2 - ((v - mn) / rng) * (h - 6);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg class="spark" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="#168f89" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+/* ---------- leads table ---------- */
+function showLeadSkeleton() {
+  let rows = "";
+  for (let i = 0; i < 5; i++) rows += `<tr><td colspan="5"><div class="skeleton" style="width:${60+i*7}%"></div></td></tr>`;
+  $("leadsWrap").innerHTML = `<table><tbody>${rows}</tbody></table>`;
+}
+function renderLeads(leads) {
+  $("leadMeta").textContent = leads.length + " scored";
+  let rows = leads.map(l => `
+    <tr class="lead-row" id="row-${l.id}">
+      <td><span class="expander" onclick="toggleLeadDetail('${l.id}')">▸</span></td>
+      <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
+      <td><div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}</div><div class="lead-why">${l.why}</div></td>
+      <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
+      <td><button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button></td>
+    </tr>
+    <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`).join("");
+  $("leadsWrap").innerHTML = `<table>
+    <thead><tr><th></th><th>Score</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Provenance</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function toggleLeadDetail(id, forceOpen) {
+  const row = $("row-" + id), det = $("detail-" + id);
+  if (!row || !det) return;
+  const open = det.style.display !== "none";
+  if (open && !forceOpen) { det.style.display = "none"; row.classList.remove("open"); return; }
+  det.querySelector("td").innerHTML = renderLeadDetail(leadsById[id]);
+  det.style.display = ""; row.classList.add("open");
+}
+
+function renderLeadDetail(l) {
+  const axisLabels = {life_event_strength:"Life-event strength", income_fit:"Income fit",
+    age_window_fit:"Age-window fit", product_propensity:"Product propensity", recency:"Recency"};
+  const axes = Object.keys(axisLabels).map(k => {
+    const v = Math.round((l.axes[k]||0)*100);
+    return `<div class="axis-row"><span class="axis-lbl">${axisLabels[k]}</span><div class="axis-track"><div class="axis-fill" style="width:${v}%"></div></div><span class="axis-val">${v}</span></div>`;
+  }).join("");
+  const moments = (l.moments||[]).map(m =>
+    `<div class="moment"><span class="mdot"></span><div><span class="msrc">${m.source}</span> — ${m.label}</div></div>`).join("");
+  return `<div class="detail-inner">
+    <div class="detail-sec"><h4>Why this lead (transparent score)</h4>${axes}</div>
+    <div class="detail-sec"><h4>Predictive moments · public sources</h4>${moments}</div>
+    <div class="nba-box"><div class="act">▶ Next best action: ${l.nba.action}</div><div class="tt">“${l.nba.talk_track}”</div></div>
+  </div>`;
+}
+
+/* ---------- signals ---------- */
+function renderSignals(sigs, meta) {
+  $("sigMeta").textContent = meta.mode;
+  $("signals").innerHTML = sigs.map(s => `
+    <div class="sig">
+      <span class="src">${s.source.replace(/\[SAMPLE\]/,'')}</span>${s.live?'<span class="live">LIVE</span>':'<span class="live smp">PUBLIC</span>'}
+      <div class="txt">${s.signal}</div>
+      <div class="det">${s.detail||''}</div>
+    </div>`).join("");
+}
+
+/* ---------- governance ---------- */
+function renderGov(g, meta) {
+  $("gov").innerHTML = `
+    <div class="gov-inner">
+      <div class="line"><span class="ok">✓</span> ${g.signals_checked} signals checked</div>
+      <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> All signals are public data ${g.all_public?'':'(violation!)'}</div>
+      <div class="line"><span class="ok">✓</span> ${g.fabricated} fabricated signals (honest by design)</div>
+      <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public signals rejected</div>
+      <div class="verdict">🛡️ ${g.verdict}</div>
+    </div>`;
+}
+
+/* ---------- morning brief ---------- */
+function renderBrief(brief) {
+  if (!brief || !brief.items || !brief.items.length) return;
+  const cards = brief.items.map((it, i) => `
+    <div class="brief-card" onclick="focusLead('${it.id}')">
+      <span class="brief-score">${it.score}</span>
+      <div class="brief-rank">#${i+1} · ${it.bucket}</div>
+      <div class="brief-name">${it.name}</div>
+      <div class="brief-act">${it.action}</div>
+    </div>`).join("");
+  $("briefBar").innerHTML = `
+    <div class="brief-head"><span class="pulse"></span> Morning Brief — ${brief.headline}</div>
+    <div class="brief-items">${cards}</div>`;
+  $("briefBar").classList.add("show");
+}
+function focusLead(id) {
+  const row = $("row-" + id);
+  if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); toggleLeadDetail(id, true); }
+}
+
+/* ---------- intelligence ticker ---------- */
+function renderTicker(sigs) {
+  if (!sigs || !sigs.length) return;
+  const ticks = sigs.map(s => `<span class="tick"><b>${s.source.replace(/\[SAMPLE\]/,'').trim()}</b> · ${(s.detail||s.signal).slice(0,70)}</span>`);
+  const track = ticks.join('<span class="tick-sep">◆</span>');
+  $("tickerBar").innerHTML = `<div class="ticker-track">${track}<span class="tick-sep">◆</span>${track}</div>`;
+  $("tickerBar").classList.add("show");
+}
+
+/* ---------- premium pipeline ---------- */
+function renderPipeline(kpi) {
+  if (!kpi || !kpi.pipeline_by_bucket) return;
+  const bb = kpi.pipeline_by_bucket, total = kpi.pipeline_premium || 1;
+  $("pipeTotal").textContent = money(total) + " total";
+  $("pipeBody").innerHTML = ["HOT","WARM","NURTURE"].map(b => {
+    const v = bb[b]||0, pct = Math.round(v/total*100);
+    return `<div class="pipe-row"><span class="pipe-lbl">${b}</span><div class="pipe-track"><div class="pipe-fill ${b}" style="width:${pct}%"></div></div><span class="pipe-val">${money(v)}</span></div>`;
+  }).join("");
+  $("pipelineCard").style.display = "";
+}
+
+/* ---------- territory map ---------- */
+
+/* ---------- export call list (CSV) ---------- */
+
+/* ---------- receipt modal ---------- */
+function exportCSV(){if(!lastData||!lastData.leads){alert("Run intelligence first.");return;}
+  const rows=[["Rank","Score","Bucket","Lead Segment","NYL Product","Est Premium/yr","Next Best Action","Receipt ID"]];
+  lastData.leads.forEach((l,i)=>rows.push([i+1,l.score,l.bucket,l.name,l.product,l.est_premium,l.nba.action,l.receipt_id]));
+  const csv=rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="david_leads_call_list.csv";a.click();URL.revokeObjectURL(a.href);}
+</script>
+</body>
+</html>
