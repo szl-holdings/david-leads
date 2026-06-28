@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>David Leads — Sovereign Insurance Intelligence</title>
+<meta name="description" content="Audit-defensible, public-data lead intelligence for New York Life professionals.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0a2540; --navy-700:#143a5e; --navy-800:#0d2c4a; --ink:#0b1a2b;
+  --gold:#c08f2f; --gold-300:#d7b96b; --teal:#168f89; --teal-300:#5cc4bf;
+  --hot:#c0392b; --warm:#c08f2f; --nurture:#5a6b7c;
+  --paper:#f5f7fa; --card:#ffffff; --line:#e0e6ee; --muted:#5a6b7c;
+  --shadow:0 1px 3px rgba(10,37,64,.08),0 8px 28px rgba(10,37,64,.07);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5}
+h1,h2,h3,.display{font-family:'Fraunces',Georgia,serif;font-weight:600;letter-spacing:-.01em}
+.hidden{display:none!important}
+button{font-family:inherit;cursor:pointer;border:none}
+.btn{background:var(--navy);color:#fff;padding:11px 20px;border-radius:9px;font-weight:600;font-size:14px;transition:transform .15s ease,background .15s ease}
+.btn:hover{background:var(--navy-700);transform:translateY(-1px)}
+.btn.gold{background:var(--gold)}.btn.gold:hover{background:var(--gold-300);color:var(--ink)}
+.btn.ghost{background:transparent;color:var(--navy);border:1px solid var(--line)}
+.btn.ghost:hover{background:#fff}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+/* ===== LOGIN ===== */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
+  radial-gradient(1200px 600px at 70% -10%,#143a5e 0%,#0a2540 45%,#071a2e 100%);z-index:50}
+#bg3d{position:fixed;inset:0;z-index:0;opacity:.55}
+.login-card{position:relative;z-index:2;width:min(420px,92vw);background:rgba(255,255,255,.98);
+  border-radius:18px;padding:38px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.logo{width:38px;height:38px;flex:none}
+.login-card h1{font-size:23px;color:var(--navy);line-height:1.15}
+.login-sub{color:var(--muted);font-size:13px;margin:8px 0 24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:12px;font-weight:600;color:var(--navy);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:#fbfcfe}
+.field input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.15)}
+.login-err{color:var(--hot);font-size:13px;margin-top:10px;min-height:18px}
+.trust-foot{margin-top:18px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;justify-content:center}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.2)}
+
+/* ===== APP ===== */
+header.top{background:var(--navy);color:#fff;padding:14px 26px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:30}
+header.top .logo path{stroke:#fff}
+.top h2{font-size:17px;color:#fff;font-weight:600}
+.top .tag{font-size:11px;color:var(--gold-300);font-family:'Inter';font-weight:600;letter-spacing:.05em;text-transform:uppercase}
+.spacer{flex:1}
+.who{font-size:13px;color:#cdd9e6}
+.wrap{max-width:1180px;margin:0 auto;padding:26px 22px 70px}
+
+/* KPI cards */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.kpi .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.kpi .val{font-family:'Fraunces';font-size:34px;color:var(--navy);line-height:1.05;margin-top:6px}
+.kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
+.kpi.accent{background:linear-gradient(160deg,#0a2540,#143a5e);color:#fff;border:none}
+.kpi.accent .label{color:var(--gold-300)}.kpi.accent .val{color:#fff}.kpi.accent .sub{color:#bcd}
+
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
+.toolbar .hint{font-size:12px;color:var(--muted)}
+
+.grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.card h3{font-size:15px;color:var(--navy);padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.card .body{padding:6px 0}
+.sec-title-meta{margin-left:auto;font-size:11px;font-weight:600;color:var(--muted);font-family:'Inter'}
+
+/* leads table */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:10px 18px;font-weight:600}
+td{padding:12px 18px;border-top:1px solid var(--line);vertical-align:top}
+tr.lead-row:hover{background:#fafcff}
+.score-pill{font-family:'Fraunces';font-weight:600;font-size:18px}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
+.badge.HOT{background:#fbeae8;color:var(--hot)}
+.badge.WARM{background:#f7efda;color:#9a6c14}
+.badge.NURTURE{background:#eef1f5;color:var(--nurture)}
+.lead-name{font-weight:600;color:var(--ink)}
+.lead-why{font-size:12px;color:var(--muted);margin-top:2px;max-width:280px}
+.prod{font-size:13px;color:var(--navy);font-weight:500}
+.prem{font-size:12px;color:var(--teal);font-weight:600;margin-top:2px}
+.verify-btn{font-size:12px;color:var(--navy);background:#eef3f8;padding:6px 11px;border-radius:8px;font-weight:600;border:1px solid #dbe6f0}
+.verify-btn:hover{background:#e2edf6}
+
+/* signals + governance */
+.sig{padding:12px 18px;border-top:1px solid var(--line)}
+.sig:first-child{border-top:none}
+.sig .src{font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.03em}
+.sig .live{font-size:9px;background:var(--teal);color:#fff;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
+.sig .smp{background:var(--gold)}
+.sig .txt{font-size:13px;color:var(--ink);margin-top:3px}
+.sig .det{font-size:12px;color:var(--muted);margin-top:2px}
+
+.gov{padding:16px 18px}
+.gov .line{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px}
+.gov .ok{color:var(--teal);font-weight:700}
+.gov .verdict{margin-top:10px;background:#e6f7f6;border:1px solid #bfeae8;color:#0b5957;font-size:13px;font-weight:600;padding:10px 12px;border-radius:9px}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(10,26,43,.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
+.modal{background:#fff;border-radius:16px;width:min(560px,96vw);max-height:88vh;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.4)}
+.modal h3{font-size:17px;color:var(--navy);padding:20px 22px 14px;display:flex;align-items:center;gap:9px}
+.modal .mbody{padding:0 22px 22px}
+.vcheck{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.vcheck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;color:#fff}
+.vcheck .ic.p{background:var(--teal)}.vcheck .ic.f{background:var(--hot)}
+.vverdict{margin:14px 0;padding:14px;border-radius:11px;text-align:center;font-family:'Fraunces';font-size:20px}
+.vverdict.ok{background:#e6f7f6;color:#0b5957}.vverdict.bad{background:#fbeae8;color:var(--hot)}
+.codeblock{background:#0d2c4a;color:#bcd;font-family:ui-monospace,monospace;font-size:11.5px;padding:14px;border-radius:10px;overflow:auto;line-height:1.5;margin-top:10px;white-space:pre-wrap;word-break:break-all}
+.mclose{position:sticky;top:0;float:right;margin:14px 16px 0 0;background:#eef1f5;border-radius:8px;padding:6px 12px;font-weight:600;color:var(--navy)}
+footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px;line-height:1.6}
+@media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}.lead-why{max-width:none}.brief-items{grid-template-columns:1fr}.detail-inner{grid-template-columns:1fr}}
+/* ===== V2 additions ===== */
+#briefBar{background:linear-gradient(135deg,#0a2540,#143a5e);color:#fff;border-radius:14px;padding:18px 22px;margin-bottom:18px;box-shadow:var(--shadow);display:none}
+#briefBar.show{display:block}
+.brief-head{display:flex;align-items:center;gap:10px;font-family:'Fraunces';font-size:17px;margin-bottom:12px}
+.brief-head .pulse{width:9px;height:9px;border-radius:50%;background:var(--gold-300);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(215,185,107,.5)}70%{box-shadow:0 0 0 9px rgba(215,185,107,0)}100%{box-shadow:0 0 0 0 rgba(215,185,107,0)}}
+.brief-items{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.brief-card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:12px 13px;cursor:pointer;transition:background .15s}
+.brief-card:hover{background:rgba(255,255,255,.16)}
+.brief-rank{font-size:11px;color:var(--gold-300);font-weight:700}
+.brief-name{font-weight:600;font-size:13px;margin:3px 0}
+.brief-act{font-size:12px;color:#bcd;line-height:1.4}
+.brief-score{float:right;font-family:'Fraunces';font-size:18px;color:#fff}
+.ticker{background:var(--navy-800);color:#cdd9e6;border-radius:10px;overflow:hidden;white-space:nowrap;margin-bottom:18px;padding:8px 0;position:relative;display:none}
+.ticker.show{display:block}
+.ticker-track{display:inline-block;animation:tick 30s linear infinite;will-change:transform}
+.ticker:hover .ticker-track{animation-play-state:paused}
+.tick{font-size:12px;margin:0 6px}.tick b{color:var(--gold-300)}
+.tick-sep{color:var(--teal-300);margin:0 4px}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.expander{cursor:pointer;color:var(--navy);font-weight:700;user-select:none;transition:transform .15s;display:inline-block}
+.lead-row.open .expander{transform:rotate(90deg)}
+.detail-row td{background:#f8fafd;padding:0!important}
+.detail-inner{padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.detail-sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px}
+.axis-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px}
+.axis-lbl{width:130px;color:var(--ink)}
+.axis-track{flex:1;height:8px;background:#e6eaf1;border-radius:5px;overflow:hidden}
+.axis-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-300))}
+.axis-val{width:34px;text-align:right;font-weight:600;color:var(--navy)}
+.moment{display:flex;gap:9px;margin:7px 0;font-size:12.5px}
+.moment .mdot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none;margin-top:4px;box-shadow:0 0 0 3px rgba(192,143,47,.15)}
+.moment .msrc{font-weight:700;color:var(--teal)}
+.nba-box{grid-column:1/-1;background:#fff;border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:9px;padding:12px 14px}
+.nba-box .act{font-weight:600;color:var(--navy);font-size:13px}
+.nba-box .tt{font-size:13px;color:var(--ink);font-style:italic;margin-top:5px}
+.pipe-row{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:12px}
+.pipe-lbl{width:64px;font-weight:700;color:var(--muted)}
+.pipe-track{flex:1;height:14px;background:#eef1f5;border-radius:7px;overflow:hidden}
+.pipe-fill{height:100%}.pipe-fill.HOT{background:var(--hot)}.pipe-fill.WARM{background:var(--gold)}.pipe-fill.NURTURE{background:var(--nurture)}
+.pipe-val{width:70px;text-align:right;font-family:'Fraunces';color:var(--navy)}
+.spark{display:block;margin-top:4px}
+.terr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-top:14px}
+.terr-tile{border-radius:10px;padding:12px 11px;color:#fff;min-height:80px;display:flex;flex-direction:column;justify-content:space-between}
+.terr-name{font-size:12px;font-weight:600;line-height:1.2}
+.terr-idx{font-family:'Fraunces';font-size:21px}
+.terr-stat{font-size:10.5px;opacity:.92;margin-top:3px}
+.loader{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+.btn.gold .loader{border-color:rgba(11,26,43,.3);border-top-color:#0b1a2b}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton{background:linear-gradient(90deg,#eef1f5 25%,#f6f8fb 50%,#eef1f5 75%);background-size:200% 100%;animation:sk 1.3s infinite;border-radius:6px;height:14px}
+@keyframes sk{to{background-position:-200% 0}}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<canvas id="bg3d"></canvas>
+<div id="login">
+  <div class="login-card">
+    <div class="brandrow">
+      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
+        <rect x="2" y="2" width="36" height="36" rx="9" fill="#0a2540"/>
+        <path d="M11 27V13l9 5 9-5v14" stroke="#c08f2f" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+      </svg>
+      <h1>David Leads</h1>
+    </div>
+    <div class="login-sub">Sovereign Insurance Intelligence — audit-defensible leads from public data. Built for New York Life professionals.</div>
+    <div class="field"><label>Username</label><input id="u" autocomplete="username" placeholder="david"></div>
+    <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <div class="field"><label>Secure Access Key</label><input id="k" placeholder="DAVID-2026-SECURE-DEMO"></div>
+    <button class="btn gold" style="width:100%;margin-top:6px" id="loginBtn" onclick="doLogin()">Access Intelligence Console</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="trust-foot"><span class="dot"></span> Private session · public-data-only · honest by design</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header class="top">
+    <svg class="logo" viewBox="0 0 40 40" fill="none" style="width:30px;height:30px">
+      <rect x="2" y="2" width="36" height="36" rx="9" fill="#143a5e"/>
+      <path d="M11 27V13l9 5 9-5v14" stroke="#d7b96b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+    </svg>
+    <h2>David Leads</h2>
+    <span class="tag">Sovereign Insurance Intelligence</span>
+    <div class="spacer"></div>
+    <span class="who" id="who"></span>
+  </header>
+
+  <div class="wrap">
+    <div id="briefBar"></div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="toolbar">
+      <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Run Live Public-Data Intelligence</button>
+      <button class="btn ghost" id="runSample" onclick="runIntel(false)">Load Sample (offline)</button>
+      <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
+      <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export Call List</button>
+      <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
+    </div>
+
+    <div class="ticker" id="tickerBar"></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>🎯 Ranked Leads <span class="sec-title-meta" id="leadMeta"></span></h3>
+        <div class="body" id="leadsWrap">
+          <div style="padding:40px 18px;text-align:center;color:var(--muted)">Run intelligence to populate ranked, product-matched leads.</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div class="card">
+          <h3>🛡️ Governance Gate</h3>
+          <div class="gov" id="gov">
+            <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting run — the gate verifies every signal is public &amp; non-fabricated.</div>
+          </div>
+        </div>
+        <div class="card" id="pipelineCard" style="display:none">
+          <h3>📈 Premium Pipeline <span class="sec-title-meta" id="pipeTotal"></span></h3>
+          <div class="body" id="pipeBody" style="padding:14px 18px"></div>
+        </div>
+        <div class="card">
+          <h3>📡 Public Signals Used <span class="sec-title-meta" id="sigMeta"></span></h3>
+          <div class="body" id="signals">
+            <div style="padding:18px;color:var(--muted);font-size:13px">No signals yet.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer class="legal">
+      David Leads uses <strong>public, aggregate data only</strong> (SEC EDGAR · BLS · U.S. Census · CDC) — never private PII.<br>
+      Every lead score carries a tamper-evident, compliance-grade receipt. Honest by design — no fabricated signals, ever.<br>
+      © 2026 SZL Holdings · Sovereign Governed AI · Apache-2.0
+    </footer>
+  </div>
+</div>
+
+<div id="modalMount"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
