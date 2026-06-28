@@ -56,6 +56,7 @@ async function runIntel(live) {
     renderBrief(data.brief);
     renderTicker(data.signals);
     renderPipeline(data.kpi);
+    if (holoOn) renderHolo();
     $("runHint").textContent = data.meta.mode === "LIVE"
       ? `Live run · ${data.meta.live_count} live source(s) · ${data.meta.total_signals} signals · ${data.meta.gathered_at.slice(11,19)} UTC`
       : "Sample (offline) run — safe to demo without network.";
@@ -176,6 +177,29 @@ function renderGov(g, meta) {
       <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public signals rejected</div>
       <div class="verdict">🛡️ ${g.verdict}</div>
     </div>`;
+}
+
+/* ---------- holographic mode ---------- */
+let holoOn = false;
+function toggleHolo(on) {
+  holoOn = on;
+  document.getElementById("holoSection").style.display = on ? "" : "none";
+  if (on) {
+    renderHolo();
+  } else if (window.Holo) {
+    Holo.disposeAll();
+  }
+}
+function renderHolo() {
+  if (!window.Holo || !lastData) return;
+  try {
+    Holo.leadConstellation("holoConstellation", lastData.leads || []);
+    Holo.pipeline3D("holoPipe", (lastData.kpi && lastData.kpi.pipeline_by_bucket) || {});
+  } catch (e) { console.error("holo lead/pipe", e); }
+  // territory needs its own fetch (areas live in /api/territory)
+  api("/api/territory").then(d => {
+    try { Holo.territoryGlobe("holoGlobe", d.areas || []); } catch (e) { console.error("holo globe", e); }
+  }).catch(() => {});
 }
 
 /* ---------- morning brief ---------- */
