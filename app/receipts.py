@@ -48,8 +48,20 @@ def _try_sign(pae: bytes) -> dict[str, Any] | None:
         return None
 
 
-def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: float) -> dict[str, Any]:
-    """Build a tamper-evident receipt for a single scored lead."""
+def _witness(action_hash: str):
+    """Best-effort 3-of-4 khipu witness block; never breaks receipt minting."""
+    try:
+        from . import consensus as cs
+        return cs.witness_event(action_hash)
+    except Exception:
+        return None
+
+
+def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: float,
+                 witness: bool = True) -> dict[str, Any]:
+    """Build a tamper-evident receipt for a single scored lead.
+
+    When witness=True, attach a 3-of-4 khipu multi-party consensus block over the payload."""
     ts = datetime.now(timezone.utc).isoformat()
     body = {
         "lead_id": lead["id"],
@@ -81,13 +93,19 @@ def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: flo
         "signature": signature,  # None when no key — honest UNSIGNED receipt
         "signature_status": "DSSE-ECDSA-P256 SIGNED" if signature else "UNSIGNED (hash-chained, honest)",
     }
+    if witness:
+        consensus = _witness(body_hash)
+        if consensus:
+            receipt["consensus"] = consensus
     _chain_tip["hash"] = body_hash  # advance the chain
     return receipt
 
 
-def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]]) -> dict[str, Any]:
+def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]],
+                       witness: bool = True) -> dict[str, Any]:
     """V8: bind a full Signed 4-Part Brief (WHO/WHY NOW/PRODUCT/NEXT ACTION) + its citations
-    into one tamper-evident, optionally ECDSA-P256-signed receipt. Honest UNSIGNED if no key."""
+    into one tamper-evident, optionally ECDSA-P256-signed receipt. Honest UNSIGNED if no key.
+    When witness=True, attach a 3-of-4 khipu multi-party consensus block."""
     ts = datetime.now(timezone.utc).isoformat()
     cite_sources = []
     for part in brief.get("parts", []):
@@ -126,6 +144,10 @@ def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]]) -> 
         "signature": signature,
         "signature_status": "DSSE-ECDSA-P256 SIGNED" if signature else "UNSIGNED (hash-chained, honest)",
     }
+    if witness:
+        consensus = _witness(body_hash)
+        if consensus:
+            receipt["consensus"] = consensus
     _chain_tip["hash"] = body_hash
     return receipt
 

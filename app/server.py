@@ -19,6 +19,24 @@ from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
 
+# V8 genius modules — imported defensively so a missing optional module never breaks boot
+try:
+    from . import formulas as fm
+except Exception:  # pragma: no cover
+    fm = None
+try:
+    from . import work as wk
+except Exception:  # pragma: no cover
+    wk = None
+try:
+    from . import receipt_lake as lake
+except Exception:  # pragma: no cover
+    lake = None
+try:
+    from . import consensus as cs
+except Exception:  # pragma: no cover
+    cs = None
+
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
@@ -123,6 +141,11 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         lead["receipt_id"] = receipts[lead["id"]]["id"]
         lead["receipt_signed"] = receipts[lead["id"]]["signed"]
     _STATE.update(leads=leads, signals=sigs, meta=meta, receipts=receipts)
+    # khipu 3-of-4 witnessed governance: report consensus from the leads' receipts when present
+    consensus_state = "unwitnessed"
+    any_receipt = next(iter(receipts.values()), None)
+    if any_receipt and any_receipt.get("consensus"):
+        consensus_state = any_receipt["consensus"].get("khipu_consensus", "unwitnessed")
     top = leads[:3]
     brief = {
         "top_ids": [l["id"] for l in top],
@@ -142,6 +165,7 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
             "all_public": meta["rejected_nonpublic"] == 0,
             "fabricated": meta["fabricated"],
             "rejected_nonpublic": meta["rejected_nonpublic"],
+            "consensus": consensus_state,
             "verdict": "PASS — public-data-only, honest by design",
         },
     }
@@ -219,12 +243,14 @@ def verify(rid: str, authorization: str | None = Header(default=None)):
 
 
 @app.get("/api/pulse")
-def pulse(states: str | None = None, authorization: str | None = Header(default=None)):
-    """V8 Territory Pulse: live ranked pulse of the 13-state Atlantic seaboard."""
+def pulse(states: str | None = None, region: str | None = None, live: bool = False,
+          authorization: str | None = Header(default=None)):
+    """V8 Territory Pulse: ranked pulse of the Atlantic seaboard. live=true probes each state's
+    portal (Socrata/ArcGIS) for a real recent count; failed probes are honest [SAMPLE]."""
     _auth(authorization)
     state_list = [x.strip().upper() for x in states.split(",")] if states else None
     rc.reset_chain()
-    result = sig8.territory_pulse(state_list)
+    result = sig8.territory_pulse(state_list, live=live, region=region)
     sigs_used = sig8.all_pulse_signals(state_list)
     pseudo = {"id": "pulse_seaboard", "name": "Territory Pulse (13-state seaboard)",
               "bucket": result["summary"]["top_state"] or "PULSE",
@@ -239,17 +265,59 @@ def pulse(states: str | None = None, authorization: str | None = Header(default=
 
 @app.get("/api/brief/{lead_id}")
 def brief(lead_id: str, authorization: str | None = Header(default=None)):
-    """V8 Signed 4-Part Brief for a single lead (WHO / WHY NOW / PRODUCT / NEXT ACTION)."""
+    """V8 Signed 4-Part Brief — each part GROUNDED by a real a11oy formula verdict
+    (Priority / Why-now / Opening-line / Sensitivity), witness-signed via khipu 3-of-4."""
     _auth(authorization)
     lead = next((l for l in _STATE.get("leads", []) if l["id"] == lead_id), None)
     if not lead:
         raise HTTPException(404, "Lead not found - run intelligence first")
-    b = sc.build_brief(lead, _STATE.get("signals", []))
+    if fm is not None:
+        b = fm.build_signed_brief(lead)
+    else:  # honest fallback to the structured brief if the formulas engine is unavailable
+        b = sc.build_brief(lead, _STATE.get("signals", []))
     receipt = rc.make_brief_receipt(b, _STATE.get("signals", []))
     b["receipt_id"] = receipt["id"]
     b["receipt_signed"] = receipt["signed"]
     _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
     return b
+
+
+class WorkReq(BaseModel):
+    max_steps: int = 8
+    step_minutes: float | None = None
+    convergence_threshold: float = 0.1
+
+
+@app.post("/api/work")
+def work(req: WorkReq, authorization: str | None = Header(default=None)):
+    """V8 Ouroboros bounded work loop over the Territory Pulse state. Returns the LoopTrace
+    (4 exit reasons, maxSteps budget, earliestSafeExit) + the khipu-witnessed change-events it
+    minted into the append-only receipt lake."""
+    _auth(authorization)
+    if wk is None:
+        raise HTTPException(503, "work loop unavailable")
+    cfg = {"maxSteps": req.max_steps, "convergenceThreshold": req.convergence_threshold}
+    if req.step_minutes is not None:
+        cfg["stepMinutes"] = req.step_minutes
+    meta = _STATE.get("meta", {}) or {}
+    out = wk.run_territory_pulse(meta, cfg)
+    return {
+        "trace": out["trace"],
+        "events": out["events"],
+        "loop_receipt": out["loop_receipt"],
+        "lake_size": lake.size() if lake is not None else None,
+    }
+
+
+@app.get("/api/lake")
+def get_lake(organ: str | None = None, decision: str | None = None,
+             limit: int | None = None, authorization: str | None = Header(default=None)):
+    """V8 read the append-only receipt lake (every witnessed change-event, immutable)."""
+    _auth(authorization)
+    if lake is None:
+        raise HTTPException(503, "receipt lake unavailable")
+    events = lake.query(organ=organ, decision=decision, limit=limit)
+    return {"size": lake.size(), "count": len(events), "events": events}
 
 
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)

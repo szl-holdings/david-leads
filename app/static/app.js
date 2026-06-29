@@ -124,7 +124,7 @@ function renderLeads(leads) {
       <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
       <td><div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div><div class="lead-why">${l.why}</div></td>
       <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
-      <td><button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button></td>
+      <td><button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button><br><button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Signed Brief</button></td>
     </tr>
     <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`).join("");
   $("leadsWrap").innerHTML = `<table>
@@ -181,6 +181,7 @@ function renderGov(g, meta) {
       <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> All signals are public data ${g.all_public?'':'(violation!)'}</div>
       <div class="line"><span class="ok">✓</span> ${g.fabricated} fabricated signals (honest by design)</div>
       <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public signals rejected</div>
+      ${g.consensus ? `<div class="line"><span class="ok">${g.consensus.includes('-of-') && !g.consensus.startsWith('0') ? '✓' : '•'}</span> khipu witness consensus: <strong style="margin-left:4px">${g.consensus}</strong></div>` : ''}
       <div class="verdict">🛡️ ${g.verdict}</div>
     </div>`;
 }
@@ -369,6 +370,89 @@ function exportCSV() {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = "david_leads_call_list.csv"; a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/* ---------- V8 Territory Pulse (seaboard coverage map) ---------- */
+let pulseRegion = "ALL";
+function openPulse() {
+  $("pulseCard").classList.add("show");
+  $("pulseCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  loadPulse();
+}
+function selRegion(r) {
+  pulseRegion = r;
+  document.querySelectorAll("#regionSeg button").forEach(b =>
+    b.classList.toggle("active", b.dataset.region === r));
+  loadPulse();
+}
+async function loadPulse() {
+  const live = $("pulseLive").checked;
+  const grid = $("pulseGrid");
+  grid.innerHTML = `<div style="padding:20px;color:var(--muted)">${live ? "Probing each portal LIVE…" : "Loading seaboard…"}</div>`;
+  $("pulseHint").textContent = live ? "Live: real recent counts where a portal answers; failed probes shown [SAMPLE]." : "Static richness ranking · tick Live to probe each portal.";
+  try {
+    const q = new URLSearchParams();
+    if (pulseRegion !== "ALL") q.set("region", pulseRegion);
+    if (live) q.set("live", "true");
+    const d = await api("/api/pulse?" + q.toString());
+    const tiles = d.seaboard.map(s => {
+      const badges = [];
+      if (s.confirmed) badges.push(`<span class="pt-badge">VERIFIED</span>`);
+      if (s.mode === "LIVE") badges.push(`<span class="pt-badge live">LIVE</span>`);
+      else if (s.mode === "SAMPLE") badges.push(`<span class="pt-badge sample">[SAMPLE]</span>`);
+      badges.push(`<span class="pt-badge">${s.cadence}</span>`);
+      const count = (s.coverage_count != null)
+        ? `<div class="pt-count">${Number(s.coverage_count).toLocaleString()} recent</div>`
+        : (s.gap ? `<div class="pt-count">no verified API</div>` : "");
+      return `<div class="pulse-tile ${s.bucket}" title="${(s.headline||'').replace(/"/g,'&quot;')}">
+        <div class="pt-top">
+          <div><div class="pt-state">${s.state}</div><div class="pt-name">${s.name}</div></div>
+          <div style="text-align:right"><div class="pt-pulse">${s.pulse}</div><span class="pt-bucket">${s.bucket}</span></div>
+        </div>
+        <div><div class="pt-badges">${badges.join("")}</div>${count}</div>
+      </div>`;
+    }).join("");
+    grid.innerHTML = tiles;
+    const sm = d.summary;
+    $("pulseMeta").textContent = `${sm.state_count} states · ${sm.surging.length} surging · ${sm.gaps.length} gaps${d.summary.live ? " · LIVE" : ""}`;
+  } catch (e) {
+    grid.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${e.message}</div>`;
+  }
+}
+
+/* ---------- V8 Signed 4-Part Brief (formula-grounded, khipu-witnessed) ---------- */
+async function openBrief(leadId) {
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <button class="mclose" onclick="closeModal()">✕ Close</button>
+    <h3>📜 Signed 4-Part Brief</h3>
+    <div class="mbody" id="briefBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
+  try {
+    const b = await api("/api/brief/" + leadId);
+    const parts = (b.parts || []).map(p => {
+      const v = p.formula_verdict || {};
+      const allow = v.allow;
+      return `<div class="bp">
+        <div class="bp-title">${p.title}
+          <span class="vchip ${allow ? 'allow' : 'deny'}">${allow ? '✓ ' + (v.formula||'') : '✗ ' + (v.formula||'')}</span></div>
+        <div class="bp-body">${p.body || ''}</div>
+        <div class="bp-formula">grounded by <code>${v.leanTheorem || v.formula || 'formula'}</code> · λ-score ${v.lambdaScore ?? '—'}</div>
+      </div>`;
+    }).join("");
+    const c = b.consensus || {};
+    const consensus = `<div class="consensus-bar">
+      <span class="k">${c.khipu_consensus || '0-of-4'}</span>
+      <span>khipu witness · ${c.signed ? 'SIGNED' : 'UNSIGNED (honest)'}</span>
+      <span style="opacity:.75;font-size:11px">${(c.signing_mode || c.decision || '').slice(0,80)}</span></div>`;
+    const ground = b.grounding || {};
+    $("briefBody").innerHTML = `
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">${b.lead_name || ''} · Λ ${b.score} · ${b.bucket}</div>
+      ${parts}
+      ${consensus}
+      <div style="font-size:11px;color:var(--muted);margin-top:10px">${ground.note || ''}</div>
+      ${b.receipt_id ? `<div class="ask-receipt" style="color:var(--navy)" onclick="openReceipt('${b.receipt_id}')">🔏 Verify brief receipt (${b.receipt_id})</div>` : ''}`;
+  } catch (e) {
+    $("briefBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
+  }
 }
 
 /* ---------- receipt modal ---------- */

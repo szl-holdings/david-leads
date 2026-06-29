@@ -1,0 +1,157 @@
+{
+  "login": {
+    "ok": true
+  },
+  "run": {
+    "leads": 8,
+    "L1_score": 87.2,
+    "consensus": "4-of-4",
+    "governance_verdict": "PASS \u2014 public-data-only, honest by design"
+  },
+  "L1_lambda_87_2": true,
+  "pulse_static": {
+    "states": 16,
+    "top": "CT",
+    "gaps": [
+      "MA",
+      "NH",
+      "ME"
+    ]
+  },
+  "pulse_live_coverage": {
+    "CT": {
+      "mode": "LIVE",
+      "count": 1283427,
+      "bucket": "SURGING"
+    },
+    "DE": {
+      "mode": "LIVE",
+      "count": 63982,
+      "bucket": "SURGING"
+    },
+    "DC": {
+      "mode": "LIVE",
+      "count": 4631,
+      "bucket": "ACTIVE"
+    },
+    "NY": {
+      "mode": "LIVE",
+      "count": 69822,
+      "bucket": "ACTIVE"
+    },
+    "VA": {
+      "mode": "LIVE",
+      "count": 9921,
+      "bucket": "ACTIVE"
+    },
+    "MD": {
+      "mode": "LIVE",
+      "count": 2438889,
+      "bucket": "QUIET"
+    },
+    "NJ": {
+      "mode": "LIVE",
+      "count": 2716419,
+      "bucket": "QUIET"
+    },
+    "PA": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "NC": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "FL": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "SC": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "GA": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "RI": {
+      "mode": "SAMPLE",
+      "count": null,
+      "bucket": "QUIET"
+    },
+    "MA": {
+      "mode": "STATIC",
+      "count": null,
+      "bucket": "GAP"
+    },
+    "NH": {
+      "mode": "STATIC",
+      "count": null,
+      "bucket": "GAP"
+    },
+    "ME": {
+      "mode": "STATIC",
+      "count": null,
+      "bucket": "GAP"
+    }
+  },
+  "live_states": [
+    "CT",
+    "DE",
+    "DC",
+    "NY",
+    "VA",
+    "MD",
+    "NJ"
+  ],
+  "sample_states": [
+    "PA",
+    "NC",
+    "FL",
+    "SC",
+    "GA",
+    "RI"
+  ],
+  "gap_states": [
+    "MA",
+    "NH",
+    "ME"
+  ],
+  "brief_L1": {
+    "parts": 4,
+    "part_keys": [
+      "PRIORITY",
+      "WHY_NOW",
+      "OPENING_LINE",
+      "SENSITIVITY"
+    ],
+    "consensus": "4-of-4",
+    "signed": true,
+    "receipt_id": "rcpt_478a4ea8ebb11cfd"
+  },
+  "verify_brief": {
+    "verdict": "VERIFIED"
+  },
+  "work": {
+    "exitReason": "budgetExhausted",
+    "stepsRun": 6,
+    "earliestSafeExit": 2,
+    "events": 6,
+    "lambda_null": true,
+    "lake_size": 7
+  },
+  "lake": {
+    "size": 7,
+    "count": 7
+  },
+  "model": {
+    "doi": "10.5281/zenodo.20434308",
+    "uniqueness": "Conjecture 1 (OPEN \u2014 CAUCHY_ND sorry + missing symmetry axiom; NOT a theorem)",
+    "has_conjecture1": true
+  }
+}
