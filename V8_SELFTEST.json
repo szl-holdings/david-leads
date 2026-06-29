@@ -246,6 +246,80 @@
     },
     "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; Λ stays Conjecture 1; receptivity is advisory and distinct from Λ"
   },
+  "p2_gapfill": {
+    "modules_added": ["app/routing.py"],
+    "p2_1_routing": {
+      "endpoint": "GET /api/routing",
+      "http": 200,
+      "leads_routed": 8,
+      "all_have_recommended_agent": true,
+      "roster": [
+        {"name": "David", "real": true, "label": "primary advisor"},
+        {"name": "A. Rivera", "real": false, "label": "[illustrative roster]"},
+        {"name": "M. Chen", "real": false, "label": "[illustrative roster]"}
+      ],
+      "factors": {"specialty": 0.5, "territory": 0.25, "history": 0.25},
+      "L1_recommended_agent": "David",
+      "L1_score": 85.0,
+      "note": "pure-function best-fit advisor matching; specialty + territory + (benchmark) historical conversion; David is the only real advisor, teammates labelled [illustrative roster]"
+    },
+    "p2_2_liquidity_ui": {
+      "attempted_for_employer_archetypes": ["L2", "L4"],
+      "L2_employer": "Verizon Communications",
+      "L2_mode": "LIVE",
+      "L2_recent_sells": 0,
+      "L2_latest_date": "2026-06-18",
+      "employer_illustrative_labeled": true,
+      "frontend_liquidity_watch": true,
+      "frontend_liq_flag_on_card": true,
+      "note": "real 200 from data.sec.gov on a sample run; honest LIVE result; [illustrative public employer] labelled; [SAMPLE] if SEC unreachable"
+    },
+    "p2_3_wealth_viz": {
+      "wealth_tier_structured": true,
+      "wealth_tier_keys": ["tier", "score", "ladder", "ladder_index", "basis", "signals", "advisory"],
+      "L1_tier": "Mass-Affluent",
+      "L1_score": 75,
+      "L1_ladder_index": 1,
+      "ladder": ["Mass", "Mass-Affluent", "Affluent", "HNW"],
+      "frontend_compact_ladder_on_card": true,
+      "frontend_full_ladder_expanded": true,
+      "frontend_ladder_in_brief": true,
+      "proxy_chips_labeled": "estimated from public records"
+    },
+    "regression": {
+      "run_leads": 8,
+      "L1_lambda_87_2": true,
+      "brief_L1_parts": 4,
+      "brief_L1_angles": 3,
+      "verify_brief_verdict": "VERIFIED",
+      "benchmark_rows": 8,
+      "export_csv_http": 200,
+      "export_csv_data_rows": 8,
+      "export_wealth_col_string": "Mass-Affluent",
+      "webhook_ok": true,
+      "pulse_live_states": 7,
+      "model_doi": "10.5281/zenodo.20434308",
+      "model_uniqueness": "Conjecture 1 (OPEN)"
+    },
+    "live_probes": {
+      "SEC_form4_liquidity": {"employer": "Verizon Communications", "mode": "LIVE",
+        "recent_sells": 0, "latest_date": "2026-06-18",
+        "note": "real 200 from data.sec.gov; 94 recent Form 4 filings, no sale-coded txn in sampled subset"}
+    },
+    "frontend": {
+      "lead_routing_panel": true, "routing_rows": 8,
+      "wealth_ladder_compact_card": true, "wealth_ladder_full_expanded": true, "wealth_ladder_brief": true,
+      "liquidity_watch_subsection": true, "liquidity_flag_card": true,
+      "desktop_overflowX": 0, "mobile_overflowX": 0,
+      "files": [
+        "/tmp/dlv8p2_desktop.png", "/tmp/dlv8p2_mobile.png",
+        "/tmp/dlv8p2_routing.png", "/tmp/dlv8p2_brief.png", "/tmp/dlv8p2_mobile_detail.png"
+      ],
+      "app_js_errors": 0,
+      "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED resource loads (offline sandbox); no application JS / pageerror"
+    },
+    "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; David is the only real advisor (teammates [illustrative roster]); Λ stays Conjecture 1; all P2 additions defensive (try/except) so /api/run never breaks"
+  },
   "resilience": {
     "timeout_s": 12,
     "retry": "1 backoff",

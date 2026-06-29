@@ -163,6 +163,36 @@ function liqFlag(l) {
   }
   return `<span class="liq-flag" title="${(q.note||'SEC Form 4 — [SAMPLE]').replace(/"/g,'&quot;')}">💧 Liquidity ${q.mode==='SAMPLE'?'[SAMPLE]':'watch'}</span>`;
 }
+/* V8.3 P2-3 wealth ladder (4 segments, lead's tier highlighted) */
+function wealthLadder(wt, compact) {
+  if (!wt || !wt.tier) return "";
+  const ladder = wt.ladder && wt.ladder.length ? wt.ladder : ["Mass","Mass-Affluent","Affluent","HNW"];
+  const idx = (wt.ladder_index != null) ? wt.ladder_index : ladder.indexOf(wt.tier);
+  const segs = ladder.map((t, i) =>
+    `<span class="wseg ${i===idx?'on':''}" title="${t}${i===idx?' — '+(wt.basis||'estimated from public records'):''}">${t}</span>`).join("");
+  if (compact) return `<div class="wladder compact" title="Wealth tier: ${wt.tier} (estimated from public records)">${segs}</div>`;
+  const chips = (wt.signals||[]).map(s =>
+    `<span class="proxy-chip">${s} <span class="est">· estimated from public records</span></span>`).join("");
+  return `<div class="wladder-wrap"><div class="wladder-cap">Wealth ladder · <strong>${wt.tier}</strong>${wt.score!=null?` · score ${wt.score}/100`:''}</div>` +
+    `<div class="wladder">${segs}</div>${chips?`<div class="proxy-chips">${chips}</div>`:''}</div>`;
+}
+/* V8.3 P2-2 Liquidity Watch subsection (SEC Form 4) */
+function liqWatch(q) {
+  if (!q) return "";
+  const mode = q.mode === "LIVE" ? "live" : q.mode === "SAMPLE" ? "sample" : "";
+  const emp = q.employer ? `${q.employer}${q.employer_illustrative?' <span class="est" style="color:var(--gold);font-weight:700">[illustrative public employer]</span>':''}` : "—";
+  return `<div class="liqwatch">
+    <div class="lw-h">💧 Liquidity Watch — SEC Form 4 insider sells
+      <span class="lw-mode ${mode}">${q.mode||'—'}</span></div>
+    <div class="lw-grid">
+      <div>Employer<b>${emp}</b></div>
+      <div>Recent sells<b>${q.recent_sells!=null?q.recent_sells:'—'}</b></div>
+      <div>Latest filing<b>${q.latest_date||'—'}</b></div>
+      ${q.citation_url?`<div>SEC citation<b style="font-size:12px"><a href="${q.citation_url}" target="_blank" rel="noopener">EDGAR Form 4 ↗</a></b></div>`:''}
+    </div>
+    <div class="lw-foot">${q.note||'Employer-level public signal, not an individual assertion. [SAMPLE] if SEC unreachable.'}</div>
+  </div>`;
+}
 function renderLeads(leads) {
   $("leadMeta").textContent = leads.length + " scored";
   let rows = leads.map(l => `
@@ -172,6 +202,7 @@ function renderLeads(leads) {
       <td>
         <div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div>
         <div class="lead-chips">${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}${gapChip(l)}${liqFlag(l)}</div>
+        ${wealthLadder(l.wealth_tier, true)}
         ${receptMeter(l)}
         <div class="lead-why">${l.why}</div>
       </td>
@@ -227,12 +258,10 @@ function renderLeadDetail(l) {
   const moments = (l.moments||[]).map(m =>
     `<div class="moment"><span class="mdot"></span><div><span class="msrc">${m.source}</span> — ${m.label}</div></div>`).join("");
   const wt = l.wealth_tier || {}, lp = l.lapse || {};
-  const wsig = (wt.signals||[]).map(s => `<li>${s}</li>`).join("");
   const lfac = (lp.factors||[]).map(s => `<li>${s}</li>`).join("");
   const adv = `<div class="detail-sec"><h4>Advisory tiers (public-proxy estimates)</h4>
+    <div class="adv-box" style="margin-bottom:10px"><div class="adv-h">Wealth tier</div>${wealthLadder(wt, false)}</div>
     <div class="adv-grid">
-      <div class="adv-box"><div class="adv-h">Wealth tier</div><div class="adv-v">${wt.tier||'—'}</div>
-        <div class="adv-note">${wt.basis||'estimated from public proxies'}</div><ul class="adv-list">${wsig}</ul></div>
       <div class="adv-box"><div class="adv-h">Lapse decile</div><div class="adv-v">${lp.decile!=null?lp.decile+'/10':'—'}</div>
         <div class="adv-note">${lp.interpretation||''} · advisory, NOT FCRA</div><ul class="adv-list">${lfac}</ul></div>
     </div>
@@ -248,7 +277,7 @@ function renderLeadDetail(l) {
       <div class="adv-box"><div class="adv-h">Likely coverage gap</div><div class="adv-v" style="font-size:14px">${g.label||'—'}</div>
         <div class="adv-note">${g.recommended? 'Lead with: '+g.recommended : ''}${g.basis? ' · '+g.basis : ''}</div></div>
     </div>
-    ${q ? `<div class="adv-foot">Liquidity (SEC Form 4): <strong>${q.mode}</strong>${q.recent_sells!=null?` · ${q.recent_sells} recent sell(s)`:''}${q.latest_date?` · latest ${q.latest_date}`:''}${q.citation_url?` · <a href="${q.citation_url}" target="_blank" rel="noopener">EDGAR</a>`:''} — employer-level public signal, not an individual assertion.</div>`:''}
+    ${liqWatch(q)}
   </div>`;
   return `<div class="detail-inner">
     <div class="detail-sec"><h4>Why this lead (transparent score)</h4>${axes}</div>
@@ -546,6 +575,39 @@ async function openBenchmark() {
   }
 }
 
+/* ---------- V8.3 P2-1 Lead Routing (best-fit advisor) ---------- */
+async function openRouting() {
+  const card = $("routingCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("routingBody").innerHTML = `<div style="padding:20px;color:var(--muted)">Loading routing table…</div>`;
+  try {
+    const d = await api("/api/routing");
+    const roster = (d.roster || []).map(a =>
+      `<span class="route-agent ${a.real?'real':''}">${a.name}${a.real?' <span style="color:#0b5957">✓ real</span>':` <span class="illus">${a.label||'[illustrative roster]'}</span>`}${(a.states&&a.states.length)?` · ${a.states.join('/')}`:''}</span>`).join("");
+    const rows = (d.routing || []).map(r => {
+      const tag = r.recommended_is_real ? `<span class="realtag">✓ real</span>` : `<span class="illus">[illustrative]</span>`;
+      const alts = (r.alternatives||[]).slice(0,2).map(a => `${a.agent} (${a.score})`).join(" · ");
+      return `<tr>
+        <td><div style="font-weight:600;color:var(--navy)">${r.lead_name||r.lead_id||''}</div>
+          <div class="route-basis">${r.event_type||''} · ${r.state||''}</div></td>
+        <td><span class="route-rec">${r.recommended_agent}</span>${tag}
+          <div class="route-basis">${r.basis||''}</div>
+          ${alts?`<div class="route-basis">alt: ${alts}</div>`:''}</td>
+        <td><span class="route-score">${r.score}</span></td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="3" style="color:var(--muted)">No leads to route — run intelligence first.</td></tr>`;
+    const f = d.factors || {};
+    $("routingMeta").textContent = (d.routing||[]).length + " leads routed";
+    $("routingBody").innerHTML =
+      `<div class="route-roster">${roster}</div>` +
+      `<table class="route-table"><thead><tr><th>Lead</th><th>Recommended advisor · basis</th><th>Fit</th></tr></thead><tbody>${rows}</tbody></table>` +
+      `<div class="route-note">Factors — specialty ${Math.round((f.specialty||0)*100)}% · territory ${Math.round((f.territory||0)*100)}% · history ${Math.round((f.history||0)*100)}%. ${d.honest_note||''}</div>`;
+  } catch (e) {
+    $("routingBody").innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${e.message}</div>`;
+  }
+}
+
 /* ---------- V8.2 P1-G Push to CRM (webhook test) ---------- */
 async function pushToCRM() {
   if (!lastData || !lastData.leads) { alert("Run intelligence first."); return; }
@@ -663,7 +725,7 @@ async function openBrief(leadId) {
       ${b.urgency ? `<span class="urg-chip ${b.urgency==='ACT_NOW'?'act-now':b.urgency==='WARM'?'warm':'cold'}">${b.urgency.replace('_',' ')}</span>` : ''}
       ${wt.tier ? `<span class="wealth-tag" title="estimated from public proxies">${wt.tier}</span>` : ''}
       ${lp.decile!=null ? `<span class="lapse-badge ${lp.decile<=3?'low':lp.decile<=6?'mid':'high'}" title="advisory, NOT FCRA">Lapse ${lp.decile}/10</span>` : ''}
-    </div>`;
+    </div>${wealthLadder(wt, false)}`;
     const c = b.consensus || {};
     const consensus = `<div class="consensus-bar">
       <span class="k">${c.khipu_consensus || '0-of-4'}</span>

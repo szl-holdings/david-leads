@@ -57,6 +57,11 @@ try:
     from . import coverage as cov
 except Exception:  # pragma: no cover
     cov = None
+# V8.3 P2-1 best-fit advisor routing — defensive import so /api/run + boot never break
+try:
+    from . import routing as rt
+except Exception:  # pragma: no cover
+    rt = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -158,13 +163,21 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     # V8.2 P1-A: optional SEC Form 4 insider-sell liquidity flag — only on live runs, only for
     # leads whose event_type implies a liquidity moment AND where a public employer is known.
     # Defensive: any failure leaves the lead untouched so /api/run never breaks.
-    if liq is not None and getattr(req, "live", False):
+    # V8.3 P2-2: attempt the real SEC Form 4 check for employer-bearing archetypes on BOTH live and
+    # sample runs so the demo can surface a "Liquidity event" flag. The employer is a representative
+    # public company (Form 4 proxy), clearly labelled illustrative; liquidity_signal() returns an
+    # honest [SAMPLE] if SEC is unreachable so /api/run never breaks.
+    if liq is not None:
         _LIQ_EVENTS = {"job_change", "promotion", "near_retirement"}
         for lead in leads:
             try:
                 employer = lead.get("employer")
                 if employer and (lead.get("event_type") in _LIQ_EVENTS):
-                    lead["liquidity"] = liq.liquidity_signal(employer)
+                    sig_liq = liq.liquidity_signal(employer)
+                    if isinstance(sig_liq, dict):
+                        sig_liq["employer"] = employer
+                        sig_liq["employer_illustrative"] = True  # representative public employer, labelled
+                    lead["liquidity"] = sig_liq
             except Exception:
                 pass
     # V8.2 P1-B: OPTIONAL 990 philanthropy/HNW supporting signal. Only fires for a lead that
@@ -177,9 +190,18 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
                 if tok:
                     sig990 = w990.wealth990_signal(tok)
                     lead["wealth990"] = sig990
-                    nud = w990.nudge_wealth_tier(lead.get("wealth_tier", "Mass"), sig990)
+                    wt = lead.get("wealth_tier")
+                    cur_tier = wt.get("tier", "Mass") if isinstance(wt, dict) else (wt or "Mass")
+                    nud = w990.nudge_wealth_tier(cur_tier, sig990)
                     if nud.get("nudged"):
-                        lead["wealth_tier"] = nud["tier"]
+                        if isinstance(wt, dict) and ev is not None:
+                            wt["tier"] = nud["tier"]
+                            try:
+                                wt["ladder_index"] = ev.WEALTH_LADDER.index(nud["tier"])
+                            except Exception:
+                                pass
+                        else:
+                            lead["wealth_tier"] = nud["tier"]
                         lead["wealth_tier_nudge"] = nud
             except Exception:
                 pass
@@ -444,6 +466,37 @@ def benchmark(authorization: str | None = Header(default=None)):
     return bench.build_benchmark(leads, summary, lake_events)
 
 
+@app.get("/api/routing")
+def routing(authorization: str | None = Header(default=None)):
+    """V8.3 P2-1: best-fit advisor lead routing. Scores each current-run lead against the
+    advisor roster on trigger specialty + territory overlap + (from the benchmark) historical
+    conversion-by-trigger. David is the real advisor; teammates are an [illustrative roster].
+    Defensive: never raises on a missing optional; returns an honest empty table instead."""
+    _auth(authorization)
+    if rt is None:
+        raise HTTPException(503, "routing unavailable")
+    leads = _STATE.get("leads", []) or []
+    conv = {}
+    try:
+        if bench is not None:
+            summary = ev.outcome_summary() if ev is not None else {}
+            lake_events = []
+            if lake is not None:
+                try:
+                    lake_events = lake.query(organ="conversion-loop")
+                except Exception:
+                    lake_events = []
+            b = bench.build_benchmark(leads, summary, lake_events)
+            conv = rt.conversion_by_event_from_benchmark(b)
+    except Exception:
+        conv = {}
+    try:
+        return rt.route_leads(leads, meta=_STATE.get("meta", {}), conversion_by_event=conv)
+    except Exception:
+        return {"roster": [], "routing": [], "factors": {},
+                "honest_note": "routing temporarily unavailable; run intelligence first"}
+
+
 # columns for the ranked-lead CRM export
 _CSV_COLUMNS = ["rank", "id", "name", "event_type", "score", "bucket", "urgency",
                 "wealth_tier", "lapse_decile", "receptivity", "likely_gap",
@@ -464,7 +517,7 @@ def _lead_row(rank: int, lead: dict) -> list:
         lead.get("score", ""),
         lead.get("bucket", ""),
         lead.get("urgency", ""),
-        lead.get("wealth_tier", ""),
+        (lambda wt: wt.get("tier", "") if isinstance(wt, dict) else (wt or ""))(lead.get("wealth_tier", "")),
         (lapse.get("decile") if isinstance(lapse, dict) else lapse) or "",
         lead.get("receptivity", ""),
         gap.get("label", "") if isinstance(gap, dict) else "",
