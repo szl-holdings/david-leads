@@ -56,6 +56,10 @@ async function runIntel(live) {
     renderBrief(data.brief);
     renderTicker(data.signals);
     renderPipeline(data.kpi);
+    if (data.learning && $("learnBadge")) {
+      $("learnBadge").textContent = "🧠 learning from " + (data.learning.total_outcomes || 0) + " logged outcomes";
+      $("learnBadge").style.display = data.learning.total_outcomes ? "" : "none";
+    }
     showAsk();
     if (holoOn) renderHolo();
     $("runHint").textContent = data.meta.mode === "LIVE"
@@ -116,20 +120,68 @@ function showLeadSkeleton() {
   for (let i = 0; i < 5; i++) rows += `<tr><td colspan="5"><div class="skeleton" style="width:${60+i*7}%"></div></td></tr>`;
   $("leadsWrap").innerHTML = `<table><tbody>${rows}</tbody></table>`;
 }
+function urgencyChip(u) {
+  if (!u) return "";
+  const map = { ACT_NOW: ["⏱ ACT NOW", "act-now"], WARM: ["WARM", "warm"], COLD: ["COLD", "cold"] };
+  const m = map[u] || [u, "cold"];
+  return `<span class="urg-chip ${m[1]}">${m[0]}</span>`;
+}
+function eventTag(l) {
+  const lab = l.event_type_label || l.event_type;
+  return lab ? `<span class="evt-tag">${lab}</span>` : "";
+}
+function wealthTag(l) {
+  const w = l.wealth_tier && l.wealth_tier.tier;
+  return w ? `<span class="wealth-tag t-${w.replace(/[^a-z]/gi,'').toLowerCase()}" title="estimated from public proxies">${w}</span>` : "";
+}
+function lapseBadge(l) {
+  if (!l.lapse || l.lapse.decile == null) return "";
+  const d = l.lapse.decile;
+  const cls = d <= 3 ? "low" : d <= 6 ? "mid" : "high";
+  return `<span class="lapse-badge ${cls}" title="${(l.lapse.note||'').replace(/"/g,'&quot;')}">Lapse ${d}/10</span>`;
+}
 function renderLeads(leads) {
   $("leadMeta").textContent = leads.length + " scored";
   let rows = leads.map(l => `
     <tr class="lead-row" id="row-${l.id}">
       <td><span class="expander" onclick="toggleLeadDetail('${l.id}')">▸</span></td>
       <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
-      <td><div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div><div class="lead-why">${l.why}</div></td>
+      <td>
+        <div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div>
+        <div class="lead-chips">${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}</div>
+        <div class="lead-why">${l.why}</div>
+      </td>
       <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
-      <td><button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button><br><button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Signed Brief</button></td>
+      <td>
+        <button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button>
+        <button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Signed Brief</button>
+        <div class="outcome-row">
+          <button class="oc-btn sold" onclick="logOutcome('${l.id}','sold',this)">Sold</button>
+          <button class="oc-btn meet" onclick="logOutcome('${l.id}','meeting',this)">Meeting</button>
+          <button class="oc-btn no" onclick="logOutcome('${l.id}','no',this)">No</button>
+        </div>
+      </td>
     </tr>
     <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`).join("");
   $("leadsWrap").innerHTML = `<table>
-    <thead><tr><th></th><th>Score</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Provenance</th></tr></thead>
+    <thead><tr><th></th><th>Score</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Provenance · Outcome</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
+}
+
+/* ---------- P0-6 adaptive conversion loop ---------- */
+async function logOutcome(leadId, outcome, btn) {
+  const row = btn ? btn.parentElement : null;
+  if (row) row.querySelectorAll("button").forEach(b => b.disabled = true);
+  try {
+    const r = await api("/api/outcome", { method: "POST", body: JSON.stringify({ lead_id: leadId, outcome }) });
+    if (btn) { btn.classList.add("logged"); btn.textContent = "✓ " + btn.textContent.replace("✓ ", ""); }
+    $("learnBadge").textContent = "🧠 " + r.message;
+    $("learnBadge").style.display = "";
+  } catch (e) {
+    if (row) row.querySelectorAll("button").forEach(b => b.disabled = false);
+    $("learnBadge").textContent = "✗ " + e.message;
+    $("learnBadge").style.display = "";
+  }
 }
 
 function toggleLeadDetail(id, forceOpen) {
@@ -150,8 +202,21 @@ function renderLeadDetail(l) {
   }).join("");
   const moments = (l.moments||[]).map(m =>
     `<div class="moment"><span class="mdot"></span><div><span class="msrc">${m.source}</span> — ${m.label}</div></div>`).join("");
+  const wt = l.wealth_tier || {}, lp = l.lapse || {};
+  const wsig = (wt.signals||[]).map(s => `<li>${s}</li>`).join("");
+  const lfac = (lp.factors||[]).map(s => `<li>${s}</li>`).join("");
+  const adv = `<div class="detail-sec"><h4>Advisory tiers (public-proxy estimates)</h4>
+    <div class="adv-grid">
+      <div class="adv-box"><div class="adv-h">Wealth tier</div><div class="adv-v">${wt.tier||'—'}</div>
+        <div class="adv-note">${wt.basis||'estimated from public proxies'}</div><ul class="adv-list">${wsig}</ul></div>
+      <div class="adv-box"><div class="adv-h">Lapse decile</div><div class="adv-v">${lp.decile!=null?lp.decile+'/10':'—'}</div>
+        <div class="adv-note">${lp.interpretation||''} · advisory, NOT FCRA</div><ul class="adv-list">${lfac}</ul></div>
+    </div>
+    <div class="adv-foot">Event type: <strong>${l.event_type_label||l.event_type||'—'}</strong> · Urgency: <strong>${l.urgency||'—'}</strong> · observed ${l.hours_since!=null?l.hours_since+'h ago':'—'}</div>
+  </div>`;
   return `<div class="detail-inner">
     <div class="detail-sec"><h4>Why this lead (transparent score)</h4>${axes}</div>
+    ${adv}
     <div class="detail-sec"><h4>Predictive moments · public sources</h4>${moments}</div>
     <div class="nba-box"><div class="act">▶ Next best action: ${l.nba.action}</div><div class="tt">“${l.nba.talk_track}”</div></div>
   </div>`;
@@ -329,10 +394,31 @@ async function openModel() {
       </div>
       <div style="font-size:12px;color:var(--muted);margin-top:12px">Appointments model: ${m.appt_model}</div>
       <div style="font-size:12.5px;color:var(--navy);font-weight:600;margin-top:12px;background:#fbf7ec;border-left:3px solid var(--gold);padding:10px 12px;border-radius:6px">${m.governance}</div>
+      ${renderModelAdvisory(m)}
       <div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">${m.doctrine}</div>`;
   } catch (e) {
     $("modelBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
   }
+}
+
+function renderModelAdvisory(m) {
+  const blocks = [];
+  const u = m.urgency_window, r = u && u.rationale;
+  if (u) blocks.push(`<div class="adv-card"><div class="adv-card-h">⏱ Urgency window (48h / 14d)</div>
+    <div class="adv-card-b">ACT_NOW &lt;48h · WARM ≤14d · COLD &gt;14d, derived from the Λ time-decay age.
+    ${r ? `<br><em>${r.finding||''}</em> — <a href="${r.url}" target="_blank" rel="noopener">${r.source||'LexisNexis'}</a> (advisory).` : ''}</div></div>`);
+  if (m.wealth_tier) blocks.push(`<div class="adv-card"><div class="adv-card-h">💠 Wealth tier</div>
+    <div class="adv-card-b">${(m.wealth_tier.tiers||[]).join(' · ')}. ${m.wealth_tier.basis||''}.
+    <strong>${m.wealth_tier.honest||'estimated from public proxies'}.</strong></div></div>`);
+  if (m.lapse_decile) blocks.push(`<div class="adv-card"><div class="adv-card-h">📉 Lapse decile</div>
+    <div class="adv-card-b">${m.lapse_decile.scale||''}. ${m.lapse_decile.basis||''}.
+    <strong>${m.lapse_decile.note||'Advisory — NOT FCRA.'}</strong></div></div>`);
+  if (m.life_event_taxonomy) blocks.push(`<div class="adv-card"><div class="adv-card-h">🧬 Typed life-event taxonomy (${m.life_event_taxonomy.count})</div>
+    <div class="adv-card-b">${(m.life_event_taxonomy.events||[]).map(e => `<span class="evt-tag ${e.sourceable?'':'unsourced'}" title="${e.public_source||''}">${e.label}</span>`).join(' ')}
+    <br><em>${m.life_event_taxonomy.doctrine||''}</em></div></div>`);
+  if (m.adaptive_loop) blocks.push(`<div class="adv-card"><div class="adv-card-h">🧠 Adaptive conversion loop</div>
+    <div class="adv-card-b">${m.adaptive_loop.endpoint}. ${m.adaptive_loop.effect}. <strong>${m.adaptive_loop.honest||''}</strong></div></div>`);
+  return blocks.length ? `<div class="adv-cards">${blocks.join('')}</div>` : "";
 }
 
 /* ---------- territory map ---------- */
@@ -421,6 +507,18 @@ async function loadPulse() {
 }
 
 /* ---------- V8 Signed 4-Part Brief (formula-grounded, khipu-witnessed) ---------- */
+let BRIEF_ANGLES = {};
+function copyAngle(key, btn) {
+  const text = BRIEF_ANGLES[key] || "";
+  const done = () => { if (btn) { const o = btn.textContent; btn.textContent = "✓ copied"; btn.classList.add("copied"); setTimeout(() => { btn.textContent = o; btn.classList.remove("copied"); }, 1400); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => { fallbackCopy(text); done(); });
+  } else { fallbackCopy(text); done(); }
+}
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); } catch (e) {} document.body.removeChild(ta);
+}
 async function openBrief(leadId) {
   $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
     <button class="mclose" onclick="closeModal()">✕ Close</button>
@@ -428,16 +526,34 @@ async function openBrief(leadId) {
     <div class="mbody" id="briefBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
   try {
     const b = await api("/api/brief/" + leadId);
+    BRIEF_ANGLES = {};
     const parts = (b.parts || []).map(p => {
       const v = p.formula_verdict || {};
       const allow = v.allow;
+      let angleHtml = "";
+      if (p.key === "OPENING_LINE" && p.angles && p.angles.length) {
+        angleHtml = `<div class="angles">` + p.angles.map((a, i) => {
+          const key = leadId + "_" + i; BRIEF_ANGLES[key] = a.line;
+          return `<div class="angle">
+            <div class="angle-head"><span class="angle-rank">#${a.rank}</span><span class="angle-label">${a.label}</span>
+              <button class="copy-btn" onclick="copyAngle('${key}',this)">⧉ copy</button></div>
+            <div class="angle-line">${a.line}</div></div>`;
+        }).join("") + `</div>`;
+      }
       return `<div class="bp">
         <div class="bp-title">${p.title}
           <span class="vchip ${allow ? 'allow' : 'deny'}">${allow ? '✓ ' + (v.formula||'') : '✗ ' + (v.formula||'')}</span></div>
-        <div class="bp-body">${p.body || ''}</div>
+        <div class="bp-body">${(p.key === "OPENING_LINE" && angleHtml) ? '3 ranked angles — keyed to ' + (b.event_type_label||b.event_type||'event') : (p.body || '')}</div>
+        ${angleHtml}
         <div class="bp-formula">grounded by <code>${v.leanTheorem || v.formula || 'formula'}</code> · λ-score ${v.lambdaScore ?? '—'}</div>
       </div>`;
     }).join("");
+    const wt = b.wealth_tier || {}, lp = b.lapse || {};
+    const tiers = `<div class="brief-tiers">
+      ${b.urgency ? `<span class="urg-chip ${b.urgency==='ACT_NOW'?'act-now':b.urgency==='WARM'?'warm':'cold'}">${b.urgency.replace('_',' ')}</span>` : ''}
+      ${wt.tier ? `<span class="wealth-tag" title="estimated from public proxies">${wt.tier}</span>` : ''}
+      ${lp.decile!=null ? `<span class="lapse-badge ${lp.decile<=3?'low':lp.decile<=6?'mid':'high'}" title="advisory, NOT FCRA">Lapse ${lp.decile}/10</span>` : ''}
+    </div>`;
     const c = b.consensus || {};
     const consensus = `<div class="consensus-bar">
       <span class="k">${c.khipu_consensus || '0-of-4'}</span>
@@ -446,6 +562,7 @@ async function openBrief(leadId) {
     const ground = b.grounding || {};
     $("briefBody").innerHTML = `
       <div style="font-size:13px;color:var(--muted);margin-bottom:6px">${b.lead_name || ''} · Λ ${b.score} · ${b.bucket}</div>
+      ${tiers}
       ${parts}
       ${consensus}
       <div style="font-size:11px;color:var(--muted);margin-top:10px">${ground.note || ''}</div>

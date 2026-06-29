@@ -9,6 +9,54 @@
     "governance_verdict": "PASS \u2014 public-data-only, honest by design"
   },
   "L1_lambda_87_2": true,
+  "p0_gapfill": {
+    "L1_enrichment": {
+      "event_type": "new_baby",
+      "event_type_label": "New baby",
+      "urgency": "ACT_NOW",
+      "hours_since": 0.0,
+      "wealth_tier": "Mass-Affluent",
+      "lapse_decile": 5
+    },
+    "top_lead_is_L1": true,
+    "taxonomy_events": 14,
+    "brief_L1_angles": 3,
+    "brief_L1_angle_keys": [
+      "family-coverage",
+      "income-replacement",
+      "college-headstart"
+    ],
+    "outcome_loop": {
+      "ok": true,
+      "lake_grew": true,
+      "message": "learning from 1 logged outcomes"
+    },
+    "outcome_receipt": {
+      "organ": "conversion-loop",
+      "decision": "outcome-logged",
+      "event_type": "new_baby",
+      "outcome": "sold"
+    },
+    "work_event_type": "permit_filed",
+    "model_advisory": {
+      "lexisnexis_14x": true,
+      "wealth_public_proxy_note": true,
+      "lapse_fcra": false,
+      "adaptive_loop": true
+    },
+    "screenshots": {
+      "desktop_overflowX": 0,
+      "mobile_overflowX": 0,
+      "files": [
+        "/tmp/dlv8_desktop.png",
+        "/tmp/dlv8_mobile.png",
+        "/tmp/dlv8_brief.png",
+        "/tmp/dlv8_blackbox.png"
+      ],
+      "app_js_errors": 0,
+      "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
+    }
+  },
   "pulse_static": {
     "states": 16,
     "top": "CT",

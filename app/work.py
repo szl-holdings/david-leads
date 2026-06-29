@@ -206,6 +206,7 @@ def run_territory_pulse(meta: Optional[dict] = None, config: Optional[dict] = No
         # change-event: a state transition → mint a khipu 3-of-4 witnessed receipt
         event_body = {
             "kind": "territory-pulse-change-event",
+            "event_type": "permit_filed",  # P0-1: seaboard feeds are permit/license/filing counts
             "loop_step": index,
             "age_minutes": round(age, 3),
             "avg_score": round(avg, 4),
@@ -220,6 +221,7 @@ def run_territory_pulse(meta: Optional[dict] = None, config: Optional[dict] = No
             "id": "evt_" + action_hash[:16],
             "organ": "ouroboros",
             "decision": "pulse-step",
+            "event_type": "permit_filed",  # P0-1: typed taxonomy on lake events
             "action_hash": action_hash,
             "payload": event_body,
             "consensus": consensus,

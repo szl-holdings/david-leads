@@ -36,6 +36,10 @@ try:
     from . import consensus as cs
 except Exception:  # pragma: no cover
     cs = None
+try:
+    from . import events as ev
+except Exception:  # pragma: no cover
+    ev = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -154,12 +158,14 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         "items": [{"id": l["id"], "name": l["name"], "score": l["score"], "bucket": l["bucket"],
                    "product": l["product"], "action": l["nba"]["action"]} for l in top],
     }
+    learning = ev.outcome_summary() if ev is not None else {"total_outcomes": 0}
     return {
         "meta": meta,
         "signals": sigs,
         "leads": leads,
         "kpi": sc.kpi_summary(leads),
         "brief": brief,
+        "learning": learning,  # P0-6: in-session adaptive conversion signal
         "governance": {
             "signals_checked": meta["total_signals"],
             "all_public": meta["rejected_nonpublic"] == 0,
@@ -306,6 +312,61 @@ def work(req: WorkReq, authorization: str | None = Header(default=None)):
         "events": out["events"],
         "loop_receipt": out["loop_receipt"],
         "lake_size": lake.size() if lake is not None else None,
+    }
+
+
+class OutcomeReq(BaseModel):
+    lead_id: str
+    outcome: str  # "meeting" | "sold" | "no"
+
+
+@app.post("/api/outcome")
+def outcome(req: OutcomeReq, authorization: str | None = Header(default=None)):
+    """V8 P0-6 adaptive conversion loop: log a real-world outcome for a lead, append a signed
+    outcome receipt to the append-only receipt lake, and nudge the per-event_type propensity for
+    future runs. Honest: in-session learning signal; durable only when SZL_RECEIPT_LAKE_PATH set."""
+    _auth(authorization)
+    if ev is None:
+        raise HTTPException(503, "outcome learning unavailable")
+    outcome_val = (req.outcome or "").lower().strip()
+    if outcome_val not in ev.VALID_OUTCOMES:
+        raise HTTPException(422, f"outcome must be one of {ev.VALID_OUTCOMES}")
+    lead = next((l for l in _STATE.get("leads", []) if l["id"] == req.lead_id), None)
+    event_type = (lead or {}).get("event_type") or (ev.classify((lead or {}).get("event", "")) if lead else "unknown")
+    summary = ev.record_outcome(event_type, outcome_val)
+    # signed, hash-chained outcome receipt -> append-only lake (durable if SZL_RECEIPT_LAKE_PATH)
+    receipt_id = None
+    receipt_signed = False
+    try:
+        pseudo = {
+            "id": "outcome_" + req.lead_id,
+            "name": (lead or {}).get("name", req.lead_id),
+            "bucket": outcome_val.upper(),
+            "product": "adaptive-conversion-outcome",
+        }
+        sigs_used = [{"source": "agent-logged outcome", "signal": f"{event_type}:{outcome_val}", "public": True}]
+        receipt = rc.make_receipt(pseudo, sigs_used, 100.0 if outcome_val == "sold" else 50.0 if outcome_val == "meeting" else 0.0)
+        receipt["organ"] = "conversion-loop"
+        receipt["decision"] = "outcome-logged"
+        receipt["event_type"] = event_type
+        receipt["outcome"] = outcome_val
+        receipt_id = receipt["id"]
+        receipt_signed = receipt["signed"]
+        _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+        if lake is not None:
+            lake.append(receipt)
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "lead_id": req.lead_id,
+        "event_type": event_type,
+        "outcome": outcome_val,
+        "receipt_id": receipt_id,
+        "receipt_signed": receipt_signed,
+        "learning": summary,
+        "lake_size": lake.size() if lake is not None else None,
+        "message": f"learning from {summary['total_outcomes']} logged outcomes",
     }
 
 

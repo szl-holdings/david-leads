@@ -255,7 +255,60 @@ def model_card() -> dict:
         },
         "doctrine": "honest by design · open methodology · cryptographically receipted · "
                     "Λ uniqueness is Conjecture 1 (OPEN) · DOI 10.5281/zenodo.20434308 · Open the Black Box",
+        "life_event_taxonomy": _taxonomy_card(),
+        "urgency_window": {
+            "tiers": {"ACT_NOW": "< 48h since trigger", "WARM": "<= 14 days", "COLD": "> 14 days"},
+            "derived_from": "the Λ time-decay age (hours_since)",
+            "rationale": _lexisnexis_card(),
+        },
+        "wealth_tier": {
+            "tiers": ["Mass", "Mass-Affluent", "Affluent", "HNW"],
+            "basis": "estimated from PUBLIC proxies (Census ACS income, matched product propensity, "
+                     "IRS SOI income-by-ZIP density, SEC EDGAR insider status where applicable)",
+            "honest": "estimated from public proxies — not a verified net-worth figure",
+            "advisory": True,
+        },
+        "lapse_decile": {
+            "scale": "1–10 (lower decile = higher retention)",
+            "basis": "PUBLIC proxies: address/permit churn, business-formation volatility, BLS unemployment",
+            "advisory": True,
+            "fcra": False,
+            "note": "Advisory prioritization only — NOT an FCRA consumer report or eligibility decision.",
+        },
+        "opening_angles": {
+            "count": 3,
+            "method": "deterministic per-event_type templates grounded by the a11oy summation-invariant "
+                      "formula and witness-signed — NOT a free-form LLM guess",
+        },
+        "adaptive_loop": {
+            "endpoint": "POST /api/outcome {lead_id, outcome: meeting|sold|no}",
+            "effect": "bounded ±0.05 per-event_type propensity nudge on future runs (in-session learning)",
+            "persistence": "durable only when SZL_RECEIPT_LAKE_PATH is set; otherwise in-memory + signed receipt",
+            "honest": "clearly an in-session learning signal, never a hidden model",
+        },
     }
+
+
+def _taxonomy_card():
+    """Typed 14-event taxonomy disclosure (sourceable flags) for the black-box panel."""
+    try:
+        from . import events as ev
+        return {
+            "count": len(ev.TAXONOMY),
+            "events": ev.taxonomy_view(),
+            "doctrine": "unsourceable events (marriage/divorce/death/inheritance/business_closure) are "
+                        "emitted ONLY on a real public signal (probate/vital/dissolution) — never fabricated",
+        }
+    except Exception:
+        return {"count": 0, "events": []}
+
+
+def _lexisnexis_card():
+    try:
+        from . import events as ev
+        return ev.LEXISNEXIS_14X
+    except Exception:
+        return {"advisory": True}
 
 
 def bucket_for(score: float) -> str:
@@ -303,6 +356,11 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
     fresh_daily = meta.get("fresh_daily", 0)
     fresh_events = {"home_purchase", "job_change", "new_professional"} if fresh_daily else set()
     now_iso = datetime.now(timezone.utc).isoformat()
+    # P0-6: optional in-session learning nudge on product_propensity (bounded, honest)
+    try:
+        from . import events as ev
+    except Exception:
+        ev = None
     leads = []
     for p in PROSPECTS:
         axes = dict(p["axes"])
@@ -313,6 +371,14 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
         # V8 time-decay: erode recency by age since the trigger was observed
         recency_eff = decayed_recency(recency_base, age_minutes)
         axes["recency"] = recency_eff
+        # P0-6: adaptive conversion loop — nudge product_propensity from logged outcomes
+        if ev is not None:
+            try:
+                nudge = ev.propensity_nudge(ev.classify(p["event"]))
+                if nudge:
+                    axes["product_propensity"] = min(1.0, max(0.0, axes["product_propensity"] + nudge))
+            except Exception:
+                pass
         score = lambda_score(axes)
         product, why = PRODUCT_MAP[p["event"]]
         leads.append({
@@ -330,7 +396,16 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
             "moments": [{"source": s, "label": t} for s, t in MOMENTS_MAP[p["event"]]],
             "nba": NBA_MAP[p["event"]],
         })
-    leads.sort(key=lambda x: x["score"], reverse=True)
+    # P0-1/2/3/4: enrich each lead with event_type, urgency window, wealth tier, lapse decile
+    if ev is not None:
+        for lead in leads:
+            ev.enrich_lead(lead, meta)
+    # Sort HOT + ACT_NOW to the very top, then by score (P0-2 surfacing requirement)
+    def _rank(l: dict[str, Any]):
+        hot = 1 if l.get("bucket") == "HOT" else 0
+        act_now = 1 if l.get("urgency") == "ACT_NOW" else 0
+        return (hot and act_now, l.get("score", 0.0))
+    leads.sort(key=_rank, reverse=True)
     return leads
 
 

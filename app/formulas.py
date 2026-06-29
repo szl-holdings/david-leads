@@ -181,13 +181,23 @@ def build_signed_brief(lead: Dict[str, Any]) -> Dict[str, Any]:
         v_whynow = eval_false_position({"x1": 0, "y1": -2, "x2": 4, "y2": 2, "T": 0}, {"tolerance": 1.0})
         why_body = f"Fresh signal — engage while Λ {score} is current."
 
-    # --- Part 3 OPENING-LINE: summation_invariant — the brief's parts form a coherent whole ---
-    parts_values = [1, 1, 1, 1]  # 4 cords, one per brief part
+    # --- Part 3 OPENING-LINE: 3 ranked angles keyed to event_type, grounded by summation_invariant ---
+    # P0-5: deterministic per-event templates (NOT a free-form LLM guess), one cord per angle.
+    try:
+        from . import events as ev
+        event_type = lead.get("event_type") or ev.classify(lead.get("event", ""))
+        angles = ev.opening_angles(event_type, lead)
+    except Exception:
+        event_type = lead.get("event_type", "")
+        angles = [{"rank": 1, "key": "review", "label": "Coverage review",
+                   "line": nba.get("talk_track") or
+                   f"Congratulations — this is exactly the right moment to review your {lead.get('product','')}."}]
+    angle_values = [1] * max(1, len(angles))  # one cord per ranked angle
     v_open = eval_summation_invariant(
-        {"khipuId": lead.get("id", ""), "primaryCord": sum(parts_values),
-         "organs": [{"decisions": [{"value": pv}]} for pv in parts_values]})
-    opening_line = nba.get("talk_track") or (
-        f"Congratulations — this is exactly the right moment to review your {lead.get('product','')}.")
+        {"khipuId": lead.get("id", ""), "primaryCord": sum(angle_values),
+         "organs": [{"decisions": [{"value": pv}]} for pv in angle_values]})
+    opening_line = angles[0]["line"] if angles else (
+        nba.get("talk_track") or f"Congratulations — this is the right moment to review your {lead.get('product','')}.")
 
     # --- Part 4 SENSITIVITY: false_position — how sensitive is the score to a 1-axis shift? ---
     try:
@@ -213,7 +223,7 @@ def build_signed_brief(lead: Dict[str, Any]) -> Dict[str, Any]:
         {"key": "WHY_NOW", "title": "Why now", "body": why_body,
          "formula_verdict": _verdict_view(v_whynow)},
         {"key": "OPENING_LINE", "title": "Opening line", "body": opening_line,
-         "formula_verdict": _verdict_view(v_open)},
+         "angles": angles, "formula_verdict": _verdict_view(v_open)},
         {"key": "SENSITIVITY", "title": "Sensitivity", "body": sens_body,
          "formula_verdict": _verdict_view(v_sens)},
     ]
@@ -222,6 +232,13 @@ def build_signed_brief(lead: Dict[str, Any]) -> Dict[str, Any]:
         "lead_id": lead.get("id"), "lead_name": lead.get("name"),
         "score": score, "bucket": bucket,
         "freshness_state": lead.get("freshness_state", ""),
+        # P0-2/3/4: surface the advisory tiers on the signed brief too (honest, public-proxy)
+        "event_type": lead.get("event_type", ""),
+        "event_type_label": lead.get("event_type_label", ""),
+        "urgency": lead.get("urgency", ""),
+        "hours_since": lead.get("hours_since"),
+        "wealth_tier": lead.get("wealth_tier"),
+        "lapse": lead.get("lapse"),
         "parts": parts,
         "grounding": {
             "engine": "a11oy Formulas (ported 1:1)",
@@ -235,7 +252,8 @@ def build_signed_brief(lead: Dict[str, Any]) -> Dict[str, Any]:
     try:
         from . import consensus as cs
         ah = cs.action_hash_for({"lead_id": brief["lead_id"],
-                                 "parts": [{"k": p["key"], "b": p["body"]} for p in parts]})
+                                 "parts": [{"k": p["key"], "b": p["body"]} for p in parts],
+                                 "angles": [a.get("line", "") for a in angles]})
         brief["consensus"] = cs.witness_event(ah)
     except Exception:
         brief["consensus"] = {"khipu_consensus": "0-of-4", "signed": False,
