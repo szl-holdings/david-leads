@@ -200,7 +200,51 @@
   "model": {
     "doi": "10.5281/zenodo.20434308",
     "uniqueness": "Conjecture 1 (OPEN)",
-    "has_conjecture1": true
+    "has_conjecture1": true,
+    "receptivity_advisory": true
+  },
+  "p1_gapfill": {
+    "modules_added": [
+      "app/liquidity.py", "app/wealth990.py", "app/permits.py",
+      "app/coverage.py", "app/benchmark.py"
+    ],
+    "run_enrichment": {
+      "all_leads_have_receptivity": true,
+      "all_leads_have_likely_gap": true,
+      "L1_receptivity": 72.0,
+      "L1_likely_gap": "education-funding gap",
+      "L1_lambda_unchanged_87_2": true
+    },
+    "endpoints": {
+      "GET /api/benchmark": {"by_event_type_rows": 8, "summary_keys": 7},
+      "GET /api/export.csv": {"http": 200, "rows_incl_header": 9, "data_rows": 8,
+        "header": "rank,id,name,event_type,score,bucket,urgency,wealth_tier,lapse_decile,receptivity,likely_gap,product,employer,liquidity,receipt_id,receipt_hash"},
+      "POST /api/webhook/test": {"ok": true, "sent": false, "reason": "no url supplied", "would_send_count": 8}
+    },
+    "live_probes": {
+      "SEC_form4_liquidity": {"employer": "Verizon Communications", "mode": "LIVE",
+        "cik": "0000732712", "recent_sells": 0, "latest_date": "2026-06-18",
+        "note": "real 200 from data.sec.gov; honest LIVE result (0 recent sells in window)"},
+      "propublica_990": {"name": "Robert Smith", "mode": "LIVE", "matches": 34,
+        "note": "real 200 from ProPublica Nonprofit Explorer"},
+      "pulse_live_states": 7
+    },
+    "regression": {
+      "brief_L1_parts": 4, "brief_L1_angles": 3, "brief_L1_consensus": "4-of-4",
+      "verify_brief_verdict": "VERIFIED", "pulse_live_states_ge_5": true
+    },
+    "frontend": {
+      "receptivity_meter": true, "likely_gap_chip": true, "liquidity_flag": true,
+      "producer_benchmark_panel": true, "export_csv_control": true, "push_to_crm_control": true,
+      "desktop_overflowX": 0, "mobile_overflowX": 0,
+      "files": [
+        "/tmp/dlv8p1_desktop.png", "/tmp/dlv8p1_mobile.png",
+        "/tmp/dlv8p1_benchmark.png", "/tmp/dlv8p1_crm.png", "/tmp/dlv8p1_blackbox.png"
+      ],
+      "app_js_errors": 0,
+      "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
+    },
+    "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; Λ stays Conjecture 1; receptivity is advisory and distinct from Λ"
   },
   "resilience": {
     "timeout_s": 12,
