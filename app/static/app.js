@@ -193,15 +193,45 @@ function liqWatch(q) {
     <div class="lw-foot">${q.note||'Employer-level public signal, not an individual assertion. [SAMPLE] if SEC unreachable.'}</div>
   </div>`;
 }
+/* FRONTIER trend chip (fused Kalman track: heating / cooling / steady) */
+function trendChip(l) {
+  const t = l.track; if (!t || !t.trend || t.trend === "none") return "";
+  const pct = Math.round((t.intensity != null ? t.intensity : 0) * 100);
+  const map = { heating: ["↑ heating", "heating"], cooling: ["↓ cooling", "cooling"], steady: ["→ steady", "steady"] };
+  const m = map[t.trend] || ["→ steady", "steady"];
+  const tip = ("Fused Prospect Track (ESTIMATE) · " + (t.method || "Kalman fusion") + " · n=" + (t.n_sources||1)).replace(/"/g,'&quot;');
+  return `<span class="trend-chip ${m[1]}" title="${tip}">${m[0]} · ${pct}%</span>`;
+}
+/* FRONTIER honest confidence line (ESTIMATE; width shrinks with public sources) */
+function confidenceLine(l) {
+  const c = l.confidence; if (!c) return "";
+  const n = c.n_sources || 1;
+  const src = n + " public source" + (n === 1 ? "" : "s");
+  return `<div class="conf-line" title="Honest band — width ∝ 1/√sources. Not a probability of correctness.">` +
+    `Score ${c.point} · CI ${c.lo}–${c.hi} · ${src} · <span class="est-tag">${c.label||"ESTIMATE"}</span></div>`;
+}
+/* FRONTIER Λ-gate BLOCKED badge (non-compensatory compliance) */
+function blockedBadge(l) {
+  if (!l.compliance || l.compliance.clear !== false) return "";
+  const reasons = (l.compliance.reasons || []).join(" · ").replace(/"/g,'&quot;');
+  return `<span class="blocked-badge" title="${reasons}">⛔ Λ-GATE BLOCKED</span>`;
+}
 function renderLeads(leads) {
   $("leadMeta").textContent = leads.length + " scored";
-  let rows = leads.map(l => `
-    <tr class="lead-row" id="row-${l.id}">
+  let rows = leads.map(l => {
+    const blocked = l.compliance && l.compliance.clear === false;
+    const scoreCell = blocked
+      ? `<span class="score-pill blocked"><s>${l.score_pre_gate!=null?l.score_pre_gate:''}</s> 0</span><br><span class="badge BLOCKED">BLOCKED</span>`
+      : `<span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span>`;
+    return `
+    <tr class="lead-row${blocked?' blocked-row':''}" id="row-${l.id}">
       <td><span class="expander" onclick="toggleLeadDetail('${l.id}')">▸</span></td>
-      <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
+      <td>${scoreCell}</td>
       <td>
         <div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div>
-        <div class="lead-chips">${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}${gapChip(l)}${liqFlag(l)}</div>
+        <div class="lead-chips">${blockedBadge(l)}${trendChip(l)}${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}${gapChip(l)}${liqFlag(l)}</div>
+        ${confidenceLine(l)}
+        ${l.demo_note?`<div class="demo-note">${l.demo_note}</div>`:''}
         ${wealthLadder(l.wealth_tier, true)}
         ${receptMeter(l)}
         <div class="lead-why">${l.why}</div>
@@ -217,7 +247,8 @@ function renderLeads(leads) {
         </div>
       </td>
     </tr>
-    <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`).join("");
+    <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`;
+  }).join("");
   $("leadsWrap").innerHTML = `<table>
     <thead><tr><th></th><th>Score</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Provenance · Outcome</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
@@ -827,6 +858,57 @@ async function loadRealLeads() {
       `<div class="real-wrap"><table class="real-table">
         <thead><tr><th>Business / Name</th><th>Category / Credential</th><th>Public Address</th>
           <th>Record date</th><th>Suggested NYL angle</th><th>Receipt · Source</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
+/* ---------- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) ---------- */
+function openWarn() {
+  const card = $("warnCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadWarn();
+}
+async function loadWarn() {
+  const body = $("warnBody"); if (!body) return;
+  const states = ($("warnStates") && $("warnStates").value || "NY,NJ,PA,MD,DE,CT").trim() || "NY,NJ,PA,MD,DE,CT";
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Fetching WARN Act layoff notices…</div>`;
+  try {
+    const d = await api("/api/warn-leads?states=" + encodeURIComponent(states));
+    const leads = d.leads || [];
+    if (!leads.length) {
+      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No WARN notices returned for ${escHtml(states)}.</div>`;
+      $("warnMeta").textContent = "";
+      return;
+    }
+    const rows = leads.map(l => {
+      const c = l.confidence || {};
+      const conf = c.point != null ? `Score ${c.point} · CI ${c.lo}–${c.hi} · <span class="est-tag">${escHtml(c.label||"ESTIMATE")}</span>` : "";
+      const modeCls = l.source_status === "live" ? "live" : "sample";
+      const cite = (l.source && l.source.url)
+        ? `<a class="real-cite" href="${escHtml(l.source.url)}" target="_blank" rel="noopener">${escHtml(l.source.label||"WARN portal")} ↗</a>`
+        : escHtml((l.source||{}).label || "");
+      const loc = [l.city, l.county ? l.county + " Co." : "", l.state].filter(Boolean).map(escHtml).join(", ");
+      return `<tr>
+        <td><div class="real-name">${escHtml(l.employer||"—")}</div>
+          <div class="real-sub"><span class="real-mode ${modeCls}">${escHtml((l.source_status||"").toUpperCase())}</span></div></td>
+        <td>${loc}</td>
+        <td style="text-align:center"><b>${escHtml(String(l.affected_count!=null?l.affected_count:"—"))}</b></td>
+        <td class="real-sub">${escHtml(l.coverage_loss_date||"—")}<div class="real-sub">notice ${escHtml(l.notice_date||"—")}</div></td>
+        <td><div class="real-angle">${escHtml(l.product||"")}</div>
+          <div class="real-why">${escHtml(l.angle||"")}</div>
+          <div class="conf-line">${conf}</div></td>
+        <td>${cite}</td>
+      </tr>`;
+    }).join("");
+    const ns = (d.sample_states||[]).length, nl = (d.live_states||[]).length;
+    $("warnMeta").textContent = `${d.count||leads.length} notices · ${nl} live state(s) · ${ns} sample state(s)`;
+    body.innerHTML =
+      `<div class="real-wrap"><table class="real-table">
+        <thead><tr><th>Employer</th><th>Location</th><th>Affected</th>
+          <th>Coverage-loss date</th><th>Product angle · confidence</th><th>Source</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
   } catch (e) {
     body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;

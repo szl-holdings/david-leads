@@ -416,9 +416,30 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .real-mode.sample{background:#fbeaea;color:#8a3a3a}
 .real-num{font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);white-space:nowrap}
 .real-zip{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
-/* Tax Territories + Opt-In panels (start hidden; reuse real-table styling) */
-#taxCard,#optinCard{display:none;margin-bottom:22px}
-#taxCard.show,#optinCard.show{display:block}
+/* Tax Territories + Opt-In + WARN panels (start hidden; reuse real-table styling) */
+#taxCard,#optinCard,#warnCard{display:none;margin-bottom:22px}
+#taxCard.show,#optinCard.show,#warnCard.show{display:block}
+/* FRONTIER UI — trend chip · honest confidence line · Λ-gate BLOCKED · demo note */
+.trend-chip{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;font-weight:800;
+  letter-spacing:.02em;white-space:nowrap}
+.trend-chip.heating{background:#fde2e0;color:#b3402e}
+.trend-chip.cooling{background:#e2eefb;color:#2f5fa0}
+.trend-chip.steady{background:#e8eef0;color:#4a5b6c}
+.conf-line{margin:5px 0 2px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.est-tag{display:inline-block;padding:1px 6px;border-radius:8px;background:#efe7cf;color:#7a5b12;
+  font-weight:800;font-size:10px;letter-spacing:.05em}
+.blocked-badge{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:900;
+  letter-spacing:.03em;background:#7a0d0d;color:#fff;white-space:nowrap}
+.score-pill.blocked{color:#7a0d0d;font-weight:900}
+.score-pill.blocked s{color:var(--muted);font-weight:600;margin-right:3px}
+.badge.BLOCKED{background:#7a0d0d;color:#fff}
+.lead-row.blocked-row{opacity:.78}
+.demo-note{margin:5px 0;font-size:11px;color:#7a5b12;background:#fbf4df;border-left:3px solid var(--gold);
+  padding:5px 9px;border-radius:0 6px 6px 0;line-height:1.35}
+.frontier-note{margin:0 0 16px;padding:11px 15px;border-radius:10px;background:#f1f5f6;
+  border:1px solid #d9e2e4;color:#3a4b5a;font-size:12.5px;line-height:1.5}
+.frontier-note strong{color:var(--teal)}
+.frontier-note .est-tag{margin:0 2px}
 .tax-sub-h{margin:4px 18px 6px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal)}
 .optin-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:0 18px 18px}
 .optin-form{display:flex;flex-direction:column;gap:11px}
@@ -496,6 +517,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
       <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
       <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Prospects</button>
+      <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ WARN Layoffs</button>
       <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Tax Territories</button>
       <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
@@ -504,6 +526,16 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     </div>
 
     <div class="ticker" id="tickerBar"></div>
+
+    <div class="frontier-note" id="frontierNote">
+      <strong>Frontier:</strong> each lead now carries a <strong>fused Prospect Track</strong>
+      (↑ heating / ↓ cooling / → steady, a Kalman <span class="est-tag">ESTIMATE</span> over public
+      signals), an <strong>honest confidence band</strong> (CI widens with fewer corroborating public
+      sources, always <span class="est-tag">ESTIMATE</span>), and a non-compensatory
+      <strong>Λ-gate</strong> that structurally zeroes any DNC / deceased / opt-out record
+      (<span class="blocked-badge" style="font-size:9px;padding:1px 6px">⛔ Λ-GATE BLOCKED</span>).
+      Public-data-only · Λ uniqueness stays Conjecture 1 (open) · nothing fabricated.
+    </div>
 
     <!-- V8 Territory Pulse — color-coded seaboard coverage map -->
     <div class="card" id="pulseCard">
@@ -574,6 +606,26 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
         <span class="hint" id="realHint" style="margin-left:auto"></span>
       </div>
       <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
+    </div>
+
+    <!-- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) -->
+    <div class="card" id="warnCard">
+      <h3>⚠️ WARN Layoffs — Coverage-Cliff Prospects <span class="sec-title-meta" id="warnMeta"></span></h3>
+      <div class="real-banner" id="warnBanner">
+        Public WARN Act notices (state Departments of Labor). A 60-day layoff notice is a known
+        <strong>coverage-cliff date</strong> — position ACA / short-term / COBRA-alternative coverage
+        before employer benefits lapse. Rows labelled <strong>SAMPLE</strong> use illustrative
+        placeholder employers on the real WARN schema (no live feed in-sandbox) — never presented as
+        live-verified. Each cites its official state WARN portal. Public-data-only, ESTIMATE bands.
+      </div>
+      <div class="real-tools">
+        <label class="real-states">States:
+          <input type="text" id="warnStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="warnReload" onclick="loadWarn()">↻ Refresh</button>
+        <span class="hint" id="warnHint" style="margin-left:auto"></span>
+      </div>
+      <div id="warnBody"><div style="padding:20px;color:var(--muted)">Loading WARN notices…</div></div>
     </div>
 
     <!-- Opt-In Capture — TCPA-safe express-consent form + consented-leads list -->
