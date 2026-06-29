@@ -131,27 +131,44 @@
       "SENSITIVITY"
     ],
     "consensus": "4-of-4",
-    "signed": true,
-    "receipt_id": "rcpt_478a4ea8ebb11cfd"
+    "signed": false,
+    "receipt_id": "rcpt_458877e1aefe606a"
   },
   "verify_brief": {
     "verdict": "VERIFIED"
   },
   "work": {
     "exitReason": "budgetExhausted",
-    "stepsRun": 6,
-    "earliestSafeExit": 2,
-    "events": 6,
+    "stepsRun": 8,
+    "earliestSafeExit": 3,
+    "events": 8,
     "lambda_null": true,
-    "lake_size": 7
+    "lake_size": 9
   },
   "lake": {
-    "size": 7,
-    "count": 7
+    "size": 9,
+    "count": 9
   },
   "model": {
     "doi": "10.5281/zenodo.20434308",
-    "uniqueness": "Conjecture 1 (OPEN \u2014 CAUCHY_ND sorry + missing symmetry axiom; NOT a theorem)",
+    "uniqueness": "Conjecture 1 (OPEN)",
     "has_conjecture1": true
+  },
+  "resilience": {
+    "timeout_s": 12,
+    "retry": "1 backoff",
+    "concurrent_workers": 6,
+    "overall_budget_s": 20,
+    "last_good_cache": "failed refetch served as 'LIVE (cached <ts>)' when a prior real count exists; else honest [SAMPLE]",
+    "live_or_cached_states": [
+      "CT",
+      "DE",
+      "DC",
+      "NY",
+      "VA",
+      "MD",
+      "NJ"
+    ],
+    "live_or_cached_count": 7
   }
 }

@@ -24,13 +24,48 @@ ME/NH are carried as honest GAP states for seaboard completeness.
 from __future__ import annotations
 
 import json
+import time
+import threading
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, date
 from typing import Any, Optional
 
 UA = {"User-Agent": "SZL-David-Leads research@szlholdings.com"}
-TIMEOUT = 6
+# Operational reliability: HF Space egress to state portals is slower than the sandbox, so the
+# 6s default timed every feed out. 12s + one backoff retry recovers the slow-but-real feeds.
+TIMEOUT = 12
+RETRY_BACKOFF = 1.5  # seconds between the single retry attempt
+
+# ---------------------------------------------------------------- last-good cache
+# Honest resilience: when a feed previously returned a REAL public-data count but a later refetch
+# times out, we serve the prior real count labelled "LIVE (cached <ts>)" instead of dropping to
+# [SAMPLE]. It WAS real public data; the timestamp discloses its age. We only fall to SAMPLE when
+# there is no prior good value to stand on. Never a fabricated count.
+LAST_GOOD: dict[str, dict[str, Any]] = {}
+_LAST_GOOD_LOCK = threading.Lock()
+
+
+def _store_good(key: str, count: int) -> None:
+    with _LAST_GOOD_LOCK:
+        LAST_GOOD[key] = {"count": int(count), "ts": datetime.now(timezone.utc).isoformat(),
+                          "mode": "LIVE"}
+
+
+def _get_good(key: str) -> Optional[dict[str, Any]]:
+    with _LAST_GOOD_LOCK:
+        v = LAST_GOOD.get(key)
+        return dict(v) if v else None
+
+
+def _retry(fn, *args, **kwargs):
+    """Call fn once; on any network/HTTP error wait RETRY_BACKOFF and try exactly one more time."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception:
+        time.sleep(RETRY_BACKOFF)
+        return fn(*args, **kwargs)
 
 # ---------------------------------------------------------------- date hygiene
 _MIN_DATE = date(2015, 1, 1)
@@ -97,9 +132,11 @@ def socrata_query(domain: str, dataset: str, where: Optional[str] = None,
 
 def socrata_count(domain: str, dataset: str, where: Optional[str] = None,
                   timeout: int = TIMEOUT) -> int:
-    """Return COUNT(*) for a Socrata dataset (optionally windowed by `where`)."""
-    rows = socrata_query(domain, dataset, where=where, select="count(*) as n",
-                         limit=1, timeout=timeout)
+    """Return COUNT(*) for a Socrata dataset (optionally windowed by `where`).
+
+    Resilient: one backoff retry on timeout/HTTPError before the caller falls back."""
+    rows = _retry(socrata_query, domain, dataset, where=where, select="count(*) as n",
+                  limit=1, timeout=timeout)
     if rows:
         for key in ("n", "count", "count_1", "count_*"):
             if key in rows[0]:
@@ -131,13 +168,15 @@ def arcgis_query(url: str, where: str = "1=1", out_fields: str = "*",
 
 
 def arcgis_count(url: str, where: str = "1=1", timeout: int = TIMEOUT) -> int:
-    """Return returnCountOnly count for an ArcGIS FeatureServer layer."""
+    """Return returnCountOnly count for an ArcGIS FeatureServer layer.
+
+    Resilient: one backoff retry on timeout/HTTPError before the caller falls back."""
     params = {"where": where, "returnCountOnly": "true", "f": "json"}
     full = url.rstrip("/")
     if not full.endswith("/query"):
         full += "/query"
     full += "?" + urllib.parse.urlencode(params)
-    data = _get_json(full, timeout=timeout)
+    data = _retry(_get_json, full, timeout=timeout)
     if isinstance(data, dict):
         if data.get("error"):
             raise RuntimeError(f"ArcGIS error: {data['error']}")
@@ -290,15 +329,25 @@ def coverage(state: str, days_back: int = 90, timeout: int = TIMEOUT) -> dict[st
             if p.get("field"):
                 where = f"{p['field']} >= '{win_start.isoformat()}T00:00:00'"
             count = socrata_count(p["domain"], p["dataset"], where=where, timeout=timeout)
+            _store_good(state, count)
             base.update(mode="LIVE", count=int(count),
                         label=f"{p['name']} — {count:,} records (LIVE, window ≥ {win_start.isoformat()})")
             return base
         if p["kind"] == "arcgis":
             count = arcgis_count(p["url"], where="1=1", timeout=timeout)
+            _store_good(state, count)
             base.update(mode="LIVE", count=int(count),
                         label=f"{p['name']} — {count:,} features (LIVE ArcGIS probe)")
             return base
-    except Exception as e:  # noqa: BLE001 — any probe failure → honest [SAMPLE]
+    except Exception as e:  # noqa: BLE001 — probe failed: serve last-good real count, else honest [SAMPLE]
+        cached = _get_good(state)
+        if cached:
+            ts = cached["ts"]
+            base.update(mode=f"LIVE (cached {ts})", count=int(cached["count"]), cached=True,
+                        cached_ts=ts,
+                        label=f"{p['name']} — {cached['count']:,} (LIVE cached {ts}; refetch "
+                              f"{type(e).__name__})")
+            return base
         base.update(mode="SAMPLE", count=None,
                     label=f"{p['name']} [SAMPLE] — live probe unavailable "
                           f"({type(e).__name__}); baseline richness {p.get('richness', 0.0)}",
@@ -349,6 +398,27 @@ def territory_pulse(states: list[str] | None = None, live: bool = False,
         states = REGIONS[region.upper()]
     target = states or _all_states()
 
+    # Concurrent live probing: 13 serial probes at 12s each would blow past any request budget,
+    # so fan out across a small thread pool with an overall wall-clock budget. Each per-feed
+    # failure still falls back gracefully (last-good cache or [SAMPLE]) inside coverage().
+    cov_map: dict[str, dict[str, Any]] = {}
+    if live:
+        probe_states = [s for s in target
+                        if STATE_PORTALS.get(s) and not _is_gap(STATE_PORTALS[s])]
+        if probe_states:
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                futs = {ex.submit(coverage, st): st for st in probe_states}
+                try:
+                    for fut in as_completed(futs, timeout=20):
+                        st = futs[fut]
+                        try:
+                            cov_map[st] = fut.result()
+                        except Exception:  # noqa: BLE001 — defensive; coverage() handles its own errors
+                            pass
+                except TimeoutError:
+                    # overall budget hit: states without a result stay STATIC (honest, not fabricated)
+                    pass
+
     rows = []
     for st in target:
         p = STATE_PORTALS.get(st)
@@ -362,14 +432,15 @@ def territory_pulse(states: list[str] | None = None, live: bool = False,
         cov_label = None
         cov_count = None
         if live and not gap:
-            cov = coverage(st)
-            mode = cov["mode"]
-            cov_label = cov["label"]
-            cov_count = cov.get("count")
-            if cov["mode"] == "LIVE" and cov_count is not None:
-                # log-scale a real recent count into a [0,1] activity term (disclosed)
-                import math as _m
-                activity = max(0.0, min(_m.log10(cov_count + 1) / 5.0, 1.0))
+            cov = cov_map.get(st)
+            if cov is not None:
+                mode = cov["mode"]
+                cov_label = cov["label"]
+                cov_count = cov.get("count")
+                if str(cov["mode"]).startswith("LIVE") and cov_count is not None:
+                    # log-scale a real recent count into a [0,1] activity term (disclosed)
+                    import math as _m
+                    activity = max(0.0, min(_m.log10(cov_count + 1) / 5.0, 1.0))
         pulse = _pulse(richness, fresh, activity)
         rows.append({
             "state": st, "name": p["name"], "region": p.get("region", ""),
@@ -401,7 +472,10 @@ def territory_pulse(states: list[str] | None = None, live: bool = False,
             "freshness_by_cadence": _CADENCE_FRESHNESS,
             "activity_live": "log10(recent_count+1)/5 clamped to [0,1] when live probe succeeds",
             "date_hygiene": f"observation window clamped to [{_MIN_DATE.isoformat()} .. today]",
-            "doctrine": "public-data-only · GAP states flagged honestly · failed probes → [SAMPLE] · no fabricated counts",
+            "resilience": (f"timeout {TIMEOUT}s + 1 backoff retry; concurrent probes (6 workers, "
+                           f"~20s budget); last-good real counts served as 'LIVE (cached <ts>)' "
+                           f"when a refetch fails"),
+            "doctrine": "public-data-only · GAP states flagged honestly · failed probes → last-good cache or [SAMPLE] · no fabricated counts",
         },
     }
 
