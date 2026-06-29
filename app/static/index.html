@@ -414,6 +414,28 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .real-mode{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px}
 .real-mode.live{background:#ecf6f5;color:#0b5957}
 .real-mode.sample{background:#fbeaea;color:#8a3a3a}
+.real-num{font-variant-numeric:tabular-nums;font-weight:700;color:var(--navy);white-space:nowrap}
+.real-zip{font-weight:700;color:var(--navy);font-variant-numeric:tabular-nums}
+/* Tax Territories + Opt-In panels (start hidden; reuse real-table styling) */
+#taxCard,#optinCard{display:none;margin-bottom:22px}
+#taxCard.show,#optinCard.show{display:block}
+.tax-sub-h{margin:4px 18px 6px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal)}
+.optin-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:0 18px 18px}
+.optin-form{display:flex;flex-direction:column;gap:11px}
+.optin-row{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.optin-form label{font-size:11px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:5px}
+.optin-form input,.optin-form select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:#fff;width:100%;box-sizing:border-box}
+.optin-consent{flex-direction:row!important;align-items:flex-start;gap:9px;font-size:12px;color:var(--ink);font-weight:600;background:#fbf7ec;border:1px solid #ecdcb3;border-radius:9px;padding:11px 13px}
+.optin-consent input{width:17px;height:17px;margin-top:1px;flex:0 0 auto}
+.optin-result{font-size:12px;min-height:18px;line-height:1.5}
+.optin-result.ok{color:#0b5957}
+.optin-result.err{color:#8a3a3a}
+.optin-list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.optin-lead{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:9px}
+.optin-lead .nm{font-weight:700;color:var(--navy)}
+.optin-lead .meta{font-size:11px;color:var(--muted);margin-top:3px}
+.optin-consent-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#ecf6f5;color:#0b5957;border:1px solid #cdeae8;margin-top:5px}
+@media(max-width:720px){.optin-grid{grid-template-columns:1fr}.optin-row{grid-template-columns:1fr}}
 </style>
 <link rel="stylesheet" href="holo.css">
 </head>
@@ -474,6 +496,8 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
       <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
       <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Prospects</button>
+      <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Tax Territories</button>
+      <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
       <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
       <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
@@ -515,6 +539,24 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
     </div>
 
+    <!-- Tax-Territory Intelligence — aggregate IRS public statistics (territory targeting, not individuals) -->
+    <div class="card" id="taxCard">
+      <h3>🏦 Tax Territories — Affluent ZIPs &amp; Money-in-Motion <span class="sec-title-meta" id="taxMeta"></span></h3>
+      <div class="real-banner" id="taxBanner">
+        Aggregate IRS public statistics — <strong>territory targeting, not individuals</strong>.
+        Affluent ZIPs (share of $200k+ returns) and high-AGI inflow counties from IRS SOI tables.
+        Names no person; use to decide <em>where</em> to prospect. Verify each via the IRS source.
+      </div>
+      <div class="real-tools">
+        <label class="real-states">States:
+          <input type="text" id="taxStates" value="NY,NJ,CT,PA,MD,DE" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="taxReload" onclick="loadTax()">↻ Refresh</button>
+        <span class="hint" id="taxHint" style="margin-left:auto"></span>
+      </div>
+      <div id="taxBody"><div style="padding:20px;color:var(--muted)">Loading IRS tax-territory data…</div></div>
+    </div>
+
     <!-- Real Callable Leads — public B2B business & license records (SEPARATE from illustrative leads) -->
     <div class="card" id="realCard">
       <h3>📇 Real Prospects — Public Business &amp; License Records <span class="sec-title-meta" id="realMeta"></span></h3>
@@ -525,12 +567,58 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       </div>
       <div class="real-tools">
         <label class="real-states">States:
-          <input type="text" id="realStates" value="DE,CT" spellcheck="false" autocomplete="off">
+          <input type="text" id="realStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
         </label>
+        <span class="real-state-pick" id="realStatePick"></span>
         <button class="btn ghost" id="realReload" onclick="loadRealLeads()">↻ Refresh</button>
         <span class="hint" id="realHint" style="margin-left:auto"></span>
       </div>
       <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
+    </div>
+
+    <!-- Opt-In Capture — TCPA-safe express-consent form + consented-leads list -->
+    <div class="card" id="optinCard">
+      <h3>✍️ Opt-In — Express-Consent Capture <span class="sec-title-meta" id="optinMeta"></span></h3>
+      <div class="real-banner" id="optinBanner">
+        The only place personal contact details are accepted — because the person submits them
+        themselves <strong>with explicit consent</strong>. This is the embeddable public capture form.
+        Every submission signs a consent receipt (consent + timestamp). No consent → no record.
+      </div>
+      <div class="optin-grid">
+        <form id="optinForm" class="optin-form" onsubmit="return submitOptin(event)">
+          <div class="optin-row">
+            <label>Name*<input type="text" id="optName" required autocomplete="off"></label>
+            <label>Email<input type="email" id="optEmail" autocomplete="off"></label>
+          </div>
+          <div class="optin-row">
+            <label>Phone<input type="text" id="optPhone" autocomplete="off"></label>
+            <label>ZIP<input type="text" id="optZip" autocomplete="off"></label>
+          </div>
+          <label>Interest
+            <select id="optInterest">
+              <option value="">— select —</option>
+              <option>Life insurance</option>
+              <option>Retirement annuity</option>
+              <option>Disability income</option>
+              <option>Estate / legacy planning</option>
+              <option>Business / key-person</option>
+            </select>
+          </label>
+          <label class="optin-consent">
+            <input type="checkbox" id="optConsent">
+            <span>I agree to be contacted about insurance options. (required)</span>
+          </label>
+          <button class="btn primary" type="submit" id="optSubmit">Submit consent</button>
+          <div id="optResult" class="optin-result"></div>
+        </form>
+        <div class="optin-list">
+          <div class="optin-list-head">
+            <strong>Consented leads</strong>
+            <button class="btn ghost" onclick="loadOptinLeads()" id="optReload">↻ Refresh</button>
+          </div>
+          <div id="optinBody"><div style="padding:14px;color:var(--muted)">No consented leads yet.</div></div>
+        </div>
+      </div>
     </div>
 
     <!-- Holographic 3D section (shown in Holo mode) -->

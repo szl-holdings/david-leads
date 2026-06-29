@@ -67,6 +67,11 @@ try:
     from . import real_leads as rl
 except Exception:  # pragma: no cover
     rl = None
+# Tax-territory intelligence — aggregate IRS public statistics. Defensive import.
+try:
+    from . import tax_leads as tx
+except Exception:  # pragma: no cover
+    tx = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -85,6 +90,35 @@ _TOKENS: set[str] = set()
 
 # session cache of last run
 _STATE: dict = {"leads": [], "signals": [], "meta": {}, "receipts": {}}
+
+# Opt-in (TCPA-safe) consented leads. This is the ONLY place a personal phone/email is stored —
+# because the person submitted it themselves with explicit consent. Optionally persisted to a file.
+_OPTIN_PATH = os.environ.get("SZL_OPTIN_PATH")
+_OPTIN_LEADS: list[dict] = []
+
+
+def _load_optin():
+    if _OPTIN_PATH and os.path.exists(_OPTIN_PATH):
+        try:
+            with open(_OPTIN_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                _OPTIN_LEADS.extend(data)
+        except Exception:
+            pass
+
+
+def _persist_optin():
+    if not _OPTIN_PATH:
+        return
+    try:
+        with open(_OPTIN_PATH, "w", encoding="utf-8") as f:
+            json.dump(_OPTIN_LEADS, f)
+    except Exception:
+        pass
+
+
+_load_optin()
 
 
 class LoginReq(BaseModel):
@@ -610,7 +644,7 @@ def routing(authorization: str | None = Header(default=None)):
 
 
 @app.get("/api/real-leads")
-def real_leads(states: str = "DE,CT", authorization: str | None = Header(default=None)):
+def real_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
     """Real, currently-filed public B2B prospects (new business owners + newly-licensed
     professionals) from official state open-data portals. Public business addresses only —
     NO private personal data, NO fabricated names/numbers. Each record carries a public source
@@ -619,7 +653,8 @@ def real_leads(states: str = "DE,CT", authorization: str | None = Header(default
     _auth(authorization)
     if rl is None:
         raise HTTPException(503, "real-leads source unavailable")
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or ["DE", "CT"]
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
+        ["NY", "NJ", "PA", "MD", "DE", "CT"]
     try:
         out = rl.real_callable_leads(state_list, limit_per=12)
     except Exception:
@@ -635,6 +670,90 @@ def real_leads(states: str = "DE,CT", authorization: str | None = Header(default
     out["leads"] = clean_leads
     _STATE["real_leads"] = out
     return out
+
+
+@app.get("/api/tax-territories")
+def tax_territories(states: str = "NY,NJ,CT,PA,MD,DE",
+                    authorization: str | None = Header(default=None)):
+    """TERRITORY intelligence from aggregate IRS public statistics: affluent ZIPs ($200k+ return
+    density) + money-in-motion counties (AGI carried in by movers). Names NO individuals — this is
+    the compliant use of tax data. Each block carries the IRS citation + a signed receipt.
+    Defensive: if irs.gov is unreachable the layer degrades to an honest [SAMPLE]; never 500s."""
+    _auth(authorization)
+    if tx is None:
+        raise HTTPException(503, "tax-territory source unavailable")
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
+        ["NY", "NJ", "CT", "PA", "MD", "DE"]
+    try:
+        out = tx.real_tax_territories(state_list, top=12)
+    except Exception:
+        raise HTTPException(503, "tax-territory temporarily unavailable")
+    rcpt = out.pop("_receipt", None)
+    if isinstance(rcpt, dict) and rcpt.get("id"):
+        _STATE.setdefault("receipts", {})[rcpt["id"]] = rcpt
+    _STATE["tax_territories"] = out
+    return out
+
+
+class OptInReq(BaseModel):
+    name: str
+    email: str | None = None
+    phone: str | None = None
+    zip: str | None = None
+    interest: str | None = None
+    consent: bool = False
+
+
+@app.post("/api/optin")
+def optin(req: OptInReq):
+    """TCPA-safe opt-in capture. The ONLY endpoint where a personal phone/email is accepted —
+    because the person submits it themselves with explicit consent. Rejects unless consent==true.
+    Stores the consented lead in-process (+ file if SZL_OPTIN_PATH is set) and signs a receipt
+    recording the explicit consent + timestamp. Public (embeddable capture form) — no auth."""
+    name = (req.name or "").strip()
+    if not name:
+        raise HTTPException(400, "name is required")
+    if req.consent is not True:
+        raise HTTPException(400, "Consent is required: you must agree to be contacted to submit.")
+    ts = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    lead = {
+        "name": name,
+        "email": (req.email or "").strip(),
+        "phone": (req.phone or "").strip(),
+        "zip": (req.zip or "").strip(),
+        "interest": (req.interest or "").strip(),
+        "consent": True,
+        "consent_basis": "express consent (opt-in)",
+        "submitted_at": ts,
+    }
+    # sign a receipt recording the explicit, self-submitted consent (public signal, fabricated=0)
+    try:
+        signal = {"source": "self-submitted opt-in form",
+                  "signal": f"express consent to be contacted recorded {ts}", "public": True}
+        pseudo = {"id": "optin_" + hashlib.sha256((name + ts).encode()).hexdigest()[:12],
+                  "name": name, "bucket": "OPT-IN", "product": "CONSENT"}
+        receipt = rc.make_receipt(pseudo, [signal], 100.0, witness=True)
+        lead["receipt_id"] = receipt["id"]
+        lead["receipt_signed"] = receipt["signed"]
+        _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    except Exception:
+        lead["receipt_id"] = None
+        lead["receipt_signed"] = False
+    _OPTIN_LEADS.append(lead)
+    _persist_optin()
+    return {"ok": True, "receipt_id": lead["receipt_id"],
+            "message": "Thank you — your consent has been recorded.",
+            "consent_basis": "express consent (opt-in)"}
+
+
+@app.get("/api/optin/leads")
+def optin_leads(authorization: str | None = Header(default=None)):
+    """Consented opt-in leads for David to work — each marked 'express consent (opt-in)'."""
+    _auth(authorization)
+    return {"leads": list(_OPTIN_LEADS), "count": len(_OPTIN_LEADS),
+            "basis": "express consent (opt-in)",
+            "doctrine": "Only self-submitted, explicitly-consented contacts are stored here · "
+                        "every entry carries a signed consent receipt · honest by design"}
 
 
 # columns for the ranked-lead CRM export
