@@ -237,6 +237,26 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 /* ===== V8 Genius Seaboard ===== */
 #pulseCard{display:none;margin-bottom:22px}
 #pulseCard.show{display:block}
+#surgeCard{display:none;margin-bottom:22px}
+#surgeCard.show{display:block}
+.surge-row{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px}
+.surge-row .area{font-weight:700;color:var(--navy);min-width:150px}
+.surge-row .note{font-size:12px;color:var(--muted);flex:1}
+.surge-row .src{font-size:10px;color:var(--muted)}
+.surge-pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;letter-spacing:.02em}
+.surge-pill.rising{background:#e8f6ee;color:#0d6b34;border:1px solid #b7e3c6}
+.surge-pill.steady{background:#fbf2dc;color:#8a6410;border:1px solid #ecd9a6}
+.surge-pill.quiet{background:#eef1f5;color:#5a6b7c;border:1px solid #d4dbe4}
+@media(max-width:720px){.surge-row{flex-wrap:wrap}.surge-row .area{min-width:0}}
+.trust-strip{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:center;padding:11px 14px;margin-bottom:18px;background:#f6f9fc;border:1px solid var(--line);border-radius:11px;font-size:12.5px;font-weight:600;color:var(--navy)}
+.trust-strip span{white-space:nowrap}
+.welcome{padding:30px 22px;text-align:center}
+.welcome-hero{font-size:20px;font-weight:800;color:var(--navy);max-width:620px;margin:0 auto 22px;line-height:1.35}
+.welcome-steps{display:grid;gap:13px;max-width:560px;margin:0 auto 20px;text-align:left}
+.welcome-step{display:flex;gap:13px;align-items:flex-start;font-size:14px;color:var(--ink)}
+.welcome-step .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
+.welcome-cta{font-size:13px;color:var(--muted)}
+@media(max-width:720px){.welcome-hero{font-size:17px}}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
 .seg button{background:#fff;color:var(--navy);font-size:12.5px;font-weight:600;padding:7px 13px;border-right:1px solid var(--line)}
 .seg button:last-child{border-right:none}
@@ -419,7 +439,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 /* Tax Territories + Opt-In + WARN panels (start hidden; reuse real-table styling) */
 #taxCard,#optinCard,#warnCard{display:none;margin-bottom:22px}
 #taxCard.show,#optinCard.show,#warnCard.show{display:block}
-/* FRONTIER UI — trend chip · honest confidence line · Λ-gate BLOCKED · demo note */
+/* Momentum chip · confidence line · cannot-contact badge · demo note */
 .trend-chip{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;font-weight:800;
   letter-spacing:.02em;white-space:nowrap}
 .trend-chip.heating{background:#fde2e0;color:#b3402e}
@@ -509,37 +529,40 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     <div class="kpis" id="kpis"></div>
 
     <div class="toolbar">
-      <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Run Live Public-Data Intelligence</button>
-      <button class="btn ghost" id="runSample" onclick="runIntel(false)">Load Sample (offline)</button>
-      <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Territory Pulse</button>
+      <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Find Leads (live public records)</button>
+      <button class="btn ghost" id="runSample" onclick="runIntel(false)">See an Example (offline)</button>
+      <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Coverage Map</button>
+      <button class="btn ghost" id="btnSurge" onclick="openSurge()">📈 Rising Areas</button>
       <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
-      <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Open the Black Box</button>
+      <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 How scoring works</button>
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
       <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
-      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Prospects</button>
-      <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ WARN Layoffs</button>
-      <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Tax Territories</button>
+      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Businesses</button>
+      <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ Layoff Alerts</button>
+      <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Wealth Map</button>
       <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
       <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
-      <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
+      <span class="hint" id="runHint">Finds people in your territory who just had a life event that creates an insurance need — using public records only.</span>
     </div>
 
     <div class="ticker" id="tickerBar"></div>
 
     <div class="frontier-note" id="frontierNote">
-      <strong>Frontier:</strong> each lead now carries a <strong>fused Prospect Track</strong>
-      (↑ heating / ↓ cooling / → steady, a Kalman <span class="est-tag">ESTIMATE</span> over public
-      signals), an <strong>honest confidence band</strong> (CI widens with fewer corroborating public
-      sources, always <span class="est-tag">ESTIMATE</span>), and a non-compensatory
-      <strong>Λ-gate</strong> that structurally zeroes any DNC / deceased / opt-out record
-      (<span class="blocked-badge" style="font-size:9px;padding:1px 6px">⛔ Λ-GATE BLOCKED</span>).
-      Public-data-only · Λ uniqueness stays Conjecture 1 (open) · nothing fabricated.
+      Every lead shows its momentum, a confidence level, and a proof trail — built only from
+      public records. Anyone who can't be contacted is automatically removed.
+    </div>
+
+    <div class="trust-strip" id="trustStrip">
+      <span>✅ Public records only</span>
+      <span>🔒 Nothing private</span>
+      <span>🚫 Nothing invented</span>
+      <span>🛡️ Every lead checked for compliance</span>
     </div>
 
     <!-- V8 Territory Pulse — color-coded seaboard coverage map -->
     <div class="card" id="pulseCard">
-      <h3>🌊 Territory Pulse — Atlantic Seaboard <span class="sec-title-meta" id="pulseMeta"></span></h3>
+      <h3>🌊 Coverage Map — Atlantic Seaboard <span class="sec-title-meta" id="pulseMeta"></span></h3>
       <div class="pulse-tools">
         <div class="seg" id="regionSeg">
           <button data-region="ALL" class="active" onclick="selRegion('ALL')">All</button>
@@ -547,16 +570,29 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
           <button data-region="MID" onclick="selRegion('MID')">Mid-Atlantic</button>
           <button data-region="SE" onclick="selRegion('SE')">Southeast</button>
         </div>
-        <label class="chk"><input type="checkbox" id="pulseLive" onchange="loadPulse()"> Live probe (real counts)</label>
-        <span class="hint" id="pulseHint" style="margin-left:auto">Static richness ranking · tick Live to probe each portal.</span>
+        <label class="chk"><input type="checkbox" id="pulseLive" onchange="loadPulse()"> Live counts (real-time)</label>
+        <span class="hint" id="pulseHint" style="margin-left:auto">Ranked by how active each area's public records are · tick Live for real-time counts.</span>
       </div>
       <div class="pulse-grid" id="pulseGrid"></div>
       <div class="pulse-legend">
-        <span><i style="background:#168f89"></i>SURGING</span>
-        <span><i style="background:#c08f2f"></i>ACTIVE</span>
-        <span><i style="background:#5a6b7c"></i>QUIET</span>
-        <span><i style="background:#43536a"></i>GAP (honest — no verified API)</span>
+        <span><i style="background:#168f89"></i>Very active</span>
+        <span><i style="background:#c08f2f"></i>Active</span>
+        <span><i style="background:#5a6b7c"></i>Quiet</span>
+        <span><i style="background:#43536a"></i>Not yet covered</span>
       </div>
+    </div>
+
+    <!-- Where Need Is Rising — plain-English surge readout -->
+    <div class="card" id="surgeCard">
+      <h3>📈 Where Need Is Rising <span class="sec-title-meta" id="surgeMeta"></span></h3>
+      <div class="real-tools">
+        <label class="real-states">Areas:
+          <input type="text" id="surgeStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="surgeReload" onclick="loadSurge()">↻ Refresh</button>
+        <span class="hint" id="surgeHint" style="margin-left:auto">Areas with more new public records than usual this month.</span>
+      </div>
+      <div id="surgeBody"><div style="padding:20px;color:var(--muted)">Finding where need is rising…</div></div>
     </div>
 
     <!-- V8.2 P1-F Producer Benchmark — conversion funnel from logged outcomes -->
@@ -573,7 +609,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 
     <!-- Tax-Territory Intelligence — aggregate IRS public statistics (territory targeting, not individuals) -->
     <div class="card" id="taxCard">
-      <h3>🏦 Tax Territories — Affluent ZIPs &amp; Money-in-Motion <span class="sec-title-meta" id="taxMeta"></span></h3>
+      <h3>🏦 Wealth Map — Affluent ZIPs &amp; Money-in-Motion <span class="sec-title-meta" id="taxMeta"></span></h3>
       <div class="real-banner" id="taxBanner">
         Aggregate IRS public statistics — <strong>territory targeting, not individuals</strong>.
         Affluent ZIPs (share of $200k+ returns) and high-AGI inflow counties from IRS SOI tables.
@@ -591,7 +627,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 
     <!-- Real Callable Leads — public B2B business & license records (SEPARATE from illustrative leads) -->
     <div class="card" id="realCard">
-      <h3>📇 Real Prospects — Public Business &amp; License Records <span class="sec-title-meta" id="realMeta"></span></h3>
+      <h3>📇 Real Businesses — Public Business &amp; License Records <span class="sec-title-meta" id="realMeta"></span></h3>
       <div class="real-banner" id="realBanner">
         Real, currently-filed public business &amp; license records — public business addresses only,
         no private personal data. Verify each via its public source. Do your own compliant outreach
@@ -610,13 +646,14 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 
     <!-- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) -->
     <div class="card" id="warnCard">
-      <h3>⚠️ WARN Layoffs — Coverage-Cliff Prospects <span class="sec-title-meta" id="warnMeta"></span></h3>
+      <h3>⚠️ Layoff Alerts — Coverage-Cliff Prospects <span class="sec-title-meta" id="warnMeta"></span></h3>
       <div class="real-banner" id="warnBanner">
-        Public WARN Act notices (state Departments of Labor). A 60-day layoff notice is a known
-        <strong>coverage-cliff date</strong> — position ACA / short-term / COBRA-alternative coverage
-        before employer benefits lapse. Rows labelled <strong>SAMPLE</strong> use illustrative
-        placeholder employers on the real WARN schema (no live feed in-sandbox) — never presented as
-        live-verified. Each cites its official state WARN portal. Public-data-only, ESTIMATE bands.
+        Public layoff notices that employers must file with the state at least 60 days ahead. That
+        notice is a known <strong>coverage-cliff date</strong> — a chance to offer ACA / short-term /
+        COBRA-alternative coverage before workplace benefits end. Rows labelled <strong>Example</strong>
+        use illustrative placeholder employers on the real public-notice format (no live feed available
+        here) and are never shown as confirmed. Each links its official state labor-department source.
+        Public records only.
       </div>
       <div class="real-tools">
         <label class="real-states">States:
@@ -625,7 +662,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
         <button class="btn ghost" id="warnReload" onclick="loadWarn()">↻ Refresh</button>
         <span class="hint" id="warnHint" style="margin-left:auto"></span>
       </div>
-      <div id="warnBody"><div style="padding:20px;color:var(--muted)">Loading WARN notices…</div></div>
+      <div id="warnBody"><div style="padding:20px;color:var(--muted)">Loading layoff notices…</div></div>
     </div>
 
     <!-- Opt-In Capture — TCPA-safe express-consent form + consented-leads list -->
@@ -702,15 +739,23 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <div class="card">
         <h3>🎯 Ranked Leads <span class="sec-title-meta" id="leadMeta"></span><span class="learn-badge" id="learnBadge" style="display:none"></span></h3>
         <div class="body" id="leadsWrap">
-          <div style="padding:40px 18px;text-align:center;color:var(--muted)">Run intelligence to populate ranked, product-matched leads.</div>
+          <div class="welcome">
+            <div class="welcome-hero">Find the right person, at the right moment, with proof you can stand behind.</div>
+            <div class="welcome-steps">
+              <div class="welcome-step"><span class="num">1</span><div><strong>We scan public records</strong> for life events that create insurance needs.</div></div>
+              <div class="welcome-step"><span class="num">2</span><div><strong>We rank who to call</strong>, when, and what to say.</div></div>
+              <div class="welcome-step"><span class="num">3</span><div><strong>Every lead comes with its sources</strong> and a confidence level — and anyone who can't be contacted is removed automatically.</div></div>
+            </div>
+            <div class="welcome-cta">Press <strong>Find Leads</strong> above to start, or <strong>See an Example</strong> to preview.</div>
+          </div>
         </div>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:18px">
         <div class="card">
-          <h3>🛡️ Governance Gate</h3>
+          <h3>🛡️ Trust &amp; Compliance Check</h3>
           <div class="gov" id="gov">
-            <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting run — the gate verifies every signal is public &amp; non-fabricated.</div>
+            <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting a search — every lead is checked to confirm it comes from public records and nothing is invented.</div>
           </div>
         </div>
         <div class="card" id="pipelineCard" style="display:none">

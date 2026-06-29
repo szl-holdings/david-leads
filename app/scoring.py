@@ -549,6 +549,10 @@ def _attach_frontier(lead: dict[str, Any]) -> None:
     # T2 — honest confidence band (ESTIMATE; width ∝ 1/√n_sources)
     try:
         band = fr.confidence_band(float(lead.get("score", 0.0)), n_sources, dict(axes))
+        try:
+            band["level"] = fr.confidence_word(band.get("half_width", 99.0))
+        except Exception:
+            pass
         lead["confidence"] = band
     except Exception:
         pass
@@ -651,12 +655,13 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
         if demo is not None:
             dnc = dict(demo)
             dnc["id"] = demo["id"] + "-DNC"
-            dnc["name"] = demo["name"] + " — DNC (Λ-gate demo)"
+            dnc["name"] = demo["name"] + " — Example: on Do-Not-Call"
             dnc["dnc_listed"] = True
             dnc["demo"] = True
-            dnc["demo_note"] = ("DNC — blocked by Λ-gate. Demonstration of the "
-                                "non-compensatory compliance axis on a contact-status "
-                                "field; not fabricated prospect data.")
+            dnc["demo_note"] = ("Example: this prospect is on the Do-Not-Call list, so the "
+                                "system automatically removes them — even though their profile "
+                                "looks strong. This is a demonstration on a real contact-status "
+                                "field, not invented prospect data.")
             leads.append(dnc)
     # T1/T2/T3 — attach compliance Λ-gate, honest confidence band, fused track to each lead
     for lead in leads:
