@@ -249,7 +249,7 @@ def verify(rid: str, authorization: str | None = Header(default=None)):
 
 
 @app.get("/api/pulse")
-def pulse(states: str | None = None, region: str | None = None, live: bool = False,
+def pulse(states: str | None = None, region: str | None = None, live: bool = True,
           authorization: str | None = Header(default=None)):
     """V8 Territory Pulse: ranked pulse of the Atlantic seaboard. live=true probes each state's
     portal (Socrata/ArcGIS) for a real recent count; failed probes are honest [SAMPLE]."""

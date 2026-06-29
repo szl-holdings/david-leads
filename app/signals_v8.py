@@ -452,6 +452,7 @@ def territory_pulse(states: list[str] | None = None, live: bool = False,
             "citations": [{"label": l, "url": u} for l, u in p.get("citations", [])],
             "gap": gap, "mode": mode,
             "coverage_label": cov_label, "coverage_count": cov_count,
+            "count": cov_count,  # convenience mirror of coverage_count for clients
         })
     rows.sort(key=lambda r: r["pulse"], reverse=True)
     return {
