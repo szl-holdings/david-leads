@@ -233,6 +233,50 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 @keyframes spin{to{transform:rotate(360deg)}}
 .skeleton{background:linear-gradient(90deg,#eef1f5 25%,#f6f8fb 50%,#eef1f5 75%);background-size:200% 100%;animation:sk 1.3s infinite;border-radius:6px;height:14px}
 @keyframes sk{to{background-position:-200% 0}}
+
+/* ===== V8 Genius Seaboard ===== */
+#pulseCard{display:none;margin-bottom:22px}
+#pulseCard.show{display:block}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+.seg button{background:#fff;color:var(--navy);font-size:12.5px;font-weight:600;padding:7px 13px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:none}
+.seg button.active{background:var(--navy);color:#fff}
+.pulse-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line)}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--navy);font-weight:600;cursor:pointer}
+.pulse-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:16px 18px}
+.pulse-tile{border-radius:12px;padding:13px 13px;color:#fff;min-height:104px;display:flex;flex-direction:column;justify-content:space-between;cursor:default;position:relative;overflow:hidden}
+.pulse-tile.SURGING{background:linear-gradient(160deg,#0b7d77,#168f89)}
+.pulse-tile.ACTIVE{background:linear-gradient(160deg,#b07f1f,#c08f2f)}
+.pulse-tile.QUIET{background:linear-gradient(160deg,#52647a,#5a6b7c)}
+.pulse-tile.GAP{background:repeating-linear-gradient(45deg,#3b4a5c,#3b4a5c 8px,#43536a 8px,#43536a 16px);color:#cdd9e6}
+.pt-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+.pt-state{font-family:'Fraunces';font-size:18px;line-height:1}
+.pt-name{font-size:10.5px;opacity:.9;margin-top:3px}
+.pt-pulse{font-family:'Fraunces';font-size:24px}
+.pt-bucket{font-size:9px;font-weight:700;letter-spacing:.04em;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:10px}
+.pt-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.pt-badge{font-size:8.5px;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:9px;background:rgba(255,255,255,.18)}
+.pt-badge.live{background:#fff;color:#0b5957}
+.pt-badge.sample{background:rgba(255,255,255,.28)}
+.pt-count{font-size:10px;opacity:.92;margin-top:4px}
+.pulse-legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 18px 16px;font-size:11px;color:var(--muted)}
+.pulse-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* signed brief modal parts */
+.bp{border-top:1px solid var(--line);padding:13px 0}
+.bp:first-child{border-top:none}
+.bp-title{font-family:'Fraunces';font-size:15px;color:var(--navy);display:flex;align-items:center;gap:8px}
+.bp-body{font-size:13px;color:var(--ink);margin:5px 0 7px;line-height:1.5}
+.vchip{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px}
+.vchip.allow{background:#e6f7f6;color:#0b5957}
+.vchip.deny{background:#fbeae8;color:var(--hot)}
+.bp-formula{font-size:11px;color:var(--muted)}
+.bp-formula code{color:var(--teal)}
+.consensus-bar{margin-top:12px;background:#0d2c4a;color:#bcd;border-radius:10px;padding:11px 13px;font-size:12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.consensus-bar .k{font-family:'Fraunces';color:var(--gold-300);font-size:15px}
+@media(max-width:380px){
+  .pulse-grid{grid-template-columns:1fr 1fr}
+  .seg button{padding:6px 9px;font-size:11px}
+}
 </style>
 <link rel="stylesheet" href="holo.css">
 </head>
@@ -287,6 +331,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     <div class="toolbar">
       <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Run Live Public-Data Intelligence</button>
       <button class="btn ghost" id="runSample" onclick="runIntel(false)">Load Sample (offline)</button>
+      <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Territory Pulse</button>
       <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
       <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Open the Black Box</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export Call List</button>
@@ -294,6 +339,28 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     </div>
 
     <div class="ticker" id="tickerBar"></div>
+
+    <!-- V8 Territory Pulse — color-coded seaboard coverage map -->
+    <div class="card" id="pulseCard">
+      <h3>🌊 Territory Pulse — Atlantic Seaboard <span class="sec-title-meta" id="pulseMeta"></span></h3>
+      <div class="pulse-tools">
+        <div class="seg" id="regionSeg">
+          <button data-region="ALL" class="active" onclick="selRegion('ALL')">All</button>
+          <button data-region="NE" onclick="selRegion('NE')">Northeast</button>
+          <button data-region="MID" onclick="selRegion('MID')">Mid-Atlantic</button>
+          <button data-region="SE" onclick="selRegion('SE')">Southeast</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="pulseLive" onchange="loadPulse()"> Live probe (real counts)</label>
+        <span class="hint" id="pulseHint" style="margin-left:auto">Static richness ranking · tick Live to probe each portal.</span>
+      </div>
+      <div class="pulse-grid" id="pulseGrid"></div>
+      <div class="pulse-legend">
+        <span><i style="background:#168f89"></i>SURGING</span>
+        <span><i style="background:#c08f2f"></i>ACTIVE</span>
+        <span><i style="background:#5a6b7c"></i>QUIET</span>
+        <span><i style="background:#43536a"></i>GAP (honest — no verified API)</span>
+      </div>
+    </div>
 
     <!-- Holographic 3D section (shown in Holo mode) -->
     <div id="holoSection" style="display:none;margin-bottom:22px">
