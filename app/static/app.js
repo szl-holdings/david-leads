@@ -813,7 +813,7 @@ async function loadRealLeads() {
           <div class="real-sub">${escHtml((l.type||"").toUpperCase())}${l.status?" · "+escHtml(l.status):""}</div></td>
         <td>${catOrCred}</td>
         <td>${addr ? addr : `<span class="real-cq ${cqClass}">${escHtml(l.contact_quality)}</span>`}</td>
-        <td class="real-sub">${escHtml(l.license_or_issue_date || "—")}</td>
+        <td class="real-sub">${escHtml(l.license_or_issue_date || "date withheld")}</td>
         <td><div class="real-angle">${escHtml(l.product_angle || "")}</div>
           <div class="real-why">${escHtml(l.why || "")}</div></td>
         <td>${verifyBtn}<div style="margin-top:6px">${cite}</div></td>
@@ -826,7 +826,7 @@ async function loadRealLeads() {
     body.innerHTML =
       `<div class="real-wrap"><table class="real-table">
         <thead><tr><th>Business / Name</th><th>Category / Credential</th><th>Public Address</th>
-          <th>Filed / Issued</th><th>Suggested NYL angle</th><th>Receipt · Source</th></tr></thead>
+          <th>Record date</th><th>Suggested NYL angle</th><th>Receipt · Source</th></tr></thead>
         <tbody>${rows}</tbody></table></div>`;
   } catch (e) {
     body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;

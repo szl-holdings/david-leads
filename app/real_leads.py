@@ -134,7 +134,21 @@ def _iso_days_ago(days: int) -> str:
 
 
 def _date10(s: Any) -> str:
-    return (str(s) or "")[:10] if s else ""
+    """Return YYYY-MM-DD only if it's a plausible real date (2015-01-01 .. today).
+    DE/CT portals sometimes store future validity/expiration dates in these fields;
+    showing '2092-07-11' as a filing date is misleading, so we drop implausible dates
+    rather than display a wrong one (honest by design — never show a misleading date)."""
+    if not s:
+        return ""
+    d = str(s)[:10]
+    try:
+        dt = datetime.strptime(d, "%Y-%m-%d").date()
+    except Exception:
+        return ""
+    today = datetime.now(timezone.utc).date()
+    if dt < datetime(2015, 1, 1).date() or dt > today:
+        return ""
+    return d
 
 
 # ============================================================================================
@@ -449,6 +463,15 @@ def real_callable_leads(states: list[str] | None = None, limit_per: int = 12) ->
                 else:
                     live_count += 1
                 leads.append(lead)
+
+    # Surface the most compelling real records first: a public address, then a clean
+    # recent record date, then everything else. (Honest ordering, no fabricated data.)
+    def _rank(l: dict[str, Any]) -> tuple:
+        real_name = 0 if l.get("contact_quality") == "entity id only" else 1  # named > account-id
+        has_addr = 1 if l.get("address") else 0
+        has_date = 1 if l.get("license_or_issue_date") else 0
+        return (real_name, has_addr, has_date, l.get("license_or_issue_date") or "")
+    leads.sort(key=_rank, reverse=True)
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
