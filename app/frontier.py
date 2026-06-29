@@ -156,6 +156,24 @@ def confidence_band(score_0_100: float, n_sources: int,
     }
 
 
+def confidence_word(half_width: float) -> str:
+    """Plain-English confidence level from a band half-width.
+
+    Narrow band (lots of corroboration, low axis-disagreement) -> High;
+    moderate -> Medium; wide -> Building. David-facing wording only; the
+    underlying band stays the honest source of truth in the JSON.
+    """
+    try:
+        hw = float(half_width)
+    except (TypeError, ValueError):
+        return "Building"
+    if hw <= 12.0:
+        return "High"
+    if hw <= 22.0:
+        return "Medium"
+    return "Building"
+
+
 # ===========================================================================
 # 4. FUSED PROSPECT TRACK  — moonshot M1
 #    Tiny scalar Kalman filter over time-ordered signal "measurements".

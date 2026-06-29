@@ -450,6 +450,73 @@ def pulse(states: str | None = None, region: str | None = None, live: bool = Tru
     return result
 
 
+@app.get("/api/surge")
+def surge(states: str | None = None, region: str | None = None, live: bool = False,
+          authorization: str | None = Header(default=None)):
+    """Where Need Is Rising — plain-English rising/steady/quiet read per area.
+
+    Honest baseline-delta: each area's current activity is compared to the seaboard
+    average for this run. Above-average areas read 'Rising', around-average 'Steady',
+    below-average 'Quiet'. Reuses the public-records territory signal counts; areas
+    with no live count this run are labelled 'sample' so nothing is fabricated."""
+    _auth(authorization)
+    state_list = [x.strip().upper() for x in states.split(",")] if states else None
+    try:
+        result = sig8.territory_pulse(state_list, live=live, region=region)
+    except Exception:
+        raise HTTPException(503, "rising-areas read temporarily unavailable")
+    if not isinstance(result, dict):
+        raise HTTPException(503, "rising-areas read temporarily unavailable")
+    seaboard = result.get("seaboard") or []
+    pulses = [float(r.get("pulse", 0.0)) for r in seaboard] or [0.0]
+    baseline = round(sum(pulses) / len(pulses), 1)
+
+    def _status(row: dict) -> str:
+        pulse = float(row.get("pulse", 0.0))
+        bucket = row.get("bucket")
+        delta = pulse - baseline
+        if bucket == "SURGING" or delta >= 8.0:
+            return "Rising"
+        if bucket in ("QUIET", "GAP") or delta <= -8.0:
+            return "Quiet"
+        return "Steady"
+
+    _NOTE = {
+        "Rising": "More new homeowners and businesses than usual this month.",
+        "Steady": "About the usual number of new public records this month.",
+        "Quiet": "Fewer new public records than usual right now.",
+    }
+    areas = []
+    for r in seaboard:
+        status = _status(r)
+        cites = r.get("citations") or []
+        src = cites[0] if cites else {"label": f"{r.get('name', r.get('state'))} public records",
+                                      "url": ""}
+        cnt = r.get("count")
+        is_live = str(r.get("mode", "")).startswith("LIVE") and cnt is not None
+        areas.append({
+            "area": r.get("name") or r.get("state"),
+            "state": r.get("state"),
+            "region": r.get("region", ""),
+            "status": status,
+            "count": cnt if cnt is not None else 0,
+            "note": _NOTE[status],
+            "source": {"label": src.get("label", ""), "url": src.get("url", "")},
+            "source_status": "live" if is_live else "sample",
+        })
+    order = {"Rising": 0, "Steady": 1, "Quiet": 2}
+    areas.sort(key=lambda a: (order.get(a["status"], 9), -a["count"]))
+    return {
+        "generated_at": result.get("generated_at"),
+        "baseline": baseline,
+        "areas": areas,
+        "count": len(areas),
+        "rising": [a["area"] for a in areas if a["status"] == "Rising"],
+        "note": ("Areas are compared to this run's average activity across public records. "
+                 "Areas without a live count this run are labelled sample — no counts are invented."),
+    }
+
+
 @app.get("/api/brief/{lead_id}")
 def brief(lead_id: str, authorization: str | None = Header(default=None)):
     """V8 Signed 4-Part Brief — each part GROUNDED by a real a11oy formula verdict

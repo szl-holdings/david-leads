@@ -549,6 +549,10 @@ def _attach_frontier(lead: dict[str, Any]) -> None:
     # T2 — honest confidence band (ESTIMATE; width ∝ 1/√n_sources)
     try:
         band = fr.confidence_band(float(lead.get("score", 0.0)), n_sources, dict(axes))
+        try:
+            band["level"] = fr.confidence_word(band.get("half_width", 99.0))
+        except Exception:
+            pass
         lead["confidence"] = band
     except Exception:
         pass

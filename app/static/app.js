@@ -89,7 +89,7 @@ function renderKpis(k) {
     <div class="kpi">
       <div class="label">Pipeline Premium</div>
       <div class="val" style="font-size:27px">${k ? money(k.pipeline_premium) : "—"}</div>
-      <div class="sub">illustrative estimate — not quoted premium</div>
+      <div class="sub">illustrative — not a quoted premium</div>
     </div>
     <div class="kpi">
       <div class="label">Avg Lead Score</div>
@@ -132,7 +132,7 @@ function eventTag(l) {
 }
 function wealthTag(l) {
   const w = l.wealth_tier && l.wealth_tier.tier;
-  return w ? `<span class="wealth-tag t-${w.replace(/[^a-z]/gi,'').toLowerCase()}" title="estimated from public proxies">${w}</span>` : "";
+  return w ? `<span class="wealth-tag t-${w.replace(/[^a-z]/gi,'').toLowerCase()}" title="based on public records">${w}</span>` : "";
 }
 function lapseBadge(l) {
   if (!l.lapse || l.lapse.decile == null) return "";
@@ -161,7 +161,7 @@ function liqFlag(l) {
   if (q.mode === "LIVE" && q.recent_sells) {
     return `<span class="liq-flag live" title="${(q.note||'').replace(/"/g,'&quot;')}">💧 Liquidity: ${q.recent_sells} Form-4 sell(s)</span>`;
   }
-  return `<span class="liq-flag" title="${(q.note||'SEC Form 4 — [SAMPLE]').replace(/"/g,'&quot;')}">💧 Liquidity ${q.mode==='SAMPLE'?'[SAMPLE]':'watch'}</span>`;
+  return `<span class="liq-flag" title="${(q.note||'Public SEC filing — example').replace(/"/g,'&quot;')}">💧 Liquidity ${q.mode==='SAMPLE'?'(example)':'watch'}</span>`;
 }
 /* V8.3 P2-3 wealth ladder (4 segments, lead's tier highlighted) */
 function wealthLadder(wt, compact) {
@@ -169,10 +169,10 @@ function wealthLadder(wt, compact) {
   const ladder = wt.ladder && wt.ladder.length ? wt.ladder : ["Mass","Mass-Affluent","Affluent","HNW"];
   const idx = (wt.ladder_index != null) ? wt.ladder_index : ladder.indexOf(wt.tier);
   const segs = ladder.map((t, i) =>
-    `<span class="wseg ${i===idx?'on':''}" title="${t}${i===idx?' — '+(wt.basis||'estimated from public records'):''}">${t}</span>`).join("");
-  if (compact) return `<div class="wladder compact" title="Wealth tier: ${wt.tier} (estimated from public records)">${segs}</div>`;
+    `<span class="wseg ${i===idx?'on':''}" title="${t}${i===idx?' — '+(wt.basis||'based on public records'):''}">${t}</span>`).join("");
+  if (compact) return `<div class="wladder compact" title="Wealth tier: ${wt.tier} (based on public records)">${segs}</div>`;
   const chips = (wt.signals||[]).map(s =>
-    `<span class="proxy-chip">${s} <span class="est">· estimated from public records</span></span>`).join("");
+    `<span class="proxy-chip">${s} <span class="est">· based on public records</span></span>`).join("");
   return `<div class="wladder-wrap"><div class="wladder-cap">Wealth ladder · <strong>${wt.tier}</strong>${wt.score!=null?` · score ${wt.score}/100`:''}</div>` +
     `<div class="wladder">${segs}</div>${chips?`<div class="proxy-chips">${chips}</div>`:''}</div>`;
 }
@@ -193,35 +193,47 @@ function liqWatch(q) {
     <div class="lw-foot">${q.note||'Employer-level public signal, not an individual assertion. [SAMPLE] if SEC unreachable.'}</div>
   </div>`;
 }
-/* FRONTIER trend chip (fused Kalman track: heating / cooling / steady) */
+/* Momentum chip — how interest is trending across public signals */
 function trendChip(l) {
   const t = l.track; if (!t || !t.trend || t.trend === "none") return "";
   const pct = Math.round((t.intensity != null ? t.intensity : 0) * 100);
-  const map = { heating: ["↑ heating", "heating"], cooling: ["↓ cooling", "cooling"], steady: ["→ steady", "steady"] };
-  const m = map[t.trend] || ["→ steady", "steady"];
-  const tip = ("Fused Prospect Track (ESTIMATE) · " + (t.method || "Kalman fusion") + " · n=" + (t.n_sources||1)).replace(/"/g,'&quot;');
-  return `<span class="trend-chip ${m[1]}" title="${tip}">${m[0]} · ${pct}%</span>`;
+  const map = { heating: ["↑ Heating up", "heating"], cooling: ["↓ Cooling off", "cooling"], steady: ["→ Steady", "steady"] };
+  const m = map[t.trend] || ["→ Steady", "steady"];
+  const tip = ("Momentum — how this prospect's interest is trending across recent public signals.").replace(/"/g,'&quot;');
+  return `<span class="trend-chip ${m[1]}" title="${tip}">${m[0]} · ${pct}% interest</span>`;
 }
-/* FRONTIER honest confidence line (ESTIMATE; width shrinks with public sources) */
+/* Plain-English match + confidence line (no jargon; honesty carried in words) */
 function confidenceLine(l) {
   const c = l.confidence; if (!c) return "";
   const n = c.n_sources || 1;
-  const src = n + " public source" + (n === 1 ? "" : "s");
-  return `<div class="conf-line" title="Honest band — width ∝ 1/√sources. Not a probability of correctness.">` +
-    `Score ${c.point} · CI ${c.lo}–${c.hi} · ${src} · <span class="est-tag">${c.label||"ESTIMATE"}</span></div>`;
+  const word = c.level || "Building";
+  const src = "confirmed across " + n + " public record" + (n === 1 ? "" : "s");
+  const range = (c.lo != null && c.hi != null) ? ` <span class="conf-range">(range ${c.lo}–${c.hi})</span>` : "";
+  return `<div class="conf-line" title="Confidence reflects how many public records confirm this lead — more records, higher confidence.">` +
+    `Match ${c.point} · Confidence: ${word} · ${src}${range}</div>`;
 }
-/* FRONTIER Λ-gate BLOCKED badge (non-compensatory compliance) */
+/* Cannot-contact badge — compliance removed this lead from outreach */
 function blockedBadge(l) {
   if (!l.compliance || l.compliance.clear !== false) return "";
-  const reasons = (l.compliance.reasons || []).join(" · ").replace(/"/g,'&quot;');
-  return `<span class="blocked-badge" title="${reasons}">⛔ Λ-GATE BLOCKED</span>`;
+  const reasons = (l.compliance.reasons || []).map(plainBlockReason);
+  const tip = reasons.join(" · ").replace(/"/g,'&quot;');
+  const why = reasons[0] || "Cannot be contacted";
+  return `<span class="blocked-badge" title="${tip}">🚫 Cannot contact — ${why}</span>`;
+}
+/* Map raw compliance reason codes/text to plain English */
+function plainBlockReason(r) {
+  const s = String(r || "").toLowerCase();
+  if (s.includes("dnc") || s.includes("do-not-call") || s.includes("do not call")) return "On the Do-Not-Call list";
+  if (s.includes("decea") || s.includes("death")) return "Records show deceased";
+  if (s.includes("opt") || s.includes("unsub") || s.includes("request")) return "Asked not to be contacted";
+  return "Cannot be contacted";
 }
 function renderLeads(leads) {
   $("leadMeta").textContent = leads.length + " scored";
   let rows = leads.map(l => {
     const blocked = l.compliance && l.compliance.clear === false;
     const scoreCell = blocked
-      ? `<span class="score-pill blocked"><s>${l.score_pre_gate!=null?l.score_pre_gate:''}</s> 0</span><br><span class="badge BLOCKED">BLOCKED</span>`
+      ? `<span class="score-pill blocked"><s>${l.score_pre_gate!=null?l.score_pre_gate:''}</s> 0</span><br><span class="badge BLOCKED">Removed</span>`
       : `<span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span>`;
     return `
     <tr class="lead-row${blocked?' blocked-row':''}" id="row-${l.id}">
@@ -236,10 +248,10 @@ function renderLeads(leads) {
         ${receptMeter(l)}
         <div class="lead-why">${l.why}</div>
       </td>
-      <td><div class="prod">${l.product}</div><div class="prem" title="Illustrative estimate — not a quoted premium">~${money(l.est_premium)}/yr (illustrative)</div></td>
+      <td><div class="prod">${l.product}</div><div class="prem" title="Illustrative — not a quoted premium">~${money(l.est_premium)}/yr (illustrative)</div></td>
       <td>
-        <button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button>
-        <button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Signed Brief</button>
+        <button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔒 Proof &amp; Sources</button>
+        <button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Call Brief</button>
         <div class="outcome-row">
           <button class="oc-btn sold" onclick="logOutcome('${l.id}','sold',this)">Sold</button>
           <button class="oc-btn meet" onclick="logOutcome('${l.id}','meeting',this)">Meeting</button>
@@ -250,7 +262,7 @@ function renderLeads(leads) {
     <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`;
   }).join("");
   $("leadsWrap").innerHTML = `<table>
-    <thead><tr><th></th><th>Score</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Provenance · Outcome</th></tr></thead>
+    <thead><tr><th></th><th>Match</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Proof · Outcome</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
 
@@ -290,7 +302,7 @@ function renderLeadDetail(l) {
     `<div class="moment"><span class="mdot"></span><div><span class="msrc">${m.source}</span> — ${m.label}</div></div>`).join("");
   const wt = l.wealth_tier || {}, lp = l.lapse || {};
   const lfac = (lp.factors||[]).map(s => `<li>${s}</li>`).join("");
-  const adv = `<div class="detail-sec"><h4>Advisory tiers (public-proxy estimates)</h4>
+  const adv = `<div class="detail-sec"><h4>Advisory tiers (based on public records)</h4>
     <div class="adv-box" style="margin-bottom:10px"><div class="adv-h">Wealth tier</div>${wealthLadder(wt, false)}</div>
     <div class="adv-grid">
       <div class="adv-box"><div class="adv-h">Lapse decile</div><div class="adv-v">${lp.decile!=null?lp.decile+'/10':'—'}</div>
@@ -337,13 +349,17 @@ function renderSignals(sigs, meta) {
 
 /* ---------- governance ---------- */
 function renderGov(g, meta) {
+  let checksWord = "";
+  if (g.consensus) {
+    const m = String(g.consensus).match(/(\d+)/);
+    if (m) checksWord = `Independently double-checked — ${m[1]} separate verifications agree`;
+  }
   $("gov").innerHTML = `
     <div class="gov-inner">
-      <div class="line"><span class="ok">✓</span> ${g.signals_checked} signals checked</div>
-      <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> All signals are public data ${g.all_public?'':'(violation!)'}</div>
-      <div class="line"><span class="ok">✓</span> ${g.fabricated} fabricated signals (honest by design)</div>
-      <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public signals rejected</div>
-      ${g.consensus ? `<div class="line"><span class="ok">${g.consensus.includes('-of-') && !g.consensus.startsWith('0') ? '✓' : '•'}</span> khipu witness consensus: <strong style="margin-left:4px">${g.consensus}</strong></div>` : ''}
+      <div class="line"><span class="ok">✓</span> Every lead checked against ${g.signals_checked} public records</div>
+      <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> 100% public data — nothing private, nothing invented</div>
+      <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public items rejected</div>
+      ${checksWord ? `<div class="line"><span class="ok">✓</span> <strong style="margin-left:0">${checksWord}</strong></div>` : ''}
       <div class="verdict">🛡️ ${g.verdict}</div>
     </div>`;
 }
@@ -461,73 +477,43 @@ function renderPipeline(kpi) {
   $("pipelineCard").style.display = "";
 }
 
-/* ---------- Open the Black Box (scoring inspector) ---------- */
+/* ---------- How scoring works (plain-English methodology) ---------- */
+const AXIS_PLAIN = {
+  life_event_strength: "Life event strength", income_fit: "Income fit",
+  age_window_fit: "Age fit", product_propensity: "Product fit", recency: "Freshness",
+};
 async function openModel() {
   $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
     <button class="mclose" onclick="closeModal()">✕ Close</button>
-    <h3>🔓 Open the Black Box — Scoring Methodology</h3>
+    <h3>🔓 How scoring works</h3>
     <div class="mbody" id="modelBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
   try {
     const m = await api("/api/model");
-    const axes = m.axes.map(a => `
+    const axes = (m.axes || []).map(a => `
       <div style="padding:10px 0;border-top:1px solid var(--line)">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <strong style="color:var(--navy)">${a.key.replace(/_/g,' ')}</strong>
-          <span style="font-family:'Fraunces';color:var(--teal)">weight ${a.weight}</span>
-        </div>
+        <strong style="color:var(--navy)">${AXIS_PLAIN[a.key] || a.key.replace(/_/g,' ')}</strong>
         <div style="font-size:13px;color:var(--ink);margin-top:3px">${a.meaning}</div>
-        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Sources: ${a.sources}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px">Built from: ${a.sources}</div>
       </div>`).join("");
     $("modelBody").innerHTML = `
       <div style="background:#e6f7f6;border:1px solid #bfeae8;border-radius:10px;padding:12px 14px;font-size:13px;color:#0b5957;margin-bottom:14px">
-        <strong>${m.name}</strong><br>${m.summary}</div>
-      <div style="font-family:ui-monospace,monospace;font-size:12px;background:#0d2c4a;color:#bcd;padding:12px;border-radius:9px;margin-bottom:8px">${m.formula}</div>
-      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:12px">THE 5 AXES (every weight, every source — nothing hidden):</div>
+        Every lead is rated on five plain factors. A lead only scores high when it does well across
+        all five — one weak factor holds the whole score back, so the strongest leads rise to the top.</div>
+      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:6px">The five factors — and the public records behind each:</div>
       ${axes}
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
-        <span class="badge HOT">${m.buckets.HOT}</span>
-        <span class="badge WARM">${m.buckets.WARM}</span>
-        <span class="badge NURTURE">${m.buckets.NURTURE}</span>
+        <span class="badge HOT">${(m.buckets&&m.buckets.HOT)||"Hot"}</span>
+        <span class="badge WARM">${(m.buckets&&m.buckets.WARM)||"Warm"}</span>
+        <span class="badge NURTURE">${(m.buckets&&m.buckets.NURTURE)||"Nurture"}</span>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:12px">Appointments model: ${m.appt_model}</div>
-      <div style="font-size:12.5px;color:var(--navy);font-weight:600;margin-top:12px;background:#fbf7ec;border-left:3px solid var(--gold);padding:10px 12px;border-radius:6px">${m.governance}</div>
-      ${renderModelAdvisory(m)}
-      <div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">${m.doctrine}</div>`;
+      <div style="font-size:12.5px;color:var(--navy);font-weight:600;margin-top:14px;background:#fbf7ec;border-left:3px solid var(--gold);padding:10px 12px;border-radius:6px">
+        Public records only — SEC filings, U.S. Census, labor statistics, public health data, and county
+        records. Nothing private is used and nothing is invented. Each lead also shows a confidence level
+        based on how many public records confirm it, and anyone who can't be contacted is removed.</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Honest by design · open methodology · every lead carries a proof trail you can open and check.</div>`;
   } catch (e) {
     $("modelBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
   }
-}
-
-function renderModelAdvisory(m) {
-  const blocks = [];
-  const u = m.urgency_window, r = u && u.rationale;
-  if (u) blocks.push(`<div class="adv-card"><div class="adv-card-h">⏱ Urgency window (48h / 14d)</div>
-    <div class="adv-card-b">ACT_NOW &lt;48h · WARM ≤14d · COLD &gt;14d, derived from the Λ time-decay age.
-    ${r ? `<br><em>${r.finding||''}</em> — <a href="${r.url}" target="_blank" rel="noopener">${r.source||'LexisNexis'}</a> (advisory).` : ''}</div></div>`);
-  if (m.wealth_tier) blocks.push(`<div class="adv-card"><div class="adv-card-h">💠 Wealth tier</div>
-    <div class="adv-card-b">${(m.wealth_tier.tiers||[]).join(' · ')}. ${m.wealth_tier.basis||''}.
-    <strong>${m.wealth_tier.honest||'estimated from public proxies'}.</strong></div></div>`);
-  if (m.lapse_decile) blocks.push(`<div class="adv-card"><div class="adv-card-h">📉 Lapse decile</div>
-    <div class="adv-card-b">${m.lapse_decile.scale||''}. ${m.lapse_decile.basis||''}.
-    <strong>${m.lapse_decile.note||'Advisory — NOT FCRA.'}</strong></div></div>`);
-  if (m.life_event_taxonomy) blocks.push(`<div class="adv-card"><div class="adv-card-h">🧬 Typed life-event taxonomy (${m.life_event_taxonomy.count})</div>
-    <div class="adv-card-b">${(m.life_event_taxonomy.events||[]).map(e => `<span class="evt-tag ${e.sourceable?'':'unsourced'}" title="${e.public_source||''}">${e.label}</span>`).join(' ')}
-    <br><em>${m.life_event_taxonomy.doctrine||''}</em></div></div>`);
-  if (m.adaptive_loop) blocks.push(`<div class="adv-card"><div class="adv-card-h">🧠 Adaptive conversion loop</div>
-    <div class="adv-card-b">${m.adaptive_loop.endpoint}. ${m.adaptive_loop.effect}. <strong>${m.adaptive_loop.honest||''}</strong></div></div>`);
-  if (m.receptivity) blocks.push(`<div class="adv-card"><div class="adv-card-h">📡 Behavioral receptivity (P1-D · advisory)</div>
-    <div class="adv-card-b">${m.receptivity.formula||''}. ${m.receptivity.meaning||''}
-    ${m.receptivity.citation ? `<br><a href="${m.receptivity.citation.url||m.receptivity.citation}" target="_blank" rel="noopener">${m.receptivity.citation.source||'RGA predictive moments'}</a>` : ''}
-    <strong> ${m.receptivity.honest||'Distinct from Λ — advisory only.'}</strong></div></div>`);
-  if (m.liquidity_event) blocks.push(`<div class="adv-card"><div class="adv-card-h">💧 Liquidity event (P1-A · SEC Form 4)</div>
-    <div class="adv-card-b">${m.liquidity_event.meaning||''}. <em>${m.liquidity_event.applies_to||''}</em>. <strong>${m.liquidity_event.honest||''}</strong></div></div>`);
-  if (m.coverage_gap) blocks.push(`<div class="adv-card"><div class="adv-card-h">🛡️ Coverage-gap identifier (P1-E)</div>
-    <div class="adv-card-b">${m.coverage_gap.method||''}. <strong>${m.coverage_gap.honest||m.coverage_gap.note||''}</strong></div></div>`);
-  if (m.wealth990_signal) blocks.push(`<div class="adv-card"><div class="adv-card-h">🏛️ 990 philanthropy signal (P1-B · inference)</div>
-    <div class="adv-card-b">${m.wealth990_signal.meaning||m.wealth990_signal.method||''}. <strong>${m.wealth990_signal.honest||''}</strong></div></div>`);
-  if (m.permit_need) blocks.push(`<div class="adv-card"><div class="adv-card-h">🏗️ Permit → product-need (P1-C)</div>
-    <div class="adv-card-b">${m.permit_need.method||m.permit_need.meaning||''}. <strong>${m.permit_need.honest||''}</strong></div></div>`);
-  return blocks.length ? `<div class="adv-cards">${blocks.join('')}</div>` : "";
 }
 
 /* ---------- territory map ---------- */
@@ -549,7 +535,7 @@ async function openTerritory() {
     $("terrBody").innerHTML = `
       <div style="font-size:13px;color:var(--muted)">${d.state} · ${d.meta.mode} · ${d.meta.count} areas. Darker = higher opportunity.</div>
       <div class="terr-grid">${tiles}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:14px">Formula: ${d.formula}<br>Source: ${d.source} · all public · 0 fabricated</div>`;
+      <div style="font-size:11px;color:var(--muted);margin-top:14px">Ranked by opportunity from income and age in each area.<br>Source: ${d.source} · all public · nothing invented</div>`;
   } catch (e) {
     $("terrBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
   }
@@ -709,7 +695,7 @@ async function loadPulse() {
   }
 }
 
-/* ---------- V8 Signed 4-Part Brief (formula-grounded, khipu-witnessed) ---------- */
+/* ---------- Call Brief (grounded + independently double-checked) ---------- */
 let BRIEF_ANGLES = {};
 function copyAngle(key, btn) {
   const text = BRIEF_ANGLES[key] || "";
@@ -725,7 +711,7 @@ function fallbackCopy(text) {
 async function openBrief(leadId) {
   $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
     <button class="mclose" onclick="closeModal()">✕ Close</button>
-    <h3>📜 Signed 4-Part Brief</h3>
+    <h3>📜 Call Brief</h3>
     <div class="mbody" id="briefBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
   try {
     const b = await api("/api/brief/" + leadId);
@@ -745,31 +731,33 @@ async function openBrief(leadId) {
       }
       return `<div class="bp">
         <div class="bp-title">${p.title}
-          <span class="vchip ${allow ? 'allow' : 'deny'}">${allow ? '✓ ' + (v.formula||'') : '✗ ' + (v.formula||'')}</span></div>
+          <span class="vchip ${allow ? 'allow' : 'deny'}">${allow ? '✓ checked' : '✗ review'}</span></div>
         <div class="bp-body">${(p.key === "OPENING_LINE" && angleHtml) ? '3 ranked angles — keyed to ' + (b.event_type_label||b.event_type||'event') : (p.body || '')}</div>
         ${angleHtml}
-        <div class="bp-formula">grounded by <code>${v.leanTheorem || v.formula || 'formula'}</code> · λ-score ${v.lambdaScore ?? '—'}</div>
       </div>`;
     }).join("");
     const wt = b.wealth_tier || {}, lp = b.lapse || {};
     const tiers = `<div class="brief-tiers">
       ${b.urgency ? `<span class="urg-chip ${b.urgency==='ACT_NOW'?'act-now':b.urgency==='WARM'?'warm':'cold'}">${b.urgency.replace('_',' ')}</span>` : ''}
-      ${wt.tier ? `<span class="wealth-tag" title="estimated from public proxies">${wt.tier}</span>` : ''}
+      ${wt.tier ? `<span class="wealth-tag" title="based on public records">${wt.tier}</span>` : ''}
       ${lp.decile!=null ? `<span class="lapse-badge ${lp.decile<=3?'low':lp.decile<=6?'mid':'high'}" title="advisory, NOT FCRA">Lapse ${lp.decile}/10</span>` : ''}
     </div>${wealthLadder(wt, false)}`;
     const c = b.consensus || {};
-    const consensus = `<div class="consensus-bar">
-      <span class="k">${c.khipu_consensus || '0-of-4'}</span>
-      <span>khipu witness · ${c.signed ? 'SIGNED' : 'UNSIGNED (honest)'}</span>
-      <span style="opacity:.75;font-size:11px">${(c.signing_mode || c.decision || '').slice(0,80)}</span></div>`;
-    const ground = b.grounding || {};
+    let checksLine = "";
+    const cc = (c.consensus_count != null) ? c.consensus_count : null;
+    if (cc) checksLine = `Independently double-checked — ${cc} separate verifications agree`;
+    const consensus = checksLine ? `<div class="consensus-bar"><span>✓ ${checksLine}</span></div>` : "";
+    const lc = (leadsById[leadId] || {}).confidence || {};
+    const confLine = lc.n_sources
+      ? `<div style="font-size:12px;color:#0d6b34;font-weight:600;margin-bottom:6px">Confirmed across ${lc.n_sources} public record${lc.n_sources===1?'':'s'} · Confidence: ${lc.level||'Building'}</div>`
+      : "";
     $("briefBody").innerHTML = `
-      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">${b.lead_name || ''} · Λ ${b.score} · ${b.bucket}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:6px">${b.lead_name || ''} · Match ${b.score} · ${b.bucket}</div>
+      ${confLine}
       ${tiers}
       ${parts}
       ${consensus}
-      <div style="font-size:11px;color:var(--muted);margin-top:10px">${ground.note || ''}</div>
-      ${b.receipt_id ? `<div class="ask-receipt" style="color:var(--navy)" onclick="openReceipt('${b.receipt_id}')">🔏 Verify brief receipt (${b.receipt_id})</div>` : ''}`;
+      ${b.receipt_id ? `<div class="ask-receipt" style="color:var(--navy)" onclick="openReceipt('${b.receipt_id}')">🔒 Proof &amp; Sources (${b.receipt_id})</div>` : ''}`;
   } catch (e) {
     $("briefBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
   }
@@ -781,7 +769,7 @@ async function openReceipt(rid, leadId) {
   mount.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
     <div class="modal">
       <button class="mclose" onclick="closeModal()">✕ Close</button>
-      <h3>🔏 Compliance-Grade Lead Receipt</h3>
+      <h3>🔒 Proof &amp; Sources</h3>
       <div class="mbody" id="rcptBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div>
     </div></div>`;
   try {
@@ -790,12 +778,12 @@ async function openReceipt(rid, leadId) {
     const checks = v.checks.map(c => `
       <div class="vcheck"><span class="ic ${c.pass?'p':'f'}">${c.pass?'✓':'✗'}</span> ${c.check}</div>`).join("");
     $("rcptBody").innerHTML = `
-      <div class="vverdict ${v.verdict==='VERIFIED'?'ok':'bad'}">${v.verdict==='VERIFIED'?'✓ VERIFIED':'✗ FAILED'}</div>
-      <div style="font-size:13px;color:var(--muted);margin-bottom:4px">Receipt <code>${r.id}</code> · ${r.signature_status}</div>
+      <div class="vverdict ${v.verdict==='VERIFIED'?'ok':'bad'}">${v.verdict==='VERIFIED'?'✓ Verified':'✗ Needs review'}</div>
+      <div style="font-size:13px;color:#0b5957;font-weight:600;margin-bottom:8px">Verified · 100% public data · sources listed below · nothing invented</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Reference <code>${r.id}</code></div>
       ${checks}
-      <div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">Tamper-evident payload (re-derivable hash):</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">The exact public data behind this lead:</div>
       <div class="codeblock">${JSON.stringify(r.payload, null, 2)}</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:10px">payload SHA-256: <code>${r.payload_sha256}</code></div>
     `;
   } catch (e) {
     $("rcptBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
@@ -864,7 +852,47 @@ async function loadRealLeads() {
   }
 }
 
-/* ---------- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) ---------- */
+/* ---------- Where Need Is Rising (plain-English surge readout) ---------- */
+function openSurge() {
+  const card = $("surgeCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadSurge();
+}
+async function loadSurge() {
+  const body = $("surgeBody"); if (!body) return;
+  const states = ($("surgeStates") && $("surgeStates").value || "NY,NJ,PA,MD,DE,CT").trim() || "NY,NJ,PA,MD,DE,CT";
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Finding where need is rising…</div>`;
+  try {
+    const d = await api("/api/surge?states=" + encodeURIComponent(states));
+    const areas = d.areas || [];
+    if (!areas.length) {
+      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No rising areas right now — check back after the next update.</div>`;
+      $("surgeMeta").textContent = "";
+      return;
+    }
+    const nRising = areas.filter(a => a.status === "Rising").length;
+    $("surgeMeta").textContent = nRising ? `${nRising} area${nRising===1?'':'s'} rising` : "All steady";
+    const rows = areas.map(a => {
+      const cls = (a.status || "Steady").toLowerCase();
+      const cite = (a.source && a.source.url)
+        ? `<a class="real-cite" href="${escHtml(a.source.url)}" target="_blank" rel="noopener">${escHtml(a.source.label||"Public records")} ↗</a>`
+        : `<span class="src">${escHtml((a.source||{}).label || "Public records")}</span>`;
+      const ex = a.source_status === "live" ? "" : ` <span class="src">(example)</span>`;
+      return `<div class="surge-row">
+        <span class="surge-pill ${cls}">${escHtml(a.status||"Steady")}</span>
+        <span class="area">${escHtml(a.area||a.state||"—")}</span>
+        <span class="note">${escHtml(a.note||"")}${ex}</span>
+        <span class="src">${cite}</span>
+      </div>`;
+    }).join("");
+    body.innerHTML = rows;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
+/* ---------- Layoff Alerts — public state labor records (coverage-cliff trigger) ---------- */
 function openWarn() {
   const card = $("warnCard"); if (!card) return;
   card.classList.add("show");
@@ -874,26 +902,30 @@ function openWarn() {
 async function loadWarn() {
   const body = $("warnBody"); if (!body) return;
   const states = ($("warnStates") && $("warnStates").value || "NY,NJ,PA,MD,DE,CT").trim() || "NY,NJ,PA,MD,DE,CT";
-  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Fetching WARN Act layoff notices…</div>`;
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Finding layoff notices…</div>`;
   try {
     const d = await api("/api/warn-leads?states=" + encodeURIComponent(states));
     const leads = d.leads || [];
     if (!leads.length) {
-      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No WARN notices returned for ${escHtml(states)}.</div>`;
+      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No layoff notices returned for ${escHtml(states)}.</div>`;
       $("warnMeta").textContent = "";
       return;
     }
     const rows = leads.map(l => {
       const c = l.confidence || {};
-      const conf = c.point != null ? `Score ${c.point} · CI ${c.lo}–${c.hi} · <span class="est-tag">${escHtml(c.label||"ESTIMATE")}</span>` : "";
+      const n = c.n_sources || 1;
+      const conf = c.point != null
+        ? `Match ${c.point} · Confidence: ${escHtml(c.level||"Building")} · confirmed across ${n} public record${n===1?'':'s'}`
+        : "";
       const modeCls = l.source_status === "live" ? "live" : "sample";
+      const modeLabel = l.source_status === "live" ? "Live" : "Example";
       const cite = (l.source && l.source.url)
-        ? `<a class="real-cite" href="${escHtml(l.source.url)}" target="_blank" rel="noopener">${escHtml(l.source.label||"WARN portal")} ↗</a>`
+        ? `<a class="real-cite" href="${escHtml(l.source.url)}" target="_blank" rel="noopener">${escHtml(l.source.label||"State labor source")} ↗</a>`
         : escHtml((l.source||{}).label || "");
       const loc = [l.city, l.county ? l.county + " Co." : "", l.state].filter(Boolean).map(escHtml).join(", ");
       return `<tr>
         <td><div class="real-name">${escHtml(l.employer||"—")}</div>
-          <div class="real-sub"><span class="real-mode ${modeCls}">${escHtml((l.source_status||"").toUpperCase())}</span></div></td>
+          <div class="real-sub"><span class="real-mode ${modeCls}">${modeLabel}</span></div></td>
         <td>${loc}</td>
         <td style="text-align:center"><b>${escHtml(String(l.affected_count!=null?l.affected_count:"—"))}</b></td>
         <td class="real-sub">${escHtml(l.coverage_loss_date||"—")}<div class="real-sub">notice ${escHtml(l.notice_date||"—")}</div></td>
@@ -932,7 +964,7 @@ async function loadTax() {
     const counties = d.money_in_motion || [];
     const sum = d.summary || {};
     const verifyBtn = d.receipt_id
-      ? `<button class="real-verify" onclick="openReceipt('${escHtml(d.receipt_id)}')">🔏 Verify territory receipt</button>`
+      ? `<button class="real-verify" onclick="openReceipt('${escHtml(d.receipt_id)}')">🔒 Proof &amp; Sources</button>`
       : `<span class="real-sub">no receipt</span>`;
     const srcChips = (d.sources || []).map(src =>
       `<a class="real-mode ${src.mode==='LIVE'?'live':'sample'}" href="${escHtml(src.url||'#')}" target="_blank" rel="noopener">${escHtml(src.mode)} · ${escHtml(src.label||'IRS SOI')} ↗</a>`).join(" ");

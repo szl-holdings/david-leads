@@ -128,6 +128,11 @@ def _build_lead(rec: dict[str, Any], source_status: str) -> dict[str, Any]:
         try:
             # one corroborating public source (the state WARN filing) -> n_sources=1
             lead["confidence"] = fr.confidence_band(score, 1, {"intensity": intensity})
+            try:
+                lead["confidence"]["level"] = fr.confidence_word(
+                    lead["confidence"].get("half_width", 99.0))
+            except Exception:
+                pass
         except Exception:
             pass
         try:
