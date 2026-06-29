@@ -2,7 +2,7 @@
 # © 2026 SZL Holdings — David Leads Sovereign Insurance Intelligence
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
-import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error
+import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -65,7 +65,10 @@ except Exception:  # pragma: no cover
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# CORS: env-configurable allow-list (comma-separated). Default "*" is safe here because auth is a
+# bearer token in the Authorization header (not a cookie), so credentials are not sent cross-site.
+_CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
+app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 
 # --- demo credentials (David-only). Override via env in production. ---
@@ -105,8 +108,10 @@ def healthz():
 
 @app.post("/api/login")
 def login(req: LoginReq):
-    ok = (USERS.get(req.username) == req.password) and (req.access_key == ACCESS_KEY)
-    if not ok:
+    expected = USERS.get(req.username)
+    pass_ok = expected is not None and secrets.compare_digest(req.password, expected)
+    key_ok = secrets.compare_digest(req.access_key, ACCESS_KEY)
+    if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
     _TOKENS.add(tok)
@@ -116,8 +121,19 @@ def login(req: LoginReq):
 @app.post("/api/run")
 def run(req: RunReq, authorization: str | None = Header(default=None)):
     _auth(authorization)
-    rc.reset_chain()
-    sigs, meta = sig.gather_all(live=req.live)
+    try:
+        rc.reset_chain()
+    except Exception:
+        pass
+    # Base public-data gather. The per-source helpers already fall back to [SAMPLE] internally,
+    # but wrap defensively so an unexpected failure degrades to an honest empty run, never a 500.
+    try:
+        sigs, meta = sig.gather_all(live=req.live)
+    except Exception:
+        sigs, meta = [], {"total_signals": 0, "rejected_nonpublic": 0, "fabricated": 0,
+                         "live_count": 0, "mode": "SAMPLE (offline)",
+                         "gathered_at": __import__("datetime").datetime.now(
+                             __import__("datetime").timezone.utc).isoformat()}
     # V3: merge in expanded public-data signals (rates, business formation, ACS extras, county unemployment)
     try:
         sigs3, meta3 = sig3.gather_v3(live=req.live)
@@ -159,7 +175,10 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     except Exception:
         sigs7, meta7 = [], {}
     # V8: Λ time-decay applied via age_min (0 = fresh run)
-    leads = sc.build_leads(meta, age_minutes=getattr(req, "age_min", 0.0))
+    try:
+        leads = sc.build_leads(meta, age_minutes=getattr(req, "age_min", 0.0))
+    except Exception:
+        leads = []
     # V8.2 P1-A: optional SEC Form 4 insider-sell liquidity flag — only on live runs, only for
     # leads whose event_type implies a liquidity moment AND where a public employer is known.
     # Defensive: any failure leaves the lead untouched so /api/run never breaks.
@@ -208,9 +227,13 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     receipts = {}
     for lead in leads:
         # each lead's receipt binds the signals that justify its segment
-        receipts[lead["id"]] = rc.make_receipt(lead, sigs, lead["score"])
-        lead["receipt_id"] = receipts[lead["id"]]["id"]
-        lead["receipt_signed"] = receipts[lead["id"]]["signed"]
+        try:
+            receipts[lead["id"]] = rc.make_receipt(lead, sigs, lead["score"])
+            lead["receipt_id"] = receipts[lead["id"]]["id"]
+            lead["receipt_signed"] = receipts[lead["id"]]["signed"]
+        except Exception:
+            lead["receipt_id"] = None
+            lead["receipt_signed"] = False
     _STATE.update(leads=leads, signals=sigs, meta=meta, receipts=receipts)
     # khipu 3-of-4 witnessed governance: report consensus from the leads' receipts when present
     consensus_state = "unwitnessed"
@@ -218,26 +241,37 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     if any_receipt and any_receipt.get("consensus"):
         consensus_state = any_receipt["consensus"].get("khipu_consensus", "unwitnessed")
     top = leads[:3]
-    brief = {
-        "top_ids": [l["id"] for l in top],
-        "headline": (f"{len([l for l in leads if l['bucket']=='HOT'])} HOT leads ready to call today — "
-                     f"lead with {top[0]['name']}." if top else "Run intelligence to build today's call list."),
-        "items": [{"id": l["id"], "name": l["name"], "score": l["score"], "bucket": l["bucket"],
-                   "product": l["product"], "action": l["nba"]["action"]} for l in top],
-    }
-    learning = ev.outcome_summary() if ev is not None else {"total_outcomes": 0}
+    try:
+        brief = {
+            "top_ids": [l.get("id") for l in top],
+            "headline": (f"{len([l for l in leads if l.get('bucket')=='HOT'])} HOT leads ready to call today — "
+                         f"lead with {top[0].get('name')}." if top else "Run intelligence to build today's call list."),
+            "items": [{"id": l.get("id"), "name": l.get("name"), "score": l.get("score"),
+                       "bucket": l.get("bucket"), "product": l.get("product"),
+                       "action": (l.get("nba") or {}).get("action")} for l in top],
+        }
+    except Exception:
+        brief = {"top_ids": [], "headline": "Run intelligence to build today's call list.", "items": []}
+    try:
+        learning = ev.outcome_summary() if ev is not None else {"total_outcomes": 0}
+    except Exception:
+        learning = {"total_outcomes": 0}
+    try:
+        kpi = sc.kpi_summary(leads)
+    except Exception:
+        kpi = {}
     return {
         "meta": meta,
         "signals": sigs,
         "leads": leads,
-        "kpi": sc.kpi_summary(leads),
+        "kpi": kpi,
         "brief": brief,
         "learning": learning,  # P0-6: in-session adaptive conversion signal
         "governance": {
-            "signals_checked": meta["total_signals"],
-            "all_public": meta["rejected_nonpublic"] == 0,
-            "fabricated": meta["fabricated"],
-            "rejected_nonpublic": meta["rejected_nonpublic"],
+            "signals_checked": meta.get("total_signals", 0),
+            "all_public": meta.get("rejected_nonpublic", 0) == 0,
+            "fabricated": meta.get("fabricated", 0),
+            "rejected_nonpublic": meta.get("rejected_nonpublic", 0),
             "consensus": consensus_state,
             "verdict": "PASS — public-data-only, honest by design",
         },
@@ -248,13 +282,19 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
 def model(authorization: str | None = Header(default=None)):
     """Open the black box: full transparent scoring methodology."""
     _auth(authorization)
-    return sc.model_card()
+    try:
+        return sc.model_card()
+    except Exception:
+        raise HTTPException(503, "model card temporarily unavailable")
 
 
 @app.get("/api/territory")
 def territory(state: str = "36", authorization: str | None = Header(default=None)):
     _auth(authorization)
-    terr = sig.territory_index(state)
+    try:
+        terr = sig.territory_index(state)
+    except Exception:
+        terr = _STATE.get("territory") or {"mode": "SAMPLE (offline)", "state": state, "indices": {}}
     _STATE["territory"] = terr  # cache so Ask the Territory can ground on it
     return terr
 
@@ -273,28 +313,44 @@ def ask(req: AskReq, authorization: str | None = Header(default=None)):
             _STATE["territory"] = sig.territory_index("36")
         except Exception:
             _STATE["territory"] = {}
-    result = ask_engine.answer(req.question, _STATE)
+    try:
+        result = ask_engine.answer(req.question, _STATE)
+    except Exception:
+        result = {"intent": "unknown", "grounded": False, "citations": [],
+                  "answer": "The territory engine is temporarily unavailable. Run intelligence and try again.",
+                  "used_ids": []}
     # sign the answer (WILLAY-style: the answer + its citations are bound to a tamper-evident receipt)
-    pseudo_lead = {
-        "id": "ask_" + str(abs(hash(req.question)) % 10**8),
-        "name": "Ask the Territory query",
-        "bucket": result["intent"].upper(),
-        "product": "conversational-intelligence",
-    }
-    sigs_used = [{"source": c["label"], "signal": "grounding citation", "public": True} for c in result["citations"]] or \
-               [{"source": "public-data session state", "signal": "grounding", "public": True}]
-    receipt = rc.make_receipt(pseudo_lead, sigs_used, 100.0 if result["grounded"] else 0.0)
-    result["receipt_id"] = receipt["id"]
-    result["receipt_signed"] = receipt["signed"]
-    _STATE.setdefault("ask_receipts", {})[receipt["id"]] = receipt
-    _STATE["receipts"][receipt["id"]] = receipt  # so /api/verify works on ask receipts too
+    try:
+        citations = result.get("citations") or []
+        pseudo_lead = {
+            "id": "ask_" + str(abs(hash(req.question)) % 10**8),
+            "name": "Ask the Territory query",
+            "bucket": (result.get("intent") or "query").upper(),
+            "product": "conversational-intelligence",
+        }
+        sigs_used = [{"source": c.get("label", "citation"), "signal": "grounding citation", "public": True}
+                     for c in citations] or \
+                   [{"source": "public-data session state", "signal": "grounding", "public": True}]
+        receipt = rc.make_receipt(pseudo_lead, sigs_used, 100.0 if result.get("grounded") else 0.0)
+        result["receipt_id"] = receipt["id"]
+        result["receipt_signed"] = receipt["signed"]
+        _STATE.setdefault("ask_receipts", {})[receipt["id"]] = receipt
+        _STATE.setdefault("receipts", {})[receipt["id"]] = receipt  # so /api/verify works on ask receipts too
+    except Exception:
+        result.setdefault("receipt_id", None)
+        result.setdefault("receipt_signed", False)
     return result
 
 
 @app.get("/api/leads")
 def get_leads(authorization: str | None = Header(default=None)):
     _auth(authorization)
-    return {"leads": _STATE["leads"], "kpi": sc.kpi_summary(_STATE["leads"]) if _STATE["leads"] else {}}
+    leads = _STATE.get("leads", []) or []
+    try:
+        kpi = sc.kpi_summary(leads) if leads else {}
+    except Exception:
+        kpi = {}
+    return {"leads": leads, "kpi": kpi}
 
 
 @app.get("/api/receipt/{rid}")
@@ -322,16 +378,30 @@ def pulse(states: str | None = None, region: str | None = None, live: bool = Tru
     portal (Socrata/ArcGIS) for a real recent count; failed probes are honest [SAMPLE]."""
     _auth(authorization)
     state_list = [x.strip().upper() for x in states.split(",")] if states else None
-    rc.reset_chain()
-    result = sig8.territory_pulse(state_list, live=live, region=region)
-    sigs_used = sig8.all_pulse_signals(state_list)
-    pseudo = {"id": "pulse_seaboard", "name": "Territory Pulse (13-state seaboard)",
-              "bucket": result["summary"]["top_state"] or "PULSE",
-              "product": "territory-intelligence"}
-    receipt = rc.make_receipt(pseudo, sigs_used, float(len(result["seaboard"])))
-    result["receipt_id"] = receipt["id"]
-    result["receipt_signed"] = receipt["signed"]
-    _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    try:
+        rc.reset_chain()
+    except Exception:
+        pass
+    try:
+        result = sig8.territory_pulse(state_list, live=live, region=region)
+    except Exception:
+        raise HTTPException(503, "territory pulse temporarily unavailable")
+    if not isinstance(result, dict):
+        raise HTTPException(503, "territory pulse temporarily unavailable")
+    summary = result.get("summary") or {}
+    seaboard = result.get("seaboard") or []
+    try:
+        sigs_used = sig8.all_pulse_signals(state_list)
+        pseudo = {"id": "pulse_seaboard", "name": "Territory Pulse (13-state seaboard)",
+                  "bucket": summary.get("top_state") or "PULSE",
+                  "product": "territory-intelligence"}
+        receipt = rc.make_receipt(pseudo, sigs_used, float(len(seaboard)))
+        result["receipt_id"] = receipt["id"]
+        result["receipt_signed"] = receipt["signed"]
+        _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    except Exception:
+        result.setdefault("receipt_id", None)
+        result.setdefault("receipt_signed", False)
     _STATE["pulse"] = result
     return result
 
@@ -341,17 +411,28 @@ def brief(lead_id: str, authorization: str | None = Header(default=None)):
     """V8 Signed 4-Part Brief — each part GROUNDED by a real a11oy formula verdict
     (Priority / Why-now / Opening-line / Sensitivity), witness-signed via khipu 3-of-4."""
     _auth(authorization)
-    lead = next((l for l in _STATE.get("leads", []) if l["id"] == lead_id), None)
+    lead = next((l for l in _STATE.get("leads", []) if l.get("id") == lead_id), None)
     if not lead:
         raise HTTPException(404, "Lead not found - run intelligence first")
+    b = None
     if fm is not None:
-        b = fm.build_signed_brief(lead)
-    else:  # honest fallback to the structured brief if the formulas engine is unavailable
-        b = sc.build_brief(lead, _STATE.get("signals", []))
-    receipt = rc.make_brief_receipt(b, _STATE.get("signals", []))
-    b["receipt_id"] = receipt["id"]
-    b["receipt_signed"] = receipt["signed"]
-    _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+        try:
+            b = fm.build_signed_brief(lead)
+        except Exception:
+            b = None
+    if not isinstance(b, dict):  # honest fallback to the structured brief if the formulas engine fails
+        try:
+            b = sc.build_brief(lead, _STATE.get("signals", []))
+        except Exception:
+            raise HTTPException(503, "brief temporarily unavailable")
+    try:
+        receipt = rc.make_brief_receipt(b, _STATE.get("signals", []))
+        b["receipt_id"] = receipt["id"]
+        b["receipt_signed"] = receipt["signed"]
+        _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+    except Exception:
+        b.setdefault("receipt_id", None)
+        b.setdefault("receipt_signed", False)
     return b
 
 
@@ -373,12 +454,23 @@ def work(req: WorkReq, authorization: str | None = Header(default=None)):
     if req.step_minutes is not None:
         cfg["stepMinutes"] = req.step_minutes
     meta = _STATE.get("meta", {}) or {}
-    out = wk.run_territory_pulse(meta, cfg)
+    try:
+        out = wk.run_territory_pulse(meta, cfg)
+    except Exception:
+        raise HTTPException(503, "work loop temporarily unavailable")
+    if not isinstance(out, dict):
+        raise HTTPException(503, "work loop temporarily unavailable")
+    _lake_size = None
+    if lake is not None:
+        try:
+            _lake_size = lake.size()
+        except Exception:
+            _lake_size = None
     return {
-        "trace": out["trace"],
-        "events": out["events"],
-        "loop_receipt": out["loop_receipt"],
-        "lake_size": lake.size() if lake is not None else None,
+        "trace": out.get("trace"),
+        "events": out.get("events"),
+        "loop_receipt": out.get("loop_receipt"),
+        "lake_size": _lake_size,
     }
 
 
@@ -399,8 +491,14 @@ def outcome(req: OutcomeReq, authorization: str | None = Header(default=None)):
     if outcome_val not in ev.VALID_OUTCOMES:
         raise HTTPException(422, f"outcome must be one of {ev.VALID_OUTCOMES}")
     lead = next((l for l in _STATE.get("leads", []) if l["id"] == req.lead_id), None)
-    event_type = (lead or {}).get("event_type") or (ev.classify((lead or {}).get("event", "")) if lead else "unknown")
-    summary = ev.record_outcome(event_type, outcome_val)
+    try:
+        event_type = (lead or {}).get("event_type") or (ev.classify((lead or {}).get("event", "")) if lead else "unknown")
+    except Exception:
+        event_type = "unknown"
+    try:
+        summary = ev.record_outcome(event_type, outcome_val)
+    except Exception:
+        summary = {"total_outcomes": 0}
     # signed, hash-chained outcome receipt -> append-only lake (durable if SZL_RECEIPT_LAKE_PATH)
     receipt_id = None
     receipt_signed = False
@@ -433,7 +531,7 @@ def outcome(req: OutcomeReq, authorization: str | None = Header(default=None)):
         "receipt_signed": receipt_signed,
         "learning": summary,
         "lake_size": lake.size() if lake is not None else None,
-        "message": f"learning from {summary['total_outcomes']} logged outcomes",
+        "message": f"learning from {summary.get('total_outcomes', 0)} logged outcomes",
     }
 
 
@@ -444,8 +542,11 @@ def get_lake(organ: str | None = None, decision: str | None = None,
     _auth(authorization)
     if lake is None:
         raise HTTPException(503, "receipt lake unavailable")
-    events = lake.query(organ=organ, decision=decision, limit=limit)
-    return {"size": lake.size(), "count": len(events), "events": events}
+    try:
+        events = lake.query(organ=organ, decision=decision, limit=limit)
+        return {"size": lake.size(), "count": len(events), "events": events}
+    except Exception:
+        raise HTTPException(503, "receipt lake temporarily unavailable")
 
 
 @app.get("/api/benchmark")
@@ -456,14 +557,20 @@ def benchmark(authorization: str | None = Header(default=None)):
     if bench is None:
         raise HTTPException(503, "benchmark unavailable")
     leads = _STATE.get("leads", []) or []
-    summary = ev.outcome_summary() if ev is not None else {}
+    try:
+        summary = ev.outcome_summary() if ev is not None else {}
+    except Exception:
+        summary = {}
     lake_events = []
     if lake is not None:
         try:
             lake_events = lake.query(organ="conversion-loop")
         except Exception:
             lake_events = []
-    return bench.build_benchmark(leads, summary, lake_events)
+    try:
+        return bench.build_benchmark(leads, summary, lake_events)
+    except Exception:
+        raise HTTPException(503, "benchmark temporarily unavailable")
 
 
 @app.get("/api/routing")
@@ -587,6 +694,17 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
     if not req.url:
         return {"ok": True, "sent": False, "reason": "no url supplied",
                 "would_send": payload}
+    # Validate the URL scheme: only http/https outbound is allowed. This blocks file://, ftp://,
+    # gopher:// and other schemes that could be abused for local-file read or SSRF. On an invalid
+    # URL we never raise a 500 — we return the honest would-send payload, same as a blocked send.
+    try:
+        parsed = urllib.parse.urlparse(req.url)
+    except Exception:
+        parsed = None
+    if not parsed or parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        return {"ok": True, "sent": False,
+                "reason": "invalid url (only http/https allowed)",
+                "url": req.url, "would_send": payload}
     try:
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
