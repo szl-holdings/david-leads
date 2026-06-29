@@ -62,6 +62,11 @@ try:
     from . import routing as rt
 except Exception:  # pragma: no cover
     rt = None
+# Real Callable Leads — public B2B business/license records. Defensive import so boot never breaks.
+try:
+    from . import real_leads as rl
+except Exception:  # pragma: no cover
+    rl = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -602,6 +607,34 @@ def routing(authorization: str | None = Header(default=None)):
     except Exception:
         return {"roster": [], "routing": [], "factors": {},
                 "honest_note": "routing temporarily unavailable; run intelligence first"}
+
+
+@app.get("/api/real-leads")
+def real_leads(states: str = "DE,CT", authorization: str | None = Header(default=None)):
+    """Real, currently-filed public B2B prospects (new business owners + newly-licensed
+    professionals) from official state open-data portals. Public business addresses only —
+    NO private personal data, NO fabricated names/numbers. Each record carries a public source
+    citation + a signed receipt (public signals, fabricated=0). Defensive: a down portal
+    degrades that source to an honest [SAMPLE]; the endpoint never 500s."""
+    _auth(authorization)
+    if rl is None:
+        raise HTTPException(503, "real-leads source unavailable")
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or ["DE", "CT"]
+    try:
+        out = rl.real_callable_leads(state_list, limit_per=12)
+    except Exception:
+        raise HTTPException(503, "real-leads temporarily unavailable")
+    # stash each signed receipt so /api/verify/{rid} works, and strip internal-only keys
+    clean_leads = []
+    for lead in out.get("leads", []):
+        rcpt = lead.pop("_receipt", None)
+        if isinstance(rcpt, dict) and rcpt.get("id"):
+            _STATE.setdefault("receipts", {})[rcpt["id"]] = rcpt
+        lead.pop("_account_id", None)
+        clean_leads.append(lead)
+    out["leads"] = clean_leads
+    _STATE["real_leads"] = out
+    return out
 
 
 # columns for the ranked-lead CRM export
