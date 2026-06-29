@@ -72,6 +72,11 @@ try:
     from . import tax_leads as tx
 except Exception:  # pragma: no cover
     tx = None
+# WARN Act layoff intelligence — public state DOL records. Defensive import.
+try:
+    from . import warn_leads as wl
+except Exception:  # pragma: no cover
+    wl = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -669,6 +674,31 @@ def real_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = He
         clean_leads.append(lead)
     out["leads"] = clean_leads
     _STATE["real_leads"] = out
+    return out
+
+
+@app.get("/api/warn-leads")
+def warn_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
+    """WARN Act layoff leads (public state DOL records) for the covered states. A 60-day WARN
+    notice is a high-intent trigger for ACA / short-term / COBRA-alternative coverage. Live where
+    a structured endpoint exists; otherwise honest source_status='sample' rows on the real WARN
+    schema (clearly labelled, never presented as live). Each lead carries its state WARN portal
+    citation + a frontier receipt. Defensive: never 500s."""
+    _auth(authorization)
+    if wl is None:
+        raise HTTPException(503, "warn-leads source unavailable")
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
+        ["NY", "NJ", "PA", "MD", "DE", "CT"]
+    try:
+        out = wl.warn_leads(state_list)
+    except Exception:
+        raise HTTPException(503, "warn-leads temporarily unavailable")
+    # stash each frontier receipt so /api/verify/{rid} can echo it
+    for lead in out.get("leads", []):
+        rcpt = lead.get("receipt")
+        if isinstance(rcpt, dict) and rcpt.get("sha256"):
+            _STATE.setdefault("receipts", {})[rcpt["sha256"]] = rcpt
+    _STATE["warn_leads"] = out
     return out
 
 

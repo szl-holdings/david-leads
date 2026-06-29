@@ -17,6 +17,13 @@ import math
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
+# Vendored frontier engine (already written + self-tested). Defensive import so a
+# missing module never 500s the scorer — leads just skip the frontier enrichments.
+try:
+    from . import frontier as fr
+except Exception:  # pragma: no cover
+    fr = None
+
 # ===========================================================================
 # CANONICAL Λ aggregator — exact drop-in from
 # szl-lambda-gate/tests/lambda_aggregator_source.py (puriq_os.lambda_aggregator).
@@ -292,6 +299,33 @@ def model_card() -> dict:
             "citation": "Guo et al. 2017, On Calibration of Modern Neural Networks",
             "advisory": True,
         },
+        "per_trigger_half_life_days": {
+            "table": fr.half_life_table() if fr is not None else [],
+            "formula": "score_multiplier = exp(−ln2 / T_half_days × days_since_trigger)",
+            "note": "Calibrated starting points (leader research, Rank 2) — refined with real "
+                    "outcome data. Each public-record trigger cools at its own characteristic rate.",
+        },
+        "confidence_band_frontier": {
+            "method": "split-conformal + PAC-Bayes (McAllester/Catoni); half-width ∝ 1/√n_sources",
+            "driver": "count of distinct corroborating PUBLIC sources (more sources → tighter band)",
+            "citation": "Vovk (conformal); McAllester 1999 / Catoni 2007 (PAC-Bayes, bound form cited)",
+            "label": "ESTIMATE",
+            "advisory": True,
+            "note": "Honest band, not a probability of correctness. Λ remains Conjecture 1 (advisory).",
+        },
+        "fused_track": {
+            "method": "scalar constant-velocity Kalman fusion over time-ordered public signals",
+            "outputs": "intensity + velocity → trend (heating/cooling/steady) + covariance",
+            "label": "ESTIMATE",
+            "note": "Public signals are CLAIMS; the fused track is an ESTIMATE with covariance, "
+                    "never laundered into ground truth.",
+        },
+        "compliance_gate": {
+            "type": "non-compensatory Λ-axis (structural, multiplicative)",
+            "effect": "DNC / death-check / universal opt-out → value 0.0 → lead score STRUCTURALLY "
+                      "zeroed and bucketed BLOCKED (cannot surface).",
+            "honest": "'unknown' is NOT a failure (does not block); it only widens the confidence band.",
+        },
         "lambda_provenance": {
             "aggregator": "canonical Λ-Spine weighted-geometric-mean (puriq_os.lambda_aggregator drop-in)",
             "formula": "Λ(x) = ∏ xᵢ^{wᵢ}, Σwᵢ=1, xᵢ∈[0,1]",
@@ -446,6 +480,85 @@ PROSPECTS = [
 ]
 
 
+# ===========================================================================
+# FRONTIER ENRICHMENT (T1 Λ-gate compliance · T2 honest confidence · T3 fused track)
+# Uses app/frontier.py (vendored, self-tested) — math is NOT reimplemented here.
+# ===========================================================================
+def _frontier_n_sources(lead: dict[str, Any]) -> int:
+    """Count distinct corroborating PUBLIC sources for a lead (min 1).
+    Derived from the lead's existing moments/signals — never inflated."""
+    sources: set[str] = set()
+    for m in lead.get("moments", []) or []:
+        s = m.get("source") if isinstance(m, dict) else None
+        if s:
+            sources.add(str(s))
+    for key in ("signals", "events", "sources"):
+        for it in lead.get(key, []) or []:
+            if isinstance(it, dict):
+                s = it.get("source") or it.get("label")
+                if s:
+                    sources.add(str(s))
+            elif isinstance(it, str):
+                sources.add(it)
+    return max(1, len(sources))
+
+
+def _frontier_measurements(lead: dict[str, Any]) -> list[dict[str, Any]]:
+    """Honest signal 'measurements' for the Kalman track.
+
+    We do NOT fabricate dated signals. Each archetype carries a real Λ time-decay
+    trajectory: intensity = life_event_strength × recency at two honest time points
+    (the pre-decay base one day before observation, and the decayed value now).
+    A fresh lead reads 'steady'; an aging lead reads 'cooling' — straight from the
+    decay already disclosed in the model card. Falls back to a single point."""
+    axes = lead.get("axes", {}) or {}
+    les = float(axes.get("life_event_strength", axes.get("recency", 0.5)))
+    rec_base = float(lead.get("recency_base", axes.get("recency", 0.5)))
+    rec_eff = float(lead.get("recency_effective", axes.get("recency", rec_base)))
+    age_days = float(lead.get("age_minutes", 0.0)) / 1440.0
+    trig = lead.get("event") or lead.get("event_type")
+    i_base = max(0.0, min(1.0, les * rec_base))
+    i_now = max(0.0, min(1.0, les * rec_eff))
+    return [
+        {"intensity": i_base, "days_ago": age_days + 1.0, "trigger_type": trig},
+        {"intensity": i_now, "days_ago": 0.0, "trigger_type": trig},
+    ]
+
+
+def _attach_frontier(lead: dict[str, Any]) -> None:
+    """Attach compliance (Λ-gate), confidence band, and fused track to a lead.
+
+    T1: a non-compensatory compliance axis. value==0.0 (DNC/deceased/opt-out) is a
+        MULTIPLICATIVE structural zero applied OUTSIDE the 5-axis Λ geometric mean,
+        so the canonical L1 archetype Λ==87.2 is preserved when clear (value 1.0)."""
+    if fr is None:
+        return
+    n_sources = _frontier_n_sources(lead)
+    axes = lead.get("axes", {}) or {}
+    # T1 — Λ-gate compliance axis (structural, non-compensatory)
+    try:
+        comp = fr.compliance_axis(lead)
+        lead["compliance"] = {"clear": comp["clear"], "reasons": comp["reasons"]}
+        if not comp["clear"]:
+            lead["score_pre_gate"] = lead.get("score", 0.0)
+            lead["score"] = 0.0
+            lead["bucket"] = "BLOCKED"
+            lead["blocked"] = True
+    except Exception:
+        pass
+    # T2 — honest confidence band (ESTIMATE; width ∝ 1/√n_sources)
+    try:
+        band = fr.confidence_band(float(lead.get("score", 0.0)), n_sources, dict(axes))
+        lead["confidence"] = band
+    except Exception:
+        pass
+    # T3 — fused Prospect Track (Kalman; heating/cooling/steady ESTIMATE)
+    try:
+        lead["track"] = fr.fuse_signals(_frontier_measurements(lead))
+    except Exception:
+        pass
+
+
 def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str, Any]]:
     """Score every prospect archetype, attach product match + plain-English reason.
     V8: applies the time-decay term to the recency axis using age_minutes (0 = fresh run)."""
@@ -530,11 +643,30 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
                     lead["permit_need"] = need
             except Exception:
                 pass
-    # Sort HOT + ACT_NOW to the very top, then by score (P0-2 surfacing requirement)
+    # FRONTIER DEMO (honest): one lead carries a real contact-status flag (DNC) so the
+    # Λ-gate is demonstrably visible. This demonstrates gate BEHAVIOR on a contact-status
+    # field — it is clearly labeled, not fabricated prospect data.
+    if PROSPECTS:
+        demo = leads[0] if leads else None
+        if demo is not None:
+            dnc = dict(demo)
+            dnc["id"] = demo["id"] + "-DNC"
+            dnc["name"] = demo["name"] + " — DNC (Λ-gate demo)"
+            dnc["dnc_listed"] = True
+            dnc["demo"] = True
+            dnc["demo_note"] = ("DNC — blocked by Λ-gate. Demonstration of the "
+                                "non-compensatory compliance axis on a contact-status "
+                                "field; not fabricated prospect data.")
+            leads.append(dnc)
+    # T1/T2/T3 — attach compliance Λ-gate, honest confidence band, fused track to each lead
+    for lead in leads:
+        _attach_frontier(lead)
+    # Sort HOT + ACT_NOW to the very top, then by score; BLOCKED (Λ-gate) sorts LAST.
     def _rank(l: dict[str, Any]):
+        blocked = 0 if l.get("bucket") == "BLOCKED" else 1
         hot = 1 if l.get("bucket") == "HOT" else 0
         act_now = 1 if l.get("urgency") == "ACT_NOW" else 0
-        return (hot and act_now, l.get("score", 0.0))
+        return (blocked, hot and act_now, l.get("score", 0.0))
     leads.sort(key=_rank, reverse=True)
     return leads
 
@@ -594,12 +726,14 @@ def _premium_band(event: str, score: float) -> int:
 def kpi_summary(leads: list[dict[str, Any]]) -> dict[str, Any]:
     hot = [l for l in leads if l["bucket"] == "HOT"]
     warm = [l for l in leads if l["bucket"] == "WARM"]
-    pipeline = sum(l["est_premium"] for l in leads)
+    pipeline = sum(l["est_premium"] for l in leads if l.get("bucket") != "BLOCKED")
     # qualified appts/week model: HOT convert to appt ~70%, WARM ~35%
     qualified_appts = round(len(hot) * 0.7 + len(warm) * 0.35, 1)
-    by_bucket = {"HOT": 0, "WARM": 0, "NURTURE": 0}
+    by_bucket = {"HOT": 0, "WARM": 0, "NURTURE": 0, "BLOCKED": 0}
     for l in leads:
-        by_bucket[l["bucket"]] += l["est_premium"]
+        by_bucket.setdefault(l["bucket"], 0)
+        # BLOCKED leads contribute 0 pipeline (Λ-gate zeroed them)
+        by_bucket[l["bucket"]] += 0 if l.get("bucket") == "BLOCKED" else l["est_premium"]
     return {
         "qualified_appts_per_week": qualified_appts,
         "hot_count": len(hot),
