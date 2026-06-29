@@ -491,8 +491,10 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
             "age_minutes": round(float(age_minutes), 2),
             "freshness_state": freshness_state(age_minutes),
             "observed_at": now_iso,
-            # estimated annual premium band (illustrative, for pipeline KPI)
+            # estimated annual premium band (ILLUSTRATIVE — not a quote; see est_premium_advisory)
             "est_premium": _premium_band(p["event"], score),
+            "est_premium_advisory": True,
+            "est_premium_note": "Illustrative estimate from event type + score — NOT a quoted premium.",
             "moments": [{"source": s, "label": t} for s, t in MOMENTS_MAP[p["event"]]],
             "nba": NBA_MAP[p["event"]],
         })
@@ -604,6 +606,8 @@ def kpi_summary(leads: list[dict[str, Any]]) -> dict[str, Any]:
         "warm_count": len(warm),
         "total_leads": len(leads),
         "pipeline_premium": pipeline,
+        "pipeline_premium_advisory": True,
+        "pipeline_premium_note": "Illustrative — sum of estimated premium bands, NOT quoted or bound premium.",
         "avg_score": round(sum(l["score"] for l in leads) / max(len(leads), 1), 1),
         "pipeline_by_bucket": by_bucket,
     }

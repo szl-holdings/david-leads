@@ -89,7 +89,7 @@ function renderKpis(k) {
     <div class="kpi">
       <div class="label">Pipeline Premium</div>
       <div class="val" style="font-size:27px">${k ? money(k.pipeline_premium) : "—"}</div>
-      <div class="sub">est. annualized across all leads</div>
+      <div class="sub">illustrative estimate — not quoted premium</div>
     </div>
     <div class="kpi">
       <div class="label">Avg Lead Score</div>
@@ -206,7 +206,7 @@ function renderLeads(leads) {
         ${receptMeter(l)}
         <div class="lead-why">${l.why}</div>
       </td>
-      <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
+      <td><div class="prod">${l.product}</div><div class="prem" title="Illustrative estimate — not a quoted premium">~${money(l.est_premium)}/yr (illustrative)</div></td>
       <td>
         <button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔏 Verify Receipt</button>
         <button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Signed Brief</button>
