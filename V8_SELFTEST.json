@@ -1,392 +1,666 @@
 {
-  "login": {
-    "ok": true
+ "login": {
+  "ok": true
+ },
+ "run": {
+  "leads": 8,
+  "L1_score": 87.2,
+  "consensus": "4-of-4",
+  "governance_verdict": "PASS \u2014 public-data-only, honest by design"
+ },
+ "L1_lambda_87_2": true,
+ "p0_gapfill": {
+  "L1_enrichment": {
+   "event_type": "new_baby",
+   "event_type_label": "New baby",
+   "urgency": "ACT_NOW",
+   "hours_since": 0.0,
+   "wealth_tier": "Mass-Affluent",
+   "lapse_decile": 5
   },
-  "run": {
-    "leads": 8,
-    "L1_score": 87.2,
-    "consensus": "4-of-4",
-    "governance_verdict": "PASS \u2014 public-data-only, honest by design"
-  },
-  "L1_lambda_87_2": true,
-  "p0_gapfill": {
-    "L1_enrichment": {
-      "event_type": "new_baby",
-      "event_type_label": "New baby",
-      "urgency": "ACT_NOW",
-      "hours_since": 0.0,
-      "wealth_tier": "Mass-Affluent",
-      "lapse_decile": 5
-    },
-    "top_lead_is_L1": true,
-    "taxonomy_events": 14,
-    "brief_L1_angles": 3,
-    "brief_L1_angle_keys": [
-      "family-coverage",
-      "income-replacement",
-      "college-headstart"
-    ],
-    "outcome_loop": {
-      "ok": true,
-      "lake_grew": true,
-      "message": "learning from 1 logged outcomes"
-    },
-    "outcome_receipt": {
-      "organ": "conversion-loop",
-      "decision": "outcome-logged",
-      "event_type": "new_baby",
-      "outcome": "sold"
-    },
-    "work_event_type": "permit_filed",
-    "model_advisory": {
-      "lexisnexis_14x": true,
-      "wealth_public_proxy_note": true,
-      "lapse_fcra": false,
-      "adaptive_loop": true
-    },
-    "screenshots": {
-      "desktop_overflowX": 0,
-      "mobile_overflowX": 0,
-      "files": [
-        "/tmp/dlv8_desktop.png",
-        "/tmp/dlv8_mobile.png",
-        "/tmp/dlv8_brief.png",
-        "/tmp/dlv8_blackbox.png"
-      ],
-      "app_js_errors": 0,
-      "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
-    }
-  },
-  "pulse_static": {
-    "states": 16,
-    "top": "CT",
-    "gaps": [
-      "MA",
-      "NH",
-      "ME"
-    ]
-  },
-  "pulse_live_coverage": {
-    "CT": {
-      "mode": "LIVE",
-      "count": 1283427,
-      "bucket": "SURGING"
-    },
-    "DE": {
-      "mode": "LIVE",
-      "count": 63982,
-      "bucket": "SURGING"
-    },
-    "DC": {
-      "mode": "LIVE",
-      "count": 4631,
-      "bucket": "ACTIVE"
-    },
-    "NY": {
-      "mode": "LIVE",
-      "count": 69822,
-      "bucket": "ACTIVE"
-    },
-    "VA": {
-      "mode": "LIVE",
-      "count": 9921,
-      "bucket": "ACTIVE"
-    },
-    "MD": {
-      "mode": "LIVE",
-      "count": 2438889,
-      "bucket": "QUIET"
-    },
-    "NJ": {
-      "mode": "LIVE",
-      "count": 2716419,
-      "bucket": "QUIET"
-    },
-    "PA": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "NC": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "FL": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "SC": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "GA": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "RI": {
-      "mode": "SAMPLE",
-      "count": null,
-      "bucket": "QUIET"
-    },
-    "MA": {
-      "mode": "STATIC",
-      "count": null,
-      "bucket": "GAP"
-    },
-    "NH": {
-      "mode": "STATIC",
-      "count": null,
-      "bucket": "GAP"
-    },
-    "ME": {
-      "mode": "STATIC",
-      "count": null,
-      "bucket": "GAP"
-    }
-  },
-  "live_states": [
-    "CT",
-    "DE",
-    "DC",
-    "NY",
-    "VA",
-    "MD",
-    "NJ"
+  "top_lead_is_L1": true,
+  "taxonomy_events": 14,
+  "brief_L1_angles": 3,
+  "brief_L1_angle_keys": [
+   "family-coverage",
+   "income-replacement",
+   "college-headstart"
   ],
-  "sample_states": [
-    "PA",
-    "NC",
-    "FL",
-    "SC",
-    "GA",
-    "RI"
-  ],
-  "gap_states": [
-    "MA",
-    "NH",
-    "ME"
-  ],
-  "brief_L1": {
-    "parts": 4,
-    "part_keys": [
-      "PRIORITY",
-      "WHY_NOW",
-      "OPENING_LINE",
-      "SENSITIVITY"
-    ],
-    "consensus": "4-of-4",
-    "signed": false,
-    "receipt_id": "rcpt_458877e1aefe606a"
+  "outcome_loop": {
+   "ok": true,
+   "lake_grew": true,
+   "message": "learning from 1 logged outcomes"
   },
-  "verify_brief": {
-    "verdict": "VERIFIED"
+  "outcome_receipt": {
+   "organ": "conversion-loop",
+   "decision": "outcome-logged",
+   "event_type": "new_baby",
+   "outcome": "sold"
   },
-  "work": {
-    "exitReason": "budgetExhausted",
-    "stepsRun": 8,
-    "earliestSafeExit": 3,
-    "events": 8,
-    "lambda_null": true,
-    "lake_size": 9
+  "work_event_type": "permit_filed",
+  "model_advisory": {
+   "lexisnexis_14x": true,
+   "wealth_public_proxy_note": true,
+   "lapse_fcra": false,
+   "adaptive_loop": true
   },
-  "lake": {
-    "size": 9,
-    "count": 9
-  },
-  "model": {
-    "doi": "10.5281/zenodo.20434308",
-    "uniqueness": "Conjecture 1 (OPEN)",
-    "has_conjecture1": true,
-    "receptivity_advisory": true
-  },
-  "p1_gapfill": {
-    "modules_added": [
-      "app/liquidity.py", "app/wealth990.py", "app/permits.py",
-      "app/coverage.py", "app/benchmark.py"
-    ],
-    "run_enrichment": {
-      "all_leads_have_receptivity": true,
-      "all_leads_have_likely_gap": true,
-      "L1_receptivity": 72.0,
-      "L1_likely_gap": "education-funding gap",
-      "L1_lambda_unchanged_87_2": true
-    },
-    "endpoints": {
-      "GET /api/benchmark": {"by_event_type_rows": 8, "summary_keys": 7},
-      "GET /api/export.csv": {"http": 200, "rows_incl_header": 9, "data_rows": 8,
-        "header": "rank,id,name,event_type,score,bucket,urgency,wealth_tier,lapse_decile,receptivity,likely_gap,product,employer,liquidity,receipt_id,receipt_hash"},
-      "POST /api/webhook/test": {"ok": true, "sent": false, "reason": "no url supplied", "would_send_count": 8}
-    },
-    "live_probes": {
-      "SEC_form4_liquidity": {"employer": "Verizon Communications", "mode": "LIVE",
-        "cik": "0000732712", "recent_sells": 0, "latest_date": "2026-06-18",
-        "note": "real 200 from data.sec.gov; honest LIVE result (0 recent sells in window)"},
-      "propublica_990": {"name": "Robert Smith", "mode": "LIVE", "matches": 34,
-        "note": "real 200 from ProPublica Nonprofit Explorer"},
-      "pulse_live_states": 7
-    },
-    "regression": {
-      "brief_L1_parts": 4, "brief_L1_angles": 3, "brief_L1_consensus": "4-of-4",
-      "verify_brief_verdict": "VERIFIED", "pulse_live_states_ge_5": true
-    },
-    "frontend": {
-      "receptivity_meter": true, "likely_gap_chip": true, "liquidity_flag": true,
-      "producer_benchmark_panel": true, "export_csv_control": true, "push_to_crm_control": true,
-      "desktop_overflowX": 0, "mobile_overflowX": 0,
-      "files": [
-        "/tmp/dlv8p1_desktop.png", "/tmp/dlv8p1_mobile.png",
-        "/tmp/dlv8p1_benchmark.png", "/tmp/dlv8p1_crm.png", "/tmp/dlv8p1_blackbox.png"
-      ],
-      "app_js_errors": 0,
-      "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
-    },
-    "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; Λ stays Conjecture 1; receptivity is advisory and distinct from Λ"
-  },
-  "p2_gapfill": {
-    "modules_added": ["app/routing.py"],
-    "p2_1_routing": {
-      "endpoint": "GET /api/routing",
-      "http": 200,
-      "leads_routed": 8,
-      "all_have_recommended_agent": true,
-      "roster": [
-        {"name": "David", "real": true, "label": "primary advisor"},
-        {"name": "A. Rivera", "real": false, "label": "[illustrative roster]"},
-        {"name": "M. Chen", "real": false, "label": "[illustrative roster]"}
-      ],
-      "factors": {"specialty": 0.5, "territory": 0.25, "history": 0.25},
-      "L1_recommended_agent": "David",
-      "L1_score": 85.0,
-      "note": "pure-function best-fit advisor matching; specialty + territory + (benchmark) historical conversion; David is the only real advisor, teammates labelled [illustrative roster]"
-    },
-    "p2_2_liquidity_ui": {
-      "attempted_for_employer_archetypes": ["L2", "L4"],
-      "L2_employer": "Verizon Communications",
-      "L2_mode": "LIVE",
-      "L2_recent_sells": 0,
-      "L2_latest_date": "2026-06-18",
-      "employer_illustrative_labeled": true,
-      "frontend_liquidity_watch": true,
-      "frontend_liq_flag_on_card": true,
-      "note": "real 200 from data.sec.gov on a sample run; honest LIVE result; [illustrative public employer] labelled; [SAMPLE] if SEC unreachable"
-    },
-    "p2_3_wealth_viz": {
-      "wealth_tier_structured": true,
-      "wealth_tier_keys": ["tier", "score", "ladder", "ladder_index", "basis", "signals", "advisory"],
-      "L1_tier": "Mass-Affluent",
-      "L1_score": 75,
-      "L1_ladder_index": 1,
-      "ladder": ["Mass", "Mass-Affluent", "Affluent", "HNW"],
-      "frontend_compact_ladder_on_card": true,
-      "frontend_full_ladder_expanded": true,
-      "frontend_ladder_in_brief": true,
-      "proxy_chips_labeled": "estimated from public records"
-    },
-    "regression": {
-      "run_leads": 8,
-      "L1_lambda_87_2": true,
-      "brief_L1_parts": 4,
-      "brief_L1_angles": 3,
-      "verify_brief_verdict": "VERIFIED",
-      "benchmark_rows": 8,
-      "export_csv_http": 200,
-      "export_csv_data_rows": 8,
-      "export_wealth_col_string": "Mass-Affluent",
-      "webhook_ok": true,
-      "pulse_live_states": 7,
-      "model_doi": "10.5281/zenodo.20434308",
-      "model_uniqueness": "Conjecture 1 (OPEN)"
-    },
-    "live_probes": {
-      "SEC_form4_liquidity": {"employer": "Verizon Communications", "mode": "LIVE",
-        "recent_sells": 0, "latest_date": "2026-06-18",
-        "note": "real 200 from data.sec.gov; 94 recent Form 4 filings, no sale-coded txn in sampled subset"}
-    },
-    "frontend": {
-      "lead_routing_panel": true, "routing_rows": 8,
-      "wealth_ladder_compact_card": true, "wealth_ladder_full_expanded": true, "wealth_ladder_brief": true,
-      "liquidity_watch_subsection": true, "liquidity_flag_card": true,
-      "desktop_overflowX": 0, "mobile_overflowX": 0,
-      "files": [
-        "/tmp/dlv8p2_desktop.png", "/tmp/dlv8p2_mobile.png",
-        "/tmp/dlv8p2_routing.png", "/tmp/dlv8p2_brief.png", "/tmp/dlv8p2_mobile_detail.png"
-      ],
-      "app_js_errors": 0,
-      "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED resource loads (offline sandbox); no application JS / pageerror"
-    },
-    "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; David is the only real advisor (teammates [illustrative roster]); Λ stays Conjecture 1; all P2 additions defensive (try/except) so /api/run never breaks"
-  },
-  "resilience": {
-    "timeout_s": 12,
-    "retry": "1 backoff",
-    "concurrent_workers": 6,
-    "overall_budget_s": 20,
-    "last_good_cache": "failed refetch served as 'LIVE (cached <ts>)' when a prior real count exists; else honest [SAMPLE]",
-    "live_or_cached_states": [
-      "CT",
-      "DE",
-      "DC",
-      "NY",
-      "VA",
-      "MD",
-      "NJ"
-    ],
-    "live_or_cached_count": 7
-  },
-  "real_leads": {
-    "module": "app/real_leads.py",
-    "endpoint": "GET /api/real-leads?states=DE,CT",
-    "auth_required": true,
-    "doctrine": "PUBLIC B2B records only (new business owners + newly-licensed professionals); no private personal cell/home numbers; no social scraping; no fabrication; every record carries public source citation + signed receipt (fabricated=0); HTML entities stripped, names title-cased, blank/garbage rows dropped",
-    "result": {
-      "total": 35,
-      "live_count": 35,
-      "sample_count": 0,
-      "source_states": ["DE", "CT"]
-    },
-    "sources": [
-      {"state": "DE", "source": "DE Division of Revenue — Business Licenses", "dataset": "5zy2-grhr", "mode": "LIVE", "count": 11},
-      {"state": "CT", "source": "CT Dept. of Consumer Protection — Professional Licenses", "dataset": "ngch-56tr", "mode": "LIVE", "count": 12},
-      {"state": "CT", "source": "CT Secretary of State — Business Filings", "dataset": "ah3s-bes7", "mode": "LIVE", "count": 12}
-    ],
-    "example_real_names": ["Jose L Mejia Perez", "Erik Castillo-Hidalgo", "Alamos Auto INC"],
-    "data_quality": {
-      "no_html_entities": true,
-      "no_blank_names": true,
-      "field_bleed_cleaned": true,
-      "all_have_citation": true,
-      "all_have_receipt_id": true
-    },
-    "receipt_roundtrip": {
-      "example_receipt_id": "rcpt_84536da1add17439",
-      "verify_verdict": "VERIFIED"
-    },
-    "regression_existing_unchanged": {
-      "run_L1_lambda_87_2": true,
-      "brief_L1_parts": 4,
-      "brief_L1_angles": 3,
-      "verify_brief_verdict": "VERIFIED",
-      "routing_rows": 8,
-      "pulse_http": 200,
-      "model_doi": "10.5281/zenodo.20434308",
-      "model_uniqueness": "Conjecture 1 (OPEN)"
-    },
-    "frontend": {
-      "toolbar_button": "Real Prospects (#btnReal)",
-      "separate_panel": true,
-      "honest_banner": true,
-      "rows_rendered_desktop": 35,
-      "rows_rendered_mobile": 35,
-      "ranked_leads_intact": true,
-      "desktop_overflowX": 0,
-      "mobile_overflowX": 0,
-      "files": ["/tmp/real_desktop.png", "/tmp/real_mobile.png"],
-      "app_js_errors": 0,
-      "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED (offline sandbox); no application JS errors; illustrative Ranked Leads panel untouched (18 rows still render)"
-    }
+  "screenshots": {
+   "desktop_overflowX": 0,
+   "mobile_overflowX": 0,
+   "files": [
+    "/tmp/dlv8_desktop.png",
+    "/tmp/dlv8_mobile.png",
+    "/tmp/dlv8_brief.png",
+    "/tmp/dlv8_blackbox.png"
+   ],
+   "app_js_errors": 0,
+   "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
   }
+ },
+ "pulse_static": {
+  "states": 16,
+  "top": "CT",
+  "gaps": [
+   "MA",
+   "NH",
+   "ME"
+  ]
+ },
+ "pulse_live_coverage": {
+  "CT": {
+   "mode": "LIVE",
+   "count": 1283427,
+   "bucket": "SURGING"
+  },
+  "DE": {
+   "mode": "LIVE",
+   "count": 63982,
+   "bucket": "SURGING"
+  },
+  "DC": {
+   "mode": "LIVE",
+   "count": 4631,
+   "bucket": "ACTIVE"
+  },
+  "NY": {
+   "mode": "LIVE",
+   "count": 69822,
+   "bucket": "ACTIVE"
+  },
+  "VA": {
+   "mode": "LIVE",
+   "count": 9921,
+   "bucket": "ACTIVE"
+  },
+  "MD": {
+   "mode": "LIVE",
+   "count": 2438889,
+   "bucket": "QUIET"
+  },
+  "NJ": {
+   "mode": "LIVE",
+   "count": 2716419,
+   "bucket": "QUIET"
+  },
+  "PA": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "NC": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "FL": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "SC": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "GA": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "RI": {
+   "mode": "SAMPLE",
+   "count": null,
+   "bucket": "QUIET"
+  },
+  "MA": {
+   "mode": "STATIC",
+   "count": null,
+   "bucket": "GAP"
+  },
+  "NH": {
+   "mode": "STATIC",
+   "count": null,
+   "bucket": "GAP"
+  },
+  "ME": {
+   "mode": "STATIC",
+   "count": null,
+   "bucket": "GAP"
+  }
+ },
+ "live_states": [
+  "CT",
+  "DE",
+  "DC",
+  "NY",
+  "VA",
+  "MD",
+  "NJ"
+ ],
+ "sample_states": [
+  "PA",
+  "NC",
+  "FL",
+  "SC",
+  "GA",
+  "RI"
+ ],
+ "gap_states": [
+  "MA",
+  "NH",
+  "ME"
+ ],
+ "brief_L1": {
+  "parts": 4,
+  "part_keys": [
+   "PRIORITY",
+   "WHY_NOW",
+   "OPENING_LINE",
+   "SENSITIVITY"
+  ],
+  "consensus": "4-of-4",
+  "signed": false,
+  "receipt_id": "rcpt_458877e1aefe606a"
+ },
+ "verify_brief": {
+  "verdict": "VERIFIED"
+ },
+ "work": {
+  "exitReason": "budgetExhausted",
+  "stepsRun": 8,
+  "earliestSafeExit": 3,
+  "events": 8,
+  "lambda_null": true,
+  "lake_size": 9
+ },
+ "lake": {
+  "size": 9,
+  "count": 9
+ },
+ "model": {
+  "doi": "10.5281/zenodo.20434308",
+  "uniqueness": "Conjecture 1 (OPEN)",
+  "has_conjecture1": true,
+  "receptivity_advisory": true
+ },
+ "p1_gapfill": {
+  "modules_added": [
+   "app/liquidity.py",
+   "app/wealth990.py",
+   "app/permits.py",
+   "app/coverage.py",
+   "app/benchmark.py"
+  ],
+  "run_enrichment": {
+   "all_leads_have_receptivity": true,
+   "all_leads_have_likely_gap": true,
+   "L1_receptivity": 72.0,
+   "L1_likely_gap": "education-funding gap",
+   "L1_lambda_unchanged_87_2": true
+  },
+  "endpoints": {
+   "GET /api/benchmark": {
+    "by_event_type_rows": 8,
+    "summary_keys": 7
+   },
+   "GET /api/export.csv": {
+    "http": 200,
+    "rows_incl_header": 9,
+    "data_rows": 8,
+    "header": "rank,id,name,event_type,score,bucket,urgency,wealth_tier,lapse_decile,receptivity,likely_gap,product,employer,liquidity,receipt_id,receipt_hash"
+   },
+   "POST /api/webhook/test": {
+    "ok": true,
+    "sent": false,
+    "reason": "no url supplied",
+    "would_send_count": 8
+   }
+  },
+  "live_probes": {
+   "SEC_form4_liquidity": {
+    "employer": "Verizon Communications",
+    "mode": "LIVE",
+    "cik": "0000732712",
+    "recent_sells": 0,
+    "latest_date": "2026-06-18",
+    "note": "real 200 from data.sec.gov; honest LIVE result (0 recent sells in window)"
+   },
+   "propublica_990": {
+    "name": "Robert Smith",
+    "mode": "LIVE",
+    "matches": 34,
+    "note": "real 200 from ProPublica Nonprofit Explorer"
+   },
+   "pulse_live_states": 7
+  },
+  "regression": {
+   "brief_L1_parts": 4,
+   "brief_L1_angles": 3,
+   "brief_L1_consensus": "4-of-4",
+   "verify_brief_verdict": "VERIFIED",
+   "pulse_live_states_ge_5": true
+  },
+  "frontend": {
+   "receptivity_meter": true,
+   "likely_gap_chip": true,
+   "liquidity_flag": true,
+   "producer_benchmark_panel": true,
+   "export_csv_control": true,
+   "push_to_crm_control": true,
+   "desktop_overflowX": 0,
+   "mobile_overflowX": 0,
+   "files": [
+    "/tmp/dlv8p1_desktop.png",
+    "/tmp/dlv8p1_mobile.png",
+    "/tmp/dlv8p1_benchmark.png",
+    "/tmp/dlv8p1_crm.png",
+    "/tmp/dlv8p1_blackbox.png"
+   ],
+   "app_js_errors": 0,
+   "note": "only aborted external CDN three.js + holo.js show as errors (offline sandbox); no application JS errors"
+  },
+  "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; \u039b stays Conjecture 1; receptivity is advisory and distinct from \u039b"
+ },
+ "p2_gapfill": {
+  "modules_added": [
+   "app/routing.py"
+  ],
+  "p2_1_routing": {
+   "endpoint": "GET /api/routing",
+   "http": 200,
+   "leads_routed": 8,
+   "all_have_recommended_agent": true,
+   "roster": [
+    {
+     "name": "David",
+     "real": true,
+     "label": "primary advisor"
+    },
+    {
+     "name": "A. Rivera",
+     "real": false,
+     "label": "[illustrative roster]"
+    },
+    {
+     "name": "M. Chen",
+     "real": false,
+     "label": "[illustrative roster]"
+    }
+   ],
+   "factors": {
+    "specialty": 0.5,
+    "territory": 0.25,
+    "history": 0.25
+   },
+   "L1_recommended_agent": "David",
+   "L1_score": 85.0,
+   "note": "pure-function best-fit advisor matching; specialty + territory + (benchmark) historical conversion; David is the only real advisor, teammates labelled [illustrative roster]"
+  },
+  "p2_2_liquidity_ui": {
+   "attempted_for_employer_archetypes": [
+    "L2",
+    "L4"
+   ],
+   "L2_employer": "Verizon Communications",
+   "L2_mode": "LIVE",
+   "L2_recent_sells": 0,
+   "L2_latest_date": "2026-06-18",
+   "employer_illustrative_labeled": true,
+   "frontend_liquidity_watch": true,
+   "frontend_liq_flag_on_card": true,
+   "note": "real 200 from data.sec.gov on a sample run; honest LIVE result; [illustrative public employer] labelled; [SAMPLE] if SEC unreachable"
+  },
+  "p2_3_wealth_viz": {
+   "wealth_tier_structured": true,
+   "wealth_tier_keys": [
+    "tier",
+    "score",
+    "ladder",
+    "ladder_index",
+    "basis",
+    "signals",
+    "advisory"
+   ],
+   "L1_tier": "Mass-Affluent",
+   "L1_score": 75,
+   "L1_ladder_index": 1,
+   "ladder": [
+    "Mass",
+    "Mass-Affluent",
+    "Affluent",
+    "HNW"
+   ],
+   "frontend_compact_ladder_on_card": true,
+   "frontend_full_ladder_expanded": true,
+   "frontend_ladder_in_brief": true,
+   "proxy_chips_labeled": "estimated from public records"
+  },
+  "regression": {
+   "run_leads": 8,
+   "L1_lambda_87_2": true,
+   "brief_L1_parts": 4,
+   "brief_L1_angles": 3,
+   "verify_brief_verdict": "VERIFIED",
+   "benchmark_rows": 8,
+   "export_csv_http": 200,
+   "export_csv_data_rows": 8,
+   "export_wealth_col_string": "Mass-Affluent",
+   "webhook_ok": true,
+   "pulse_live_states": 7,
+   "model_doi": "10.5281/zenodo.20434308",
+   "model_uniqueness": "Conjecture 1 (OPEN)"
+  },
+  "live_probes": {
+   "SEC_form4_liquidity": {
+    "employer": "Verizon Communications",
+    "mode": "LIVE",
+    "recent_sells": 0,
+    "latest_date": "2026-06-18",
+    "note": "real 200 from data.sec.gov; 94 recent Form 4 filings, no sale-coded txn in sampled subset"
+   }
+  },
+  "frontend": {
+   "lead_routing_panel": true,
+   "routing_rows": 8,
+   "wealth_ladder_compact_card": true,
+   "wealth_ladder_full_expanded": true,
+   "wealth_ladder_brief": true,
+   "liquidity_watch_subsection": true,
+   "liquidity_flag_card": true,
+   "desktop_overflowX": 0,
+   "mobile_overflowX": 0,
+   "files": [
+    "/tmp/dlv8p2_desktop.png",
+    "/tmp/dlv8p2_mobile.png",
+    "/tmp/dlv8p2_routing.png",
+    "/tmp/dlv8p2_brief.png",
+    "/tmp/dlv8p2_mobile_detail.png"
+   ],
+   "app_js_errors": 0,
+   "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED resource loads (offline sandbox); no application JS / pageerror"
+  },
+  "doctrine": "public-data only; [SAMPLE] when a feed is unreachable; never fabricate; David is the only real advisor (teammates [illustrative roster]); \u039b stays Conjecture 1; all P2 additions defensive (try/except) so /api/run never breaks"
+ },
+ "resilience": {
+  "timeout_s": 12,
+  "retry": "1 backoff",
+  "concurrent_workers": 6,
+  "overall_budget_s": 20,
+  "last_good_cache": "failed refetch served as 'LIVE (cached <ts>)' when a prior real count exists; else honest [SAMPLE]",
+  "live_or_cached_states": [
+   "CT",
+   "DE",
+   "DC",
+   "NY",
+   "VA",
+   "MD",
+   "NJ"
+  ],
+  "live_or_cached_count": 7
+ },
+ "real_leads": {
+  "module": "app/real_leads.py",
+  "endpoint": "GET /api/real-leads?states=DE,CT",
+  "auth_required": true,
+  "doctrine": "PUBLIC B2B records only (new business owners + newly-licensed professionals); no private personal cell/home numbers; no social scraping; no fabrication; every record carries public source citation + signed receipt (fabricated=0); HTML entities stripped, names title-cased, blank/garbage rows dropped",
+  "result": {
+   "total": 35,
+   "live_count": 35,
+   "sample_count": 0,
+   "source_states": [
+    "DE",
+    "CT"
+   ]
+  },
+  "sources": [
+   {
+    "state": "DE",
+    "source": "DE Division of Revenue \u2014 Business Licenses",
+    "dataset": "5zy2-grhr",
+    "mode": "LIVE",
+    "count": 11
+   },
+   {
+    "state": "CT",
+    "source": "CT Dept. of Consumer Protection \u2014 Professional Licenses",
+    "dataset": "ngch-56tr",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "CT",
+    "source": "CT Secretary of State \u2014 Business Filings",
+    "dataset": "ah3s-bes7",
+    "mode": "LIVE",
+    "count": 12
+   }
+  ],
+  "example_real_names": [
+   "Jose L Mejia Perez",
+   "Erik Castillo-Hidalgo",
+   "Alamos Auto INC"
+  ],
+  "data_quality": {
+   "no_html_entities": true,
+   "no_blank_names": true,
+   "field_bleed_cleaned": true,
+   "all_have_citation": true,
+   "all_have_receipt_id": true
+  },
+  "receipt_roundtrip": {
+   "example_receipt_id": "rcpt_84536da1add17439",
+   "verify_verdict": "VERIFIED"
+  },
+  "regression_existing_unchanged": {
+   "run_L1_lambda_87_2": true,
+   "brief_L1_parts": 4,
+   "brief_L1_angles": 3,
+   "verify_brief_verdict": "VERIFIED",
+   "routing_rows": 8,
+   "pulse_http": 200,
+   "model_doi": "10.5281/zenodo.20434308",
+   "model_uniqueness": "Conjecture 1 (OPEN)"
+  },
+  "frontend": {
+   "toolbar_button": "Real Prospects (#btnReal)",
+   "separate_panel": true,
+   "honest_banner": true,
+   "rows_rendered_desktop": 35,
+   "rows_rendered_mobile": 35,
+   "ranked_leads_intact": true,
+   "desktop_overflowX": 0,
+   "mobile_overflowX": 0,
+   "files": [
+    "/tmp/real_desktop.png",
+    "/tmp/real_mobile.png"
+   ],
+   "app_js_errors": 0,
+   "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED (offline sandbox); no application JS errors; illustrative Ranked Leads panel untouched (18 rows still render)"
+  }
+ },
+ "tax_territories": {
+  "module": "app/tax_leads.py",
+  "endpoint": "GET /api/tax-territories?states=NY,NJ,CT,PA,MD,DE",
+  "auth_required": true,
+  "doctrine": "Aggregate IRS SOI public statistics only \u2014 TERRITORY targeting (where to prospect), names NO individuals; every block carries IRS source citation + one signed receipt over the set; honest [SAMPLE] fallback if irs.gov unreachable",
+  "sources": [
+   {
+    "label": "IRS SOI \u2014 Individual Income Tax by ZIP (21zpallagi.csv)",
+    "mode": "LIVE"
+   },
+   {
+    "label": "IRS SOI \u2014 County-to-County Migration inflow (countyinflow2122.csv)",
+    "mode": "LIVE"
+   }
+  ],
+  "result": {
+   "zip_mode": "LIVE",
+   "migration_mode": "LIVE",
+   "affluent_zip_count": 12,
+   "money_in_motion_count": 12,
+   "states": [
+    "NY",
+    "NJ",
+    "CT",
+    "PA",
+    "MD",
+    "DE"
+   ]
+  },
+  "top_affluent_zips": [
+   {
+    "zip": "10023",
+    "state": "NY",
+    "high_income_returns": 11500,
+    "affluent_share": 34.6
+   },
+   {
+    "zip": "11201",
+    "state": "NY",
+    "high_income_returns": 10460,
+    "affluent_share": 29.9
+   },
+   {
+    "zip": "20854",
+    "state": "MD",
+    "high_income_returns": 9800,
+    "affluent_share": 43.2
+   }
+  ],
+  "top_money_in_motion": [
+   {
+    "county": "New York County",
+    "state": "NY",
+    "agi_inflow_000": 14786315,
+    "returns_inflow": 77870
+   },
+   {
+    "county": "Kings County",
+    "state": "NY",
+    "agi_inflow_000": 6554035,
+    "returns_inflow": 62158
+   },
+   {
+    "county": "Westchester County",
+    "state": "NY",
+    "agi_inflow_000": 3749754,
+    "returns_inflow": 22060
+   }
+  ],
+  "receipt_roundtrip": {
+   "receipt_id": "rcpt_50bc39ca485bd839",
+   "verify_verdict": "VERIFIED"
+  }
+ },
+ "real_leads_multistate": {
+  "endpoint": "GET /api/real-leads?states=NY,NJ,PA,MD,DE,CT",
+  "result": {
+   "live_count": 82,
+   "sample_count": 0,
+   "total": 82,
+   "source_states": [
+    "NY",
+    "NJ",
+    "PA",
+    "MD",
+    "DE",
+    "CT"
+   ]
+  },
+  "sources": [
+   {
+    "state": "NY",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "NJ",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "PA",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "MD",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "DE",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "CT",
+    "mode": "LIVE",
+    "count": 12
+   },
+   {
+    "state": "CT",
+    "mode": "LIVE",
+    "count": 12
+   }
+  ],
+  "note": "NY/NJ/PA/MD added live; each returns real name+public address or honest [SAMPLE] per state"
+ },
+ "optin": {
+  "endpoints": [
+   "POST /api/optin",
+   "GET /api/optin/leads"
+  ],
+  "consent_false_rejected_http": 400,
+  "consent_true_ok": true,
+  "consent_receipt": {
+   "receipt_id": "rcpt_d1cf08f3ac742064",
+   "verify_verdict": "VERIFIED"
+  },
+  "leads_after_submit": 2,
+  "consent_basis": "express consent (opt-in)",
+  "doctrine": "Only place a personal phone/email is accepted \u2014 self-submitted with explicit consent; consent==true required else 400; signs a receipt recording consent+timestamp"
+ },
+ "frontend_v8_tax_optin": {
+  "toolbar_buttons": [
+   "Tax Territories (#btnTax)",
+   "Opt-In (#btnOptin)"
+  ],
+  "real_prospects_multistate_default": "NY,NJ,PA,MD,DE,CT",
+  "honest_banners": true,
+  "desktop_overflowX": 0,
+  "mobile_overflowX": 0,
+  "viewports": [
+   "1280x900",
+   "390x844"
+  ],
+  "files": [
+   "/tmp/tax_desktop.png",
+   "/tmp/tax_mobile.png",
+   "/tmp/tax_panel.png",
+   "/tmp/optin_panel.png"
+  ],
+  "app_js_check": "node --check passed",
+  "app_js_errors": "only aborted external CDN three.js+holo.js (ERR_FAILED, offline sandbox); no application JS errors"
+ }
 }

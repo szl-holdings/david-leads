@@ -833,6 +833,129 @@ async function loadRealLeads() {
   }
 }
 
+/* ---------- Tax Territories — aggregate IRS public statistics (territory, not individuals) ---------- */
+function openTax() {
+  const card = $("taxCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadTax();
+}
+async function loadTax() {
+  const body = $("taxBody"); if (!body) return;
+  const states = ($("taxStates") && $("taxStates").value || "NY,NJ,CT").trim() || "NY,NJ,CT";
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Fetching IRS SOI tax-territory data (live)…</div>`;
+  try {
+    const d = await api("/api/tax-territories?states=" + encodeURIComponent(states));
+    const zips = d.affluent_zips || [];
+    const counties = d.money_in_motion || [];
+    const sum = d.summary || {};
+    const verifyBtn = d.receipt_id
+      ? `<button class="real-verify" onclick="openReceipt('${escHtml(d.receipt_id)}')">🔏 Verify territory receipt</button>`
+      : `<span class="real-sub">no receipt</span>`;
+    const srcChips = (d.sources || []).map(src =>
+      `<a class="real-mode ${src.mode==='LIVE'?'live':'sample'}" href="${escHtml(src.url||'#')}" target="_blank" rel="noopener">${escHtml(src.mode)} · ${escHtml(src.label||'IRS SOI')} ↗</a>`).join(" ");
+    $("taxHint").innerHTML = srcChips;
+    $("taxMeta").textContent = `${zips.length} affluent ZIPs · ${counties.length} money-in-motion counties`;
+
+    const zipRows = zips.map(z => `<tr>
+      <td><span class="real-zip">${escHtml(z.zip)}</span> <span class="real-sub">${escHtml(z.state)}</span></td>
+      <td class="real-num">${Number(z.high_income_returns||0).toLocaleString()}</td>
+      <td class="real-num">${escHtml(z.affluent_share)}%</td>
+      <td class="real-num">$${Number(z.high_income_agi_000||0).toLocaleString()}k</td>
+      <td><div class="real-angle">${escHtml(z.angle||"")}</div></td>
+    </tr>`).join("");
+    const cRows = counties.map(c => `<tr>
+      <td><div class="real-name">${escHtml(c.county)}</div><div class="real-sub">${escHtml(c.state)}</div></td>
+      <td class="real-num">${Number(c.returns_inflow||0).toLocaleString()}</td>
+      <td class="real-num">$${Number(c.agi_inflow_000||0).toLocaleString()}k</td>
+      <td class="real-num">$${Number(c.avg_agi_per_return_000||0).toLocaleString()}k</td>
+      <td><div class="real-angle">${escHtml(c.angle||"")}</div></td>
+    </tr>`).join("");
+
+    body.innerHTML = `
+      <div class="tax-sub-h">🏘️ Affluent ZIPs <span class="real-sub">— $200k+ AGI return density (IRS SOI by ZIP, mode: ${escHtml(sum.zip_mode||"?")})</span></div>
+      <div class="real-wrap"><table class="real-table">
+        <thead><tr><th>ZIP</th><th>$200k+ returns</th><th>Affluent share</th><th>$200k+ AGI</th><th>Suggested NYL angle</th></tr></thead>
+        <tbody>${zipRows || `<tr><td colspan="5" class="real-sub">No ZIPs for ${escHtml(states)}</td></tr>`}</tbody></table></div>
+      <div class="tax-sub-h" style="margin-top:18px">💸 Money-in-Motion counties <span class="real-sub">— AGI carried in by movers (IRS county migration inflow, mode: ${escHtml(sum.migration_mode||"?")})</span></div>
+      <div class="real-wrap"><table class="real-table">
+        <thead><tr><th>County</th><th>Returns in</th><th>AGI in</th><th>Avg AGI / return</th><th>Suggested NYL angle</th></tr></thead>
+        <tbody>${cRows || `<tr><td colspan="5" class="real-sub">No counties for ${escHtml(states)}</td></tr>`}</tbody></table></div>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        ${verifyBtn}<span class="real-sub">${escHtml(d.label||"")}</span></div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
+/* ---------- Opt-In — express-consent capture (only place personal contact is accepted) ---------- */
+function openOptin() {
+  const card = $("optinCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadOptinLeads();
+}
+async function submitOptin(ev) {
+  if (ev) ev.preventDefault();
+  const res = $("optResult"); const btn = $("optSubmit");
+  const consent = $("optConsent").checked;
+  res.className = "optin-result";
+  if (!consent) {
+    res.classList.add("err");
+    res.textContent = "✗ Consent is required — please check the box to be contacted.";
+    return false;
+  }
+  const payload = {
+    name: ($("optName").value || "").trim(),
+    email: ($("optEmail").value || "").trim() || null,
+    phone: ($("optPhone").value || "").trim() || null,
+    zip: ($("optZip").value || "").trim() || null,
+    interest: ($("optInterest").value || "").trim() || null,
+    consent: true,
+  };
+  btn.disabled = true; const orig = btn.innerHTML; btn.innerHTML = '<span class="loader"></span> Submitting…';
+  try {
+    const d = await api("/api/optin", { method: "POST", body: JSON.stringify(payload) });
+    res.classList.add("ok");
+    res.innerHTML = `✓ ${escHtml(d.message || "Submitted")} — consent receipt
+      <button class="real-verify" onclick="openReceipt('${escHtml(d.receipt_id)}')">🔏 ${escHtml(d.receipt_id)}</button>`;
+    $("optinForm").reset();
+    loadOptinLeads();
+  } catch (e) {
+    res.classList.add("err");
+    res.textContent = "✗ " + e.message;
+  } finally {
+    btn.disabled = false; btn.innerHTML = orig;
+  }
+  return false;
+}
+async function loadOptinLeads() {
+  const body = $("optinBody"); if (!body) return;
+  body.innerHTML = `<div style="padding:14px;color:var(--muted)">Loading consented leads…</div>`;
+  try {
+    const d = await api("/api/optin/leads");
+    const leads = d.leads || [];
+    $("optinMeta").textContent = `${leads.length} consented`;
+    if (!leads.length) {
+      body.innerHTML = `<div style="padding:14px;color:var(--muted)">No consented leads yet.</div>`;
+      return;
+    }
+    body.innerHTML = leads.map(l => {
+      const contact = [l.email, l.phone].filter(Boolean).map(escHtml).join(" · ");
+      const verify = l.receipt_id
+        ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">🔏 Verify</button>` : "";
+      return `<div class="optin-lead">
+        <div class="real-name">${escHtml(l.name)} <span class="optin-consent-badge">${escHtml(l.consent_basis || "express consent (opt-in)")}</span></div>
+        <div class="real-sub">${contact || "no contact provided"}${l.zip?" · ZIP "+escHtml(l.zip):""}${l.interest?" · "+escHtml(l.interest):""}</div>
+        <div class="real-sub">${escHtml(l.submitted_at || "")}</div>
+        <div style="margin-top:6px">${verify}</div>
+      </div>`;
+    }).join("");
+  } catch (e) {
+    body.innerHTML = `<div style="padding:14px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
 /* ---------- 3D login backdrop (governed-AI constellation) ---------- */
 (function () {
   if (!window.THREE) return;

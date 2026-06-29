@@ -49,6 +49,26 @@ SRC_CT_ENT = {
     "url": "https://data.ct.gov/resource/ah3s-bes7.json",
     "portal": "https://data.ct.gov/Business/Business-Filings/ah3s-bes7",
 }
+SRC_NY_CORP = {
+    "label": "NY Dept. of State — Active Corporations",
+    "url": "https://data.ny.gov/resource/n9v6-gdp6.json",
+    "portal": "https://data.ny.gov/Government-Finance/Active-Corporations-Beginning-1800/n9v6-gdp6",
+}
+SRC_NJ_BIZ = {
+    "label": "NJ Dept. of Children & Families — Licensed Child Care Centers",
+    "url": "https://data.nj.gov/resource/cru5-4rmm.json",
+    "portal": "https://data.nj.gov/Reference-Data/Licensed-Child-Care-Centers/cru5-4rmm",
+}
+SRC_PA_BIZ = {
+    "label": "PA Dept. of State — Registered Business Entities",
+    "url": "https://data.pa.gov/resource/xvd7-5r2c.json",
+    "portal": "https://data.pa.gov/Government-That-Works/Registered-Business-Entities/xvd7-5r2c",
+}
+SRC_MD_BIZ = {
+    "label": "MD Dept. of Agriculture — Licensed Plant/Pesticide Facilities",
+    "url": "https://opendata.maryland.gov/resource/cygz-kinv.json",
+    "portal": "https://opendata.maryland.gov/resource/cygz-kinv",
+}
 
 
 # ============================================================================================
@@ -332,6 +352,149 @@ def fetch_ct_new_entities(limit: int = 15) -> dict[str, Any]:
             "mode": "SAMPLE", "records": _sample_ct_ent()}
 
 
+def fetch_ny_corporations(limit: int = 15) -> dict[str, Any]:
+    """NY corporations filed in the last 365 days that carry a public process-service address."""
+    since = _iso_days_ago(365)
+    where = (f"initial_dos_filing_date > '{since}T00:00:00' "
+             "AND dos_process_address_1 IS NOT NULL AND current_entity_name IS NOT NULL")
+    url = (SRC_NY_CORP["url"] + "?" + urllib.parse.urlencode({
+        "$where": where,
+        "$order": "initial_dos_filing_date DESC",
+        "$limit": str(limit),
+    }))
+    try:
+        rows = _get(url)
+        out = []
+        for r in rows:
+            name = _smart_title(r.get("current_entity_name") or "")
+            if _is_garbage_name(name):
+                continue
+            out.append({
+                "type": "business",
+                "name": name,
+                "category": _smart_title(r.get("entity_type") or "") or "Corporation",
+                "address": _clean_text(r.get("dos_process_address_1")),
+                "city": _smart_title(r.get("dos_process_city") or ""),
+                "state": (r.get("dos_process_state") or "NY").upper()[:4],
+                "zip": _clean_text(r.get("dos_process_zip")),
+                "license_or_issue_date": _date10(r.get("initial_dos_filing_date")),
+                "public": True,
+            })
+        if out:
+            return {"source": SRC_NY_CORP["label"], "citation": SRC_NY_CORP,
+                    "mode": "LIVE", "records": out[:limit]}
+    except Exception:
+        pass
+    return {"source": SRC_NY_CORP["label"], "citation": SRC_NY_CORP,
+            "mode": "SAMPLE", "records": _sample_generic("NY", "Coastal Holdings Corp")}
+
+
+def fetch_nj_businesses(limit: int = 15) -> dict[str, Any]:
+    """NJ licensed child-care centers (small businesses) with a public business address."""
+    url = (SRC_NJ_BIZ["url"] + "?" + urllib.parse.urlencode({
+        "$where": "center IS NOT NULL AND addr1 IS NOT NULL",
+        "$order": "center ASC",
+        "$limit": str(limit),
+    }))
+    try:
+        rows = _get(url)
+        out = []
+        for r in rows:
+            name = _smart_title(r.get("center") or "")
+            if _is_garbage_name(name):
+                continue
+            out.append({
+                "type": "business",
+                "name": name,
+                "category": "Licensed Child Care Center",
+                "address": _clean_text(r.get("addr1")),
+                "city": _smart_title(r.get("city") or ""),
+                "state": "NJ",
+                "zip": _clean_text(r.get("zip")),
+                "license_or_issue_date": "",  # this registry exposes no clean filing date
+                "public": True,
+            })
+        if out:
+            return {"source": SRC_NJ_BIZ["label"], "citation": SRC_NJ_BIZ,
+                    "mode": "LIVE", "records": out[:limit]}
+    except Exception:
+        pass
+    return {"source": SRC_NJ_BIZ["label"], "citation": SRC_NJ_BIZ,
+            "mode": "SAMPLE", "records": _sample_generic("NJ", "Garden State Learning Center")}
+
+
+def fetch_pa_businesses(limit: int = 15) -> dict[str, Any]:
+    """PA registered business entities, most-recently created first, with a public address."""
+    since = _iso_days_ago(365)
+    where = (f"creationdate > '{since}T00:00:00' "
+             "AND business_name IS NOT NULL AND address_line1 IS NOT NULL")
+    url = (SRC_PA_BIZ["url"] + "?" + urllib.parse.urlencode({
+        "$where": where,
+        "$order": "creationdate DESC",
+        "$limit": str(limit),
+    }))
+    try:
+        rows = _get(url)
+        out = []
+        for r in rows:
+            name = _smart_title(r.get("business_name") or "")
+            if _is_garbage_name(name):
+                continue
+            out.append({
+                "type": "business",
+                "name": name,
+                "category": _smart_title(r.get("typeofbusinessregistration") or "") or "Business",
+                "address": _clean_text(r.get("address_line1")),
+                "city": _smart_title(r.get("city") or ""),
+                "state": (r.get("state") or "PA").upper()[:4],
+                "zip": _clean_text(r.get("zip")),
+                "license_or_issue_date": _date10(r.get("creationdate")),
+                "public": True,
+            })
+        if out:
+            return {"source": SRC_PA_BIZ["label"], "citation": SRC_PA_BIZ,
+                    "mode": "LIVE", "records": out[:limit]}
+    except Exception:
+        pass
+    return {"source": SRC_PA_BIZ["label"], "citation": SRC_PA_BIZ,
+            "mode": "SAMPLE", "records": _sample_generic("PA", "Keystone Contractors Llc")}
+
+
+def fetch_md_businesses(limit: int = 15) -> dict[str, Any]:
+    """MD active licensed plant/pesticide-handling firms with a public business address.
+    This portal's CDN rejects SoQL $where filters, so we over-fetch and filter client-side."""
+    url = (SRC_MD_BIZ["url"] + "?" + urllib.parse.urlencode({"$limit": str(limit * 5)}))
+    try:
+        rows = _get(url)
+        out = []
+        for r in rows:
+            if (r.get("bus_status") or "").upper() != "A" or not r.get("arc_street"):
+                continue
+            name = _smart_title(r.get("firmname") or "")
+            if _is_garbage_name(name):
+                continue
+            out.append({
+                "type": "business",
+                "name": name,
+                "category": "Licensed Facility",
+                "address": _clean_text(r.get("arc_street")),
+                "city": _smart_title(r.get("arc_city") or ""),
+                "state": (r.get("arc_state") or "MD").upper()[:4],
+                "zip": _clean_text(r.get("arc_zip")),
+                "license_or_issue_date": "",  # this registry exposes no clean issue date
+                "public": True,
+            })
+            if len(out) >= limit:
+                break
+        if out:
+            return {"source": SRC_MD_BIZ["label"], "citation": SRC_MD_BIZ,
+                    "mode": "LIVE", "records": out[:limit]}
+    except Exception:
+        pass
+    return {"source": SRC_MD_BIZ["label"], "citation": SRC_MD_BIZ,
+            "mode": "SAMPLE", "records": _sample_generic("MD", "Chesapeake Industries Inc")}
+
+
 # ============================================================================================
 # honest [SAMPLE] fallbacks — clearly labelled, public-shaped, never presented as live
 # ============================================================================================
@@ -360,12 +523,24 @@ def _sample_ct_ent() -> list[dict[str, Any]]:
     }]
 
 
+def _sample_generic(state: str, name: str) -> list[dict[str, Any]]:
+    return [{
+        "type": "business", "name": f"[SAMPLE] {name}", "category": "Business",
+        "address": "100 Main St", "city": "Capital City", "state": state, "zip": "00000",
+        "license_or_issue_date": _iso_days_ago(20), "public": True, "_sample": True,
+    }]
+
+
 # ============================================================================================
 # aggregate — merge, clean, de-dupe, classify, attach contact_quality + citation + receipt
 # ============================================================================================
 _STATE_FETCHERS = {
     "DE": [("de_biz", fetch_de_businesses)],
     "CT": [("ct_lic", fetch_ct_licenses), ("ct_ent", fetch_ct_new_entities)],
+    "NY": [("ny_corp", fetch_ny_corporations)],
+    "NJ": [("nj_biz", fetch_nj_businesses)],
+    "PA": [("pa_biz", fetch_pa_businesses)],
+    "MD": [("md_biz", fetch_md_businesses)],
 }
 
 
