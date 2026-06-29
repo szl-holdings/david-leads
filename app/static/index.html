@@ -477,8 +477,10 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 
 <div id="modalMount"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="holo.js"></script>
+<!-- app.js loads FIRST and synchronously so login/API never depend on the CDN. -->
 <script src="app.js"></script>
+<!-- three.js + holo are decorative (Holo mode only) and must never block the app. -->
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__holoUnavailable=true"></script>
+<script defer src="holo.js" onerror="window.__holoUnavailable=true"></script>
 </body>
 </html>
