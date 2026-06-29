@@ -772,6 +772,67 @@ async function openReceipt(rid, leadId) {
 }
 function closeModal() { $("modalMount").innerHTML = ""; }
 
+/* ---------- Real Prospects — public B2B business & license records (separate panel) ---------- */
+function escHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function openRealLeads() {
+  const card = $("realCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadRealLeads();
+}
+async function loadRealLeads() {
+  const body = $("realBody"); if (!body) return;
+  const states = ($("realStates") && $("realStates").value || "DE,CT").trim() || "DE,CT";
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Fetching real public records (live)…</div>`;
+  try {
+    const d = await api("/api/real-leads?states=" + encodeURIComponent(states));
+    const leads = d.leads || [];
+    const s = d.summary || {};
+    if (!leads.length) {
+      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No public records returned for ${escHtml(states)}. Try DE,CT.</div>`;
+      $("realMeta").textContent = "";
+      return;
+    }
+    const rows = leads.map(l => {
+      const addr = [l.address, l.city, l.state, l.zip].filter(Boolean).map(escHtml).join(", ");
+      const cqClass = l.contact_quality === "business address (public)" ? "addr"
+        : (l.contact_quality === "[SAMPLE]" ? "sample" : "entity");
+      const catOrCred = escHtml(l.credential || l.category || "—");
+      const verifyBtn = l.receipt_id
+        ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">🔏 Verify</button>`
+        : `<span class="real-sub">no receipt</span>`;
+      const cite = (l.citation && l.citation.url)
+        ? `<a class="real-cite" href="${escHtml(l.citation.url)}" target="_blank" rel="noopener">${escHtml(l.citation.label || "source")} ↗</a>`
+        : "";
+      return `<tr>
+        <td><div class="real-name">${escHtml(l.name)}</div>
+          <div class="real-sub">${escHtml((l.type||"").toUpperCase())}${l.status?" · "+escHtml(l.status):""}</div></td>
+        <td>${catOrCred}</td>
+        <td>${addr ? addr : `<span class="real-cq ${cqClass}">${escHtml(l.contact_quality)}</span>`}</td>
+        <td class="real-sub">${escHtml(l.license_or_issue_date || "date withheld")}</td>
+        <td><div class="real-angle">${escHtml(l.product_angle || "")}</div>
+          <div class="real-why">${escHtml(l.why || "")}</div></td>
+        <td>${verifyBtn}<div style="margin-top:6px">${cite}</div></td>
+      </tr>`;
+    }).join("");
+    $("realMeta").textContent = `${s.live_count||0} live · ${s.sample_count||0} sample · ${leads.length} total`;
+    const srcChips = (d.sources || []).map(src =>
+      `<span class="real-mode ${src.mode==='LIVE'?'live':'sample'}">${escHtml(src.state)} ${escHtml(src.mode)} (${src.count})</span>`).join(" ");
+    $("realHint").innerHTML = srcChips;
+    body.innerHTML =
+      `<div class="real-wrap"><table class="real-table">
+        <thead><tr><th>Business / Name</th><th>Category / Credential</th><th>Public Address</th>
+          <th>Record date</th><th>Suggested NYL angle</th><th>Receipt · Source</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
 /* ---------- 3D login backdrop (governed-AI constellation) ---------- */
 (function () {
   if (!window.THREE) return;

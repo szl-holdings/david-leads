@@ -336,5 +336,57 @@
       "NJ"
     ],
     "live_or_cached_count": 7
+  },
+  "real_leads": {
+    "module": "app/real_leads.py",
+    "endpoint": "GET /api/real-leads?states=DE,CT",
+    "auth_required": true,
+    "doctrine": "PUBLIC B2B records only (new business owners + newly-licensed professionals); no private personal cell/home numbers; no social scraping; no fabrication; every record carries public source citation + signed receipt (fabricated=0); HTML entities stripped, names title-cased, blank/garbage rows dropped",
+    "result": {
+      "total": 35,
+      "live_count": 35,
+      "sample_count": 0,
+      "source_states": ["DE", "CT"]
+    },
+    "sources": [
+      {"state": "DE", "source": "DE Division of Revenue — Business Licenses", "dataset": "5zy2-grhr", "mode": "LIVE", "count": 11},
+      {"state": "CT", "source": "CT Dept. of Consumer Protection — Professional Licenses", "dataset": "ngch-56tr", "mode": "LIVE", "count": 12},
+      {"state": "CT", "source": "CT Secretary of State — Business Filings", "dataset": "ah3s-bes7", "mode": "LIVE", "count": 12}
+    ],
+    "example_real_names": ["Jose L Mejia Perez", "Erik Castillo-Hidalgo", "Alamos Auto INC"],
+    "data_quality": {
+      "no_html_entities": true,
+      "no_blank_names": true,
+      "field_bleed_cleaned": true,
+      "all_have_citation": true,
+      "all_have_receipt_id": true
+    },
+    "receipt_roundtrip": {
+      "example_receipt_id": "rcpt_84536da1add17439",
+      "verify_verdict": "VERIFIED"
+    },
+    "regression_existing_unchanged": {
+      "run_L1_lambda_87_2": true,
+      "brief_L1_parts": 4,
+      "brief_L1_angles": 3,
+      "verify_brief_verdict": "VERIFIED",
+      "routing_rows": 8,
+      "pulse_http": 200,
+      "model_doi": "10.5281/zenodo.20434308",
+      "model_uniqueness": "Conjecture 1 (OPEN)"
+    },
+    "frontend": {
+      "toolbar_button": "Real Prospects (#btnReal)",
+      "separate_panel": true,
+      "honest_banner": true,
+      "rows_rendered_desktop": 35,
+      "rows_rendered_mobile": 35,
+      "ranked_leads_intact": true,
+      "desktop_overflowX": 0,
+      "mobile_overflowX": 0,
+      "files": ["/tmp/real_desktop.png", "/tmp/real_mobile.png"],
+      "app_js_errors": 0,
+      "note": "only aborted external CDN three.js + holo.js show as ERR_FAILED (offline sandbox); no application JS errors; illustrative Ranked Leads panel untouched (18 rows still render)"
+    }
   }
 }

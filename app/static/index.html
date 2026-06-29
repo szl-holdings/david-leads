@@ -388,6 +388,32 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .route-score{font-family:'Fraunces';font-size:17px;color:var(--teal)}
 .route-basis{font-size:11px;color:var(--muted);margin-top:2px}
 .route-note{padding:12px 18px;font-size:11.5px;color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
+/* Real Prospects panel — public B2B records (separate from illustrative leads) */
+#realCard{display:none;margin-bottom:22px}
+#realCard.show{display:block}
+.real-banner{margin:0 18px 12px;padding:11px 14px;background:#fbf7ec;border:1px solid #ecdcb3;border-left:4px solid var(--gold);border-radius:10px;font-size:12px;color:#6b5519;line-height:1.5}
+.real-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 18px 12px}
+.real-states{font-size:12px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.real-states input{width:90px;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;color:var(--ink)}
+.real-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.real-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:680px}
+.real-table th{padding:9px 14px;text-align:left;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
+.real-table td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
+.real-name{font-weight:700;color:var(--navy)}
+.real-sub{font-size:11px;color:var(--muted);margin-top:2px}
+.real-angle{color:#0b5957;font-weight:600}
+.real-why{font-size:11px;color:var(--muted);margin-top:3px;max-width:260px}
+.real-cq{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.real-cq.addr{background:#ecf6f5;color:#0b5957;border:1px solid #cdeae8}
+.real-cq.entity{background:#eef1f5;color:#46566b;border:1px solid var(--line)}
+.real-cq.sample{background:#fbeaea;color:#8a3a3a;border:1px solid #eccccc}
+.real-cite{font-size:11px;color:var(--teal);text-decoration:none}
+.real-cite:hover{text-decoration:underline}
+.real-verify{font-size:11px;font-weight:700;color:var(--navy);background:#fff;border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;white-space:nowrap}
+.real-verify:hover{background:#f4f7fb}
+.real-mode{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px}
+.real-mode.live{background:#ecf6f5;color:#0b5957}
+.real-mode.sample{background:#fbeaea;color:#8a3a3a}
 </style>
 <link rel="stylesheet" href="holo.css">
 </head>
@@ -447,6 +473,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Open the Black Box</button>
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
       <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
+      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Prospects</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
       <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
       <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
@@ -486,6 +513,24 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     <div class="card" id="routingCard">
       <h3>🧭 Lead Routing — Best-Fit Advisor <span class="sec-title-meta" id="routingMeta"></span></h3>
       <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
+    </div>
+
+    <!-- Real Callable Leads — public B2B business & license records (SEPARATE from illustrative leads) -->
+    <div class="card" id="realCard">
+      <h3>📇 Real Prospects — Public Business &amp; License Records <span class="sec-title-meta" id="realMeta"></span></h3>
+      <div class="real-banner" id="realBanner">
+        Real, currently-filed public business &amp; license records — public business addresses only,
+        no private personal data. Verify each via its public source. Do your own compliant outreach
+        (no auto-dialing).
+      </div>
+      <div class="real-tools">
+        <label class="real-states">States:
+          <input type="text" id="realStates" value="DE,CT" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="realReload" onclick="loadRealLeads()">↻ Refresh</button>
+        <span class="hint" id="realHint" style="margin-left:auto"></span>
+      </div>
+      <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
     </div>
 
     <!-- Holographic 3D section (shown in Holo mode) -->
