@@ -2,9 +2,9 @@
 # © 2026 SZL Holdings — David Leads Sovereign Insurance Intelligence
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
-import os, secrets, hashlib
+import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error
 from fastapi import FastAPI, HTTPException, Header
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -40,6 +40,23 @@ try:
     from . import events as ev
 except Exception:  # pragma: no cover
     ev = None
+# V8.2 P1 gap-fill modules — defensive imports so /api/run never breaks on a missing optional
+try:
+    from . import liquidity as liq
+except Exception:  # pragma: no cover
+    liq = None
+try:
+    from . import wealth990 as w990
+except Exception:  # pragma: no cover
+    w990 = None
+try:
+    from . import benchmark as bench
+except Exception:  # pragma: no cover
+    bench = None
+try:
+    from . import coverage as cov
+except Exception:  # pragma: no cover
+    cov = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -138,6 +155,34 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         sigs7, meta7 = [], {}
     # V8: Λ time-decay applied via age_min (0 = fresh run)
     leads = sc.build_leads(meta, age_minutes=getattr(req, "age_min", 0.0))
+    # V8.2 P1-A: optional SEC Form 4 insider-sell liquidity flag — only on live runs, only for
+    # leads whose event_type implies a liquidity moment AND where a public employer is known.
+    # Defensive: any failure leaves the lead untouched so /api/run never breaks.
+    if liq is not None and getattr(req, "live", False):
+        _LIQ_EVENTS = {"job_change", "promotion", "near_retirement"}
+        for lead in leads:
+            try:
+                employer = lead.get("employer")
+                if employer and (lead.get("event_type") in _LIQ_EVENTS):
+                    lead["liquidity"] = liq.liquidity_signal(employer)
+            except Exception:
+                pass
+    # V8.2 P1-B: OPTIONAL 990 philanthropy/HNW supporting signal. Only fires for a lead that
+    # carries an explicit individual `name_token` (the demo segment archetypes don't — so this is
+    # an honest no-op in the deterministic demo, never spamming ProPublica with segment labels).
+    if w990 is not None and getattr(req, "live", False):
+        for lead in leads:
+            try:
+                tok = lead.get("name_token")
+                if tok:
+                    sig990 = w990.wealth990_signal(tok)
+                    lead["wealth990"] = sig990
+                    nud = w990.nudge_wealth_tier(lead.get("wealth_tier", "Mass"), sig990)
+                    if nud.get("nudged"):
+                        lead["wealth_tier"] = nud["tier"]
+                        lead["wealth_tier_nudge"] = nud
+            except Exception:
+                pass
     receipts = {}
     for lead in leads:
         # each lead's receipt binds the signals that justify its segment
@@ -379,6 +424,132 @@ def get_lake(organ: str | None = None, decision: str | None = None,
         raise HTTPException(503, "receipt lake unavailable")
     events = lake.query(organ=organ, decision=decision, limit=limit)
     return {"size": lake.size(), "count": len(events), "events": events}
+
+
+@app.get("/api/benchmark")
+def benchmark(authorization: str | None = Header(default=None)):
+    """V8.2 P1-F: producer conversion-funnel dashboard from this session's surfaced leads,
+    the in-session outcome tally, and the durable append-only receipt lake. No external data."""
+    _auth(authorization)
+    if bench is None:
+        raise HTTPException(503, "benchmark unavailable")
+    leads = _STATE.get("leads", []) or []
+    summary = ev.outcome_summary() if ev is not None else {}
+    lake_events = []
+    if lake is not None:
+        try:
+            lake_events = lake.query(organ="conversion-loop")
+        except Exception:
+            lake_events = []
+    return bench.build_benchmark(leads, summary, lake_events)
+
+
+# columns for the ranked-lead CRM export
+_CSV_COLUMNS = ["rank", "id", "name", "event_type", "score", "bucket", "urgency",
+                "wealth_tier", "lapse_decile", "receptivity", "likely_gap",
+                "product", "employer", "liquidity", "receipt_id", "receipt_hash"]
+
+
+def _lead_row(rank: int, lead: dict) -> list:
+    gap = lead.get("likely_gap") or {}
+    liq_sig = lead.get("liquidity") or {}
+    lapse = lead.get("lapse") or {}
+    rid = lead.get("receipt_id")
+    rcpt = _STATE.get("receipts", {}).get(rid, {}) if rid else {}
+    return [
+        rank,
+        lead.get("id", ""),
+        lead.get("name", ""),
+        lead.get("event_type", lead.get("event", "")),
+        lead.get("score", ""),
+        lead.get("bucket", ""),
+        lead.get("urgency", ""),
+        lead.get("wealth_tier", ""),
+        (lapse.get("decile") if isinstance(lapse, dict) else lapse) or "",
+        lead.get("receptivity", ""),
+        gap.get("label", "") if isinstance(gap, dict) else "",
+        lead.get("product", ""),
+        lead.get("employer", "") or "",
+        (liq_sig.get("mode", "") if isinstance(liq_sig, dict) else "") or "",
+        rid or "",
+        rcpt.get("payload_sha256", "") if isinstance(rcpt, dict) else "",
+    ]
+
+
+@app.get("/api/export.csv")
+def export_csv(authorization: str | None = Header(default=None)):
+    """V8.2 P1-G: CRM export — ranked leads as CSV (score/event/urgency/wealth/lapse/
+    receptivity/gap + the signed receipt hash that justifies each row)."""
+    _auth(authorization)
+    leads = _STATE.get("leads", []) or []
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(_CSV_COLUMNS)
+    for i, lead in enumerate(leads, start=1):
+        try:
+            w.writerow(_lead_row(i, lead))
+        except Exception:
+            continue
+    return PlainTextResponse(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=david-leads-export.csv"},
+    )
+
+
+class WebhookReq(BaseModel):
+    url: str | None = None
+    lead_id: str | None = None  # optional: export a single enriched lead; default = all ranked leads
+
+
+@app.post("/api/webhook/test")
+def webhook_test(req: WebhookReq, authorization: str | None = Header(default=None)):
+    """V8.2 P1-G: Push-to-CRM test. POSTs the enriched-lead JSON to req.url; if no url is
+    given or outbound network is blocked, returns the would-send payload (honest, never fakes a send)."""
+    _auth(authorization)
+    leads = _STATE.get("leads", []) or []
+    if req.lead_id:
+        leads = [l for l in leads if l.get("id") == req.lead_id]
+        if not leads:
+            raise HTTPException(404, "Lead not found - run intelligence first")
+    payload = {
+        "source": "David Leads V8.2",
+        "exported_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(),
+        "count": len(leads),
+        "leads": [
+            {
+                "id": l.get("id"), "name": l.get("name"),
+                "event_type": l.get("event_type", l.get("event")),
+                "score": l.get("score"), "bucket": l.get("bucket"),
+                "urgency": l.get("urgency"), "wealth_tier": l.get("wealth_tier"),
+                "receptivity": l.get("receptivity"),
+                "likely_gap": (l.get("likely_gap") or {}).get("label"),
+                "product": l.get("product"),
+                "receipt_id": l.get("receipt_id"),
+            }
+            for l in leads
+        ],
+    }
+    if not req.url:
+        return {"ok": True, "sent": False, "reason": "no url supplied",
+                "would_send": payload}
+    try:
+        body = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            req.url, data=body, method="POST",
+            headers={"Content-Type": "application/json",
+                     "User-Agent": "SZL-David-Leads webhook-test"})
+        with urllib.request.urlopen(request, timeout=8) as resp:
+            status = resp.getcode()
+            snippet = resp.read(512).decode("utf-8", "replace")
+        return {"ok": True, "sent": True, "url": req.url,
+                "status": status, "response_snippet": snippet, "count": payload["count"]}
+    except Exception as e:
+        # outbound blocked / unreachable — honest: return the would-send payload, never fake success
+        return {"ok": True, "sent": False,
+                "reason": "outbound POST failed (%s)" % type(e).__name__,
+                "url": req.url, "would_send": payload}
 
 
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)

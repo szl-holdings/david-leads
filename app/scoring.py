@@ -177,6 +177,64 @@ WEIGHTS = {"life_event_strength": 0.30, "income_fit": 0.20, "age_window_fit": 0.
            "product_propensity": 0.20, "recency": 0.10}
 
 
+# ===========================================================================
+# P1-D — Behavioral receptivity score (RGA "Predictive Moments" concept)
+# ===========================================================================
+# "How ready to talk NOW" — DISTINCT from Λ ("how good a fit"). Composite of:
+#   event_type base weight (RGA ordering: bereavement/death > home_purchase > marriage >
+#   new_baby > job_change > near_retirement; home_purchase = highest mortgage-protection intent),
+#   event recency (reuse the Λ time-decay on the recency axis), and territory economic context
+#   (BLS unemployment proxy in run meta). Advisory; documented in model_card; never feeds Λ.
+RECEPTIVITY_BASE: dict[str, float] = {
+    "death_in_network":         1.00,   # RGA: bereavement raises openness even w/o risk change
+    "inheritance_liquidity":    0.88,
+    "home_purchase":            0.92,   # highest intent for mortgage protection
+    "marriage":                 0.85,
+    "new_baby":                 0.80,
+    "divorce":                  0.78,
+    "business_closure":         0.70,
+    "business_formation":       0.72,
+    "promotion":                0.66,
+    "new_professional_license": 0.64,
+    "job_change":               0.60,
+    "permit_filed":             0.55,
+    "address_change":           0.55,
+    "near_retirement":          0.52,
+}
+RGA_CITATION = {
+    "concept": "RGA 'The Power of Predictive Moments' — receptivity rises around relevant life "
+               "events even when underlying risk is unchanged (bereavement, home purchase, marriage).",
+    "url": "https://www.rgare.com/docs/default-source/-/predictive-moments-whitepaperv3.pdf",
+    "advisory": True,
+}
+
+
+def receptivity_score(lead: dict[str, Any], meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Composite 0–100 behavioral receptivity (advisory; distinct from Λ).
+    receptivity = 100 × base(event_type) × recency_factor × territory_factor."""
+    meta = meta or {}
+    event_type = lead.get("event_type") or "permit_filed"
+    base = RECEPTIVITY_BASE.get(event_type, 0.55)
+    axes = lead.get("axes", {}) or {}
+    recency_factor = max(0.05, min(1.0, float(axes.get("recency", 0.5))))
+    unemp = meta.get("unemployment_rate")
+    if isinstance(unemp, (int, float)):
+        # economic context: tighter labor markets / stress nudge attention to protection
+        territory_factor = 1.0 + max(-0.05, min(0.10, (float(unemp) - 4.0) / 100.0))
+    else:
+        territory_factor = 1.0
+    score = round(max(0.0, min(100.0, 100.0 * base * recency_factor * territory_factor)), 1)
+    return {
+        "score": score,
+        "event_base": base,
+        "recency_factor": round(recency_factor, 3),
+        "territory_factor": round(territory_factor, 3),
+        "interpretation": "how ready to talk now (advisory; distinct from Λ fit)",
+        "citation": RGA_CITATION,
+        "advisory": True,
+    }
+
+
 def lambda_score(axes: dict[str, float]) -> float:
     """Λ score 0..100 via the CANONICAL lambda_aggregate drop-in.
 
@@ -286,6 +344,45 @@ def model_card() -> dict:
             "persistence": "durable only when SZL_RECEIPT_LAKE_PATH is set; otherwise in-memory + signed receipt",
             "honest": "clearly an in-session learning signal, never a hidden model",
         },
+        "receptivity": {
+            "scale": "0–100 — 'how ready to talk now', DISTINCT from the Λ fit score",
+            "formula": "100 × base(event_type) × recency_factor × territory_factor",
+            "ordering": "RGA Predictive Moments: bereavement/death > home_purchase > marriage > "
+                        "new_baby > job_change > near_retirement",
+            "territory_context": "BLS unemployment proxy from run meta (economic context)",
+            "citation": RGA_CITATION,
+            "advisory": True,
+            "note": "Advisory behavioral signal — never feeds the Λ score.",
+        },
+        "liquidity_event": {
+            "source": "SEC EDGAR Form 4 (insider transactions) — public, daily",
+            "applies_to": "leads with a known employer in {job_change, promotion, near_retirement}",
+            "meaning": "recent insider SELL activity at the employer = option/RSU liquidity proxy",
+            "honest": "employer-level public signal, not an individual assertion; [SAMPLE] if SEC unreachable",
+        },
+        "wealth990_signal": {
+            "source": "IRS Form 990 via ProPublica Nonprofit Explorer (public)",
+            "effect": "soft inference; may nudge wealth_tier up AT MOST one tier when a live match exists",
+            "label": "990 public-record signal (inference) — never an assertion",
+        },
+        "permit_need": {
+            "source": "permit/construction records already ingested (pure keyword classifier)",
+            "mapping": {
+                "residential_new_construction": "new mortgage, likely no coverage",
+                "commercial_addition": "business expansion / key-person",
+                "demolition_or_rebuild": "insurance review / disaster",
+            },
+        },
+        "coverage_gap": {
+            "method": "rules-based 'Likely gap' from event_type + optional held_policies",
+            "examples": {
+                "business_formation": "key-person gap",
+                "home_purchase": "mortgage-protection gap",
+                "new_baby": "education-funding gap",
+                "near_retirement": "income/LTC gap",
+            },
+            "advisory": True,
+        },
     }
 
 
@@ -324,12 +421,14 @@ PROSPECTS = [
          axes=dict(life_event_strength=0.95, income_fit=0.75, age_window_fit=0.85,
                    product_propensity=0.90, recency=0.90)),
     dict(id="L2", name="Recently-promoted professional (35–45)", event="job_change",
+         employer="Verizon Communications",  # representative NY-metro public employer (Form 4 proxy)
          axes=dict(life_event_strength=0.85, income_fit=0.85, age_window_fit=0.80,
                    product_propensity=0.80, recency=0.85)),
     dict(id="L3", name="Mid-career dual-income family (40–50)", event="mid_career",
          axes=dict(life_event_strength=0.70, income_fit=0.90, age_window_fit=0.90,
                    product_propensity=0.85, recency=0.60)),
     dict(id="L4", name="Pre-retiree, high earnings (55–62)", event="near_retirement",
+         employer="International Business Machines",  # representative public employer (Form 4 proxy)
          axes=dict(life_event_strength=0.65, income_fit=0.95, age_window_fit=0.95,
                    product_propensity=0.80, recency=0.55)),
     dict(id="L5", name="New homeowner, young family", event="home_purchase",
@@ -383,6 +482,7 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
         product, why = PRODUCT_MAP[p["event"]]
         leads.append({
             "id": p["id"], "name": p["name"], "event": p["event"],
+            "employer": p.get("employer"),  # P1-A: public employer (Form 4 liquidity proxy) when known
             "score": score, "bucket": bucket_for(score),
             "product": product, "why": why, "axes": axes,
             "fresh": is_fresh,
@@ -400,6 +500,34 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
     if ev is not None:
         for lead in leads:
             ev.enrich_lead(lead, meta)
+    # P1-C/D/E: pure (no-network) enrichments — receptivity, likely coverage gap, permit need
+    try:
+        from . import coverage as cov
+    except Exception:
+        cov = None
+    try:
+        from . import permits as pm
+    except Exception:
+        pm = None
+    for lead in leads:
+        try:
+            rec = receptivity_score(lead, meta)            # P1-D
+            lead["receptivity"] = rec["score"]
+            lead["receptivity_detail"] = rec
+        except Exception:
+            pass
+        if cov is not None:
+            try:                                            # P1-E
+                lead["likely_gap"] = cov.likely_gap(lead.get("event_type", ""), None)
+            except Exception:
+                pass
+        if pm is not None:
+            try:                                            # P1-C
+                need = pm.permit_need_for_lead(lead)
+                if need:
+                    lead["permit_need"] = need
+            except Exception:
+                pass
     # Sort HOT + ACT_NOW to the very top, then by score (P0-2 surfacing requirement)
     def _rank(l: dict[str, Any]):
         hot = 1 if l.get("bucket") == "HOT" else 0

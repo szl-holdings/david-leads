@@ -140,6 +140,29 @@ function lapseBadge(l) {
   const cls = d <= 3 ? "low" : d <= 6 ? "mid" : "high";
   return `<span class="lapse-badge ${cls}" title="${(l.lapse.note||'').replace(/"/g,'&quot;')}">Lapse ${d}/10</span>`;
 }
+/* V8.2 P1-D behavioral receptivity meter */
+function receptMeter(l) {
+  if (l.receptivity == null) return "";
+  const v = Math.round(l.receptivity);
+  const tip = ((l.receptivity_detail||{}).interpretation || "behavioral receptivity (advisory)").replace(/"/g,'&quot;');
+  return `<span class="recept-meter" title="${tip}"><span class="recept-lbl">Receptivity</span>` +
+    `<span class="recept-track"><span class="recept-fill" style="width:${Math.max(0,Math.min(100,v))}%"></span></span>` +
+    `<span class="recept-val">${v}</span></span>`;
+}
+/* V8.2 P1-E likely coverage-gap chip */
+function gapChip(l) {
+  const g = l.likely_gap; if (!g || !g.label) return "";
+  const covered = g.has_gap === false;
+  return `<span class="gap-chip ${covered?'covered':''}" title="${(g.recommended||'').replace(/"/g,'&quot;')}">${covered?'✓ ':'◆ '}${g.label}</span>`;
+}
+/* V8.2 P1-A SEC Form 4 insider-sell liquidity flag */
+function liqFlag(l) {
+  const q = l.liquidity; if (!q) return "";
+  if (q.mode === "LIVE" && q.recent_sells) {
+    return `<span class="liq-flag live" title="${(q.note||'').replace(/"/g,'&quot;')}">💧 Liquidity: ${q.recent_sells} Form-4 sell(s)</span>`;
+  }
+  return `<span class="liq-flag" title="${(q.note||'SEC Form 4 — [SAMPLE]').replace(/"/g,'&quot;')}">💧 Liquidity ${q.mode==='SAMPLE'?'[SAMPLE]':'watch'}</span>`;
+}
 function renderLeads(leads) {
   $("leadMeta").textContent = leads.length + " scored";
   let rows = leads.map(l => `
@@ -148,7 +171,8 @@ function renderLeads(leads) {
       <td><span class="score-pill" style="color:${l.bucket==='HOT'?'var(--hot)':l.bucket==='WARM'?'#9a6c14':'var(--nurture)'}">${l.score}</span><br><span class="badge ${l.bucket}">${l.bucket}</span></td>
       <td>
         <div class="lead-name" onclick="toggleLeadDetail('${l.id}')" style="cursor:pointer">${l.name}${l.fresh?' <span class="fresh-tag">⚡ FRESH</span>':''}</div>
-        <div class="lead-chips">${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}</div>
+        <div class="lead-chips">${urgencyChip(l.urgency)}${eventTag(l)}${wealthTag(l)}${lapseBadge(l)}${gapChip(l)}${liqFlag(l)}</div>
+        ${receptMeter(l)}
         <div class="lead-why">${l.why}</div>
       </td>
       <td><div class="prod">${l.product}</div><div class="prem">~${money(l.est_premium)}/yr est.</div></td>
@@ -214,9 +238,22 @@ function renderLeadDetail(l) {
     </div>
     <div class="adv-foot">Event type: <strong>${l.event_type_label||l.event_type||'—'}</strong> · Urgency: <strong>${l.urgency||'—'}</strong> · observed ${l.hours_since!=null?l.hours_since+'h ago':'—'}</div>
   </div>`;
+  const rd = l.receptivity_detail || {};
+  const g = l.likely_gap || {};
+  const q = l.liquidity || null;
+  const p1 = `<div class="detail-sec"><h4>P1 advisory signals (public-data, honest)</h4>
+    <div class="adv-grid">
+      <div class="adv-box"><div class="adv-h">Behavioral receptivity</div><div class="adv-v">${l.receptivity!=null?Math.round(l.receptivity):'—'}</div>
+        <div class="adv-note">${rd.interpretation||'advisory'} · ${rd.citation ? `<a href="${rd.citation.url}" target="_blank" rel="noopener">${rd.citation.source||'RGA'}</a>` : 'RGA predictive-moments'} (advisory)</div></div>
+      <div class="adv-box"><div class="adv-h">Likely coverage gap</div><div class="adv-v" style="font-size:14px">${g.label||'—'}</div>
+        <div class="adv-note">${g.recommended? 'Lead with: '+g.recommended : ''}${g.basis? ' · '+g.basis : ''}</div></div>
+    </div>
+    ${q ? `<div class="adv-foot">Liquidity (SEC Form 4): <strong>${q.mode}</strong>${q.recent_sells!=null?` · ${q.recent_sells} recent sell(s)`:''}${q.latest_date?` · latest ${q.latest_date}`:''}${q.citation_url?` · <a href="${q.citation_url}" target="_blank" rel="noopener">EDGAR</a>`:''} — employer-level public signal, not an individual assertion.</div>`:''}
+  </div>`;
   return `<div class="detail-inner">
     <div class="detail-sec"><h4>Why this lead (transparent score)</h4>${axes}</div>
     ${adv}
+    ${p1}
     <div class="detail-sec"><h4>Predictive moments · public sources</h4>${moments}</div>
     <div class="nba-box"><div class="act">▶ Next best action: ${l.nba.action}</div><div class="tt">“${l.nba.talk_track}”</div></div>
   </div>`;
@@ -418,6 +455,18 @@ function renderModelAdvisory(m) {
     <br><em>${m.life_event_taxonomy.doctrine||''}</em></div></div>`);
   if (m.adaptive_loop) blocks.push(`<div class="adv-card"><div class="adv-card-h">🧠 Adaptive conversion loop</div>
     <div class="adv-card-b">${m.adaptive_loop.endpoint}. ${m.adaptive_loop.effect}. <strong>${m.adaptive_loop.honest||''}</strong></div></div>`);
+  if (m.receptivity) blocks.push(`<div class="adv-card"><div class="adv-card-h">📡 Behavioral receptivity (P1-D · advisory)</div>
+    <div class="adv-card-b">${m.receptivity.formula||''}. ${m.receptivity.meaning||''}
+    ${m.receptivity.citation ? `<br><a href="${m.receptivity.citation.url||m.receptivity.citation}" target="_blank" rel="noopener">${m.receptivity.citation.source||'RGA predictive moments'}</a>` : ''}
+    <strong> ${m.receptivity.honest||'Distinct from Λ — advisory only.'}</strong></div></div>`);
+  if (m.liquidity_event) blocks.push(`<div class="adv-card"><div class="adv-card-h">💧 Liquidity event (P1-A · SEC Form 4)</div>
+    <div class="adv-card-b">${m.liquidity_event.meaning||''}. <em>${m.liquidity_event.applies_to||''}</em>. <strong>${m.liquidity_event.honest||''}</strong></div></div>`);
+  if (m.coverage_gap) blocks.push(`<div class="adv-card"><div class="adv-card-h">🛡️ Coverage-gap identifier (P1-E)</div>
+    <div class="adv-card-b">${m.coverage_gap.method||''}. <strong>${m.coverage_gap.honest||m.coverage_gap.note||''}</strong></div></div>`);
+  if (m.wealth990_signal) blocks.push(`<div class="adv-card"><div class="adv-card-h">🏛️ 990 philanthropy signal (P1-B · inference)</div>
+    <div class="adv-card-b">${m.wealth990_signal.meaning||m.wealth990_signal.method||''}. <strong>${m.wealth990_signal.honest||''}</strong></div></div>`);
+  if (m.permit_need) blocks.push(`<div class="adv-card"><div class="adv-card-h">🏗️ Permit → product-need (P1-C)</div>
+    <div class="adv-card-b">${m.permit_need.method||m.permit_need.meaning||''}. <strong>${m.permit_need.honest||''}</strong></div></div>`);
   return blocks.length ? `<div class="adv-cards">${blocks.join('')}</div>` : "";
 }
 
@@ -446,16 +495,77 @@ async function openTerritory() {
   }
 }
 
-/* ---------- export call list (CSV) ---------- */
-function exportCSV() {
+/* ---------- export call list (CSV from the signed backend endpoint) ---------- */
+async function exportCSV() {
   if (!lastData || !lastData.leads) { alert("Run intelligence first."); return; }
-  const rows = [["Rank","Score","Bucket","Lead Segment","NYL Product","Est Premium/yr","Next Best Action","Receipt ID"]];
-  lastData.leads.forEach((l, i) => rows.push([i+1, l.score, l.bucket, l.name, l.product, l.est_premium, l.nba.action, l.receipt_id]));
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = "david_leads_call_list.csv"; a.click();
-  URL.revokeObjectURL(a.href);
+  const btn = $("btnCsv"); const orig = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loader"></span> Exporting…'; }
+  try {
+    const r = await fetch("/api/export.csv", { headers: { "Authorization": "Bearer " + TOKEN } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const csv = await r.text();
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = "david-leads-export.csv"; a.click();
+    URL.revokeObjectURL(a.href);
+  } catch (e) {
+    alert("Export failed: " + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+/* ---------- V8.2 P1-F Producer Benchmark (conversion funnel) ---------- */
+async function openBenchmark() {
+  const card = $("benchCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("benchBody").innerHTML = `<div style="padding:20px;color:var(--muted)">Loading funnel…</div>`;
+  try {
+    const d = await api("/api/benchmark");
+    const s = d.summary || {};
+    $("benchMeta").textContent = `${s.outcomes_logged||0} outcomes · ${s.durable_outcome_receipts||0} durable receipt(s)`;
+    const stat = (h, v) => `<div class="bench-stat"><div class="bh">${h}</div><div class="bv">${v}</div></div>`;
+    const summary = `<div class="bench-summary">
+      ${stat("Leads surfaced", s.leads_surfaced ?? 0)}
+      ${stat("Outcomes logged", s.outcomes_logged ?? 0)}
+      ${stat("Meetings", s.meeting ?? 0)}
+      ${stat("Sold", s.sold ?? 0)}
+      ${stat("Conversion", (s.overall_conversion_rate_pct ?? 0) + "%")}
+    </div>`;
+    const rows = (d.by_event_type || []).map(e => {
+      const pct = e.conversion_rate_pct || 0;
+      return `<tr><td>${e.event_type}</td><td>${e.surfaced}</td><td>${e.meeting}</td><td>${e.sold}</td><td>${e.no}</td>
+        <td><div style="display:flex;align-items:center;gap:8px"><div class="bench-bar"><i style="width:${Math.min(100,pct)}%"></i></div><span style="font-weight:600">${pct}%</span></div></td></tr>`;
+    }).join("") || `<tr><td colspan="6" style="color:var(--muted)">No outcomes logged yet — log Sold/Meeting/No on leads to build the funnel.</td></tr>`;
+    $("benchBody").innerHTML = summary +
+      `<table class="bench-table"><thead><tr><th>Event type</th><th>Surfaced</th><th>Meeting</th><th>Sold</th><th>No</th><th>Conversion</th></tr></thead><tbody>${rows}</tbody></table>` +
+      `<div class="bench-note">${d.honest_note || ''}</div>`;
+  } catch (e) {
+    $("benchBody").innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${e.message}</div>`;
+  }
+}
+
+/* ---------- V8.2 P1-G Push to CRM (webhook test) ---------- */
+async function pushToCRM() {
+  if (!lastData || !lastData.leads) { alert("Run intelligence first."); return; }
+  const url = (prompt("CRM webhook URL (leave blank to preview the would-send payload):", "") || "").trim();
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <button class="mclose" onclick="closeModal()">✕ Close</button>
+    <h3>🔗 Push to CRM — Webhook Test</h3>
+    <div class="mbody" id="crmBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
+  try {
+    const r = await api("/api/webhook/test", { method: "POST", body: JSON.stringify(url ? { url } : {}) });
+    const head = r.sent
+      ? `<div class="vverdict ok">✓ SENT · HTTP ${r.status}</div><div style="font-size:13px;color:var(--muted)">Delivered ${r.count} lead(s) to <code>${r.url}</code></div>`
+      : `<div class="vverdict ${url?'bad':'ok'}">${url ? '✗ NOT SENT' : '◆ PREVIEW (no URL)'}</div><div style="font-size:13px;color:var(--muted)">${r.reason||''}. Honest: showing the exact would-send payload — never a faked send.</div>`;
+    const payload = r.would_send || { sent: true, status: r.status, response_snippet: r.response_snippet };
+    $("crmBody").innerHTML = head +
+      `<div style="font-size:12px;color:var(--muted);margin-top:12px;font-weight:600">Payload:</div>` +
+      `<div class="codeblock">${JSON.stringify(payload, null, 2)}</div>`;
+  } catch (e) {
+    $("crmBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
+  }
 }
 
 /* ---------- V8 Territory Pulse (seaboard coverage map) ---------- */
