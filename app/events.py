@@ -129,11 +129,17 @@ def observed_window(age_minutes: float, now: datetime | None = None) -> dict[str
 # ===========================================================================
 # P0-3 — Wealth tier {Mass · Mass-Affluent · Affluent · HNW} from PUBLIC proxies
 # ===========================================================================
+# Ordered wealth ladder used by the P2-3 visualization (low → high).
+WEALTH_LADDER = ["Mass", "Mass-Affluent", "Affluent", "HNW"]
+
+
 def wealth_tier(lead: dict[str, Any], meta: dict[str, Any] | None = None) -> dict[str, Any]:
     """4-tier wealth label estimated from PUBLIC proxies already in the pipeline:
     Census ACS income (income_fit axis), matched-product propensity, and — for the
     affluent/business segments — IRS SOI income-by-ZIP density + EDGAR insider proxy.
-    HONEST: this is an estimate from public proxies, not a verified net-worth figure."""
+    HONEST: this is an estimate from public proxies, not a verified net-worth figure.
+    Returns a structured object {tier, score, ladder, signals, basis, advisory} so the
+    UI can render a 4-segment wealth ladder with the public proxies as chips."""
     axes = lead.get("axes", {}) or {}
     income_fit = float(axes.get("income_fit", 0.0))
     event_type = lead.get("event_type", "")
@@ -155,7 +161,10 @@ def wealth_tier(lead: dict[str, Any], meta: dict[str, Any] | None = None) -> dic
         tier = "Mass"
     return {
         "tier": tier,
-        "basis": "estimated from public proxies",
+        "score": int(max(0, min(100, round(income_fit * 100)))),  # public-proxy 0–100 (income_fit basis)
+        "ladder": list(WEALTH_LADDER),
+        "ladder_index": WEALTH_LADDER.index(tier),
+        "basis": "estimated from public records",
         "signals": signals,
         "advisory": True,
     }

@@ -352,6 +352,42 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 .bench-bar{height:8px;background:#e6eaf1;border-radius:5px;overflow:hidden;min-width:70px}
 .bench-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-300))}
 .bench-note{padding:12px 18px;font-size:11.5px;color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
+/* V8.3 P2-3 wealth ladder */
+.wladder{display:flex;gap:3px;margin:5px 0 2px;max-width:100%}
+.wladder.compact{gap:2px}
+.wseg{flex:1 1 0;min-width:0;border-radius:5px;background:#eef1f5;border:1px solid var(--line);padding:3px 4px;text-align:center;font-size:8.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wladder.compact .wseg{font-size:0;padding:4px 2px;height:8px}
+.wseg.on{background:linear-gradient(90deg,var(--teal),var(--teal-300));color:#fff;border-color:var(--teal)}
+.wladder.compact .wseg.on{background:linear-gradient(90deg,var(--gold),var(--gold-300))}
+.wladder-wrap{margin:4px 0}
+.wladder-cap{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px}
+.proxy-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.proxy-chip{font-size:10px;font-weight:600;background:#fbf7ec;color:var(--navy);border:1px solid #ead9b0;padding:3px 9px;border-radius:20px}
+.proxy-chip .est{color:var(--gold);font-weight:700}
+/* V8.3 P2-2 Liquidity Watch */
+.liqwatch{background:#f4f8fd;border:1px solid #d4e2f3;border-radius:11px;padding:11px 13px;margin-top:8px}
+.liqwatch .lw-h{font-size:11px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px}
+.liqwatch .lw-mode{margin-left:auto;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:#eef3fb;color:var(--navy);border:1px solid #d4e2f3}
+.liqwatch .lw-mode.live{background:#ecf6f5;color:#0b5957;border-color:#cdeae8}
+.liqwatch .lw-mode.sample{background:#fdf2f2;color:#9a3b3b;border-color:#f0d4d4}
+.liqwatch .lw-grid{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--navy)}
+.liqwatch .lw-grid b{font-family:'Fraunces';font-size:16px;display:block;color:var(--navy)}
+.liqwatch .lw-foot{font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic}
+/* V8.3 P2-1 Lead Routing */
+#routingCard{display:none;margin-bottom:22px}
+#routingCard.show{display:block}
+.route-roster{display:flex;flex-wrap:wrap;gap:8px;padding:14px 18px}
+.route-agent{font-size:11.5px;font-weight:600;background:#fbfcfe;border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--navy)}
+.route-agent.real{background:#ecf6f5;border-color:#cdeae8;color:#0b5957}
+.route-agent .illus{color:var(--gold);font-weight:700;font-size:10px}
+.route-table{width:100%;border-collapse:collapse;font-size:13px}
+.route-table th{padding:9px 18px}.route-table td{padding:10px 18px;border-top:1px solid var(--line)}
+.route-rec{font-weight:700;color:var(--navy)}
+.route-rec .illus{color:var(--gold);font-size:10px;font-weight:700;margin-left:5px}
+.route-rec .realtag{color:#0b5957;font-size:10px;font-weight:700;margin-left:5px}
+.route-score{font-family:'Fraunces';font-size:17px;color:var(--teal)}
+.route-basis{font-size:11px;color:var(--muted);margin-top:2px}
+.route-note{padding:12px 18px;font-size:11.5px;color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
 </style>
 <link rel="stylesheet" href="holo.css">
 </head>
@@ -410,6 +446,7 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
       <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
       <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Open the Black Box</button>
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
+      <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
       <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
       <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
       <span class="hint" id="runHint">Pulls live signals from SEC EDGAR, BLS, U.S. Census &amp; CDC — then scores &amp; receipts every lead.</span>
@@ -443,6 +480,12 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
     <div class="card" id="benchCard">
       <h3>📊 Producer Benchmark — Conversion Funnel <span class="sec-title-meta" id="benchMeta"></span></h3>
       <div id="benchBody"><div style="padding:20px;color:var(--muted)">Loading funnel…</div></div>
+    </div>
+
+    <!-- V8.3 P2-1 Lead Routing — best-fit advisor matching -->
+    <div class="card" id="routingCard">
+      <h3>🧭 Lead Routing — Best-Fit Advisor <span class="sec-title-meta" id="routingMeta"></span></h3>
+      <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
     </div>
 
     <!-- Holographic 3D section (shown in Holo mode) -->
