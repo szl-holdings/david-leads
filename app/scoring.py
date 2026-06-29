@@ -655,12 +655,13 @@ def build_leads(meta: dict[str, Any], age_minutes: float = 0.0) -> list[dict[str
         if demo is not None:
             dnc = dict(demo)
             dnc["id"] = demo["id"] + "-DNC"
-            dnc["name"] = demo["name"] + " — DNC (Λ-gate demo)"
+            dnc["name"] = demo["name"] + " — Example: on Do-Not-Call"
             dnc["dnc_listed"] = True
             dnc["demo"] = True
-            dnc["demo_note"] = ("DNC — blocked by Λ-gate. Demonstration of the "
-                                "non-compensatory compliance axis on a contact-status "
-                                "field; not fabricated prospect data.")
+            dnc["demo_note"] = ("Example: this prospect is on the Do-Not-Call list, so the "
+                                "system automatically removes them — even though their profile "
+                                "looks strong. This is a demonstration on a real contact-status "
+                                "field, not invented prospect data.")
             leads.append(dnc)
     # T1/T2/T3 — attach compliance Λ-gate, honest confidence band, fused track to each lead
     for lead in leads:
