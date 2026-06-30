@@ -278,6 +278,22 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         except Exception:
             lead["receipt_id"] = None
             lead["receipt_signed"] = False
+    # ONE-CHAIN fold-in: mirror each real lead score into the sovereign org chain
+    # (szl.lake.receipt/v1) under verb insurance|score.lead. Best-effort + honest N/A when
+    # SZL_LAKE_DIR is unset (the live standalone Space), so /api/run never changes behavior.
+    try:
+        from . import org_chain as _org_chain
+        org_receipts = []
+        for lead in leads:
+            org_receipts.append(_org_chain.emit_score_lead(lead))
+        meta["org_chain"] = {
+            "verb": "insurance|score.lead",
+            "emitted": sum(1 for r in org_receipts if r.get("accepted")),
+            "chain": (org_receipts[0].get("chain") if org_receipts else "N/A"),
+            "bind_policy": "ROADMAP — no policy-binding path (genome Q3-INS-16); never emitted",
+        }
+    except Exception:
+        pass
     _STATE.update(leads=leads, signals=sigs, meta=meta, receipts=receipts)
     # khipu 3-of-4 witnessed governance: report consensus from the leads' receipts when present
     consensus_state = "unwitnessed"
