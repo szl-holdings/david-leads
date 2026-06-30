@@ -1,0 +1,28 @@
+{
+  "_comment": "Allowlist for the GitHub<->HF-Space module-drift guard (david-leads). ignore_paths/ignore_extensions are excluded entirely (binary/vendored assets). accepted_divergences are KNOWN, pre-existing GitHub<->HF divergences recorded so the guard lands green; each is still printed as a warning every run. Remove an entry once reconciled so any FUTURE re-divergence fails the job.",
+  "ignore_paths": [],
+  "ignore_extensions": [
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".gif",
+    ".webp",
+    ".ico",
+    ".svg",
+    ".wasm",
+    ".woff",
+    ".woff2",
+    ".ttf",
+    ".eot",
+    ".mp4",
+    ".mp3",
+    ".pdf",
+    ".zip",
+    ".gz",
+    ".br",
+    ".map"
+  ],
+  "accepted_divergences": {
+    "requirements.txt": "ahead=github. Pre-existing staleness: the live HF Space serves cryptography==43.0.1 while GitHub main holds cryptography==48.0.1 (Dependabot bump PR #11). The Space simply has not been redeployed since the bump. Remove this entry once the first hf-deploy.yml run reconciles GitHub->HF and the OIDs match."
+  }
+}
