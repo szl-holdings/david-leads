@@ -1,0 +1,45 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: CI — receipt honesty
+
+# Stdlib-only, no-network, no-dep guard for the receipt / provenance layer
+# (app/receipts.py + app/receipt_lake.py). It verifies the receipt emitter stays
+# honest per SZL doctrine:
+#   * energy is measured-or-UNAVAILABLE — a receipt NEVER carries a fabricated joule.
+#   * signatures are real-or-UNSIGNED — a receipt NEVER carries a fabricated base64
+#     signature literal (a signature only ever comes from a real key.sign()).
+#   * every served "verified" claim resolves and tamper is rejected.
+#
+# It runs on the runner's pre-installed Python 3, so CI needs no network beyond the
+# checkout. It does NOT touch lead business logic or the hf-deploy/hf-drift workflows.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/receipts.py"
+      - "app/receipt_lake.py"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "app/receipts.py"
+      - "app/receipt_lake.py"
+      - "tests/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-receipt-honesty-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  receipt-honesty:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run receipt-honesty guard (stdlib only, no network, no deps)
+        run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v
