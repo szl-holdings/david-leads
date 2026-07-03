@@ -28,7 +28,11 @@ def _canon(obj: Any) -> bytes:
 
 
 def _pae(payload_type: str, body: bytes) -> bytes:
-    # DSSE Pre-Authentication Encoding
+    # DSSE Pre-Authentication Encoding — ASCII-decimal DSSE-v1 form (cosign
+    # verify-blob compatible), shared byte-for-byte with app/consensus.py and
+    # khipu-consensus. NOTE: this DIVERGES from szl-receipt's struct-packed PAE;
+    # do NOT delegate to szl-receipt without a coordinated re-sign, or existing
+    # lead receipts stop verifying. Locked by tests/test_receipt_bus_parity.py.
     return b"DSSEv1 %d %s %d %s" % (
         len(payload_type), payload_type.encode(), len(body), body
     )
