@@ -11,14 +11,17 @@ name: HF Module Drift Check
 # only resolves once that PR merges to .github main.
 #
 # No HF write token needed (read-only compare via github.token).
+#
+# Intentionally NOT triggered on push. On a push to app/**, hf-deploy.yml fires
+# on the same event and pushes GitHub -> the Space; this guard, running
+# concurrently, samples the Space BEFORE that rebuild lands and reports a
+# spurious "drift" (the very race that produced recurring false reds). The
+# push-time GitHub<->Space equality is already asserted authoritatively by
+# hf-deploy.yml's own post-rebuild live-vs-git sha256 attestation, so a
+# push trigger here is both redundant and racy. The weekly schedule + manual
+# dispatch remain the honest, race-free checks for out-of-band Space edits.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "app/**"
-      - "requirements.txt"
-      - "Dockerfile"
   schedule:
     - cron: "37 6 * * 1"
   workflow_dispatch: {}
