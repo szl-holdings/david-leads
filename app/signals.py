@@ -17,14 +17,30 @@ from __future__ import annotations
 import json, os, urllib.request, urllib.error
 from datetime import datetime, timezone
 
-UA = {"User-Agent": "SZL-David-Leads research@szlholdings.com"}
+UA = {"User-Agent": "SZL Holdings David-Leads research@szlholdings.com"}
 TIMEOUT = 6
+
+
+class CensusKeyMissing(RuntimeError):
+    """Raised when Census redirects an unkeyed/badly-keyed request to missing_key.html.
+
+    Without this, the HTML body fails json.loads() as a bare parse error and the caller
+    silently degrades to SAMPLE with no reason — a doctrine-honesty risk (SAMPLE shown
+    as if LIVE). Surfacing a named error lets callers log the true cause.
+    """
 
 
 def _get(url: str, headers=None, timeout=TIMEOUT):
     req = urllib.request.Request(url, headers=headers or UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+        final_url = r.geturl()
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        raw = r.read().decode()
+    # Census returns HTTP 200 after 302-redirecting an unkeyed request to an HTML
+    # error page; detect it explicitly instead of letting json.loads() throw opaquely.
+    if "missing_key" in final_url or ("census.gov" in final_url and "html" in ctype):
+        raise CensusKeyMissing(f"Census redirected to {final_url} — CENSUS_API_KEY absent/invalid")
+    return json.loads(raw)
 
 
 # ---------------------------------------------------------------- live fetchers
@@ -76,8 +92,7 @@ def bls_wage_growth():
 def census_income_age(state_fips: str = "36"):  # 36 = New York (David's market)
     """Census ACS median household income for David's state → demographic fit signal."""
     try:
-        key = (os.environ.get("CENSUS_API_KEY") or os.environ.get("Newdave")
-               or os.environ.get("NewDave") or os.environ.get("new Dave") or "").strip()
+        key = _census_key()
         keyq = f"&key={key}" if key else ""
         url = (f"https://api.census.gov/data/2023/acs/acs1?get=NAME,B19013_001E,B01002_001E"
                f"&for=state:{state_fips}{keyq}")
@@ -184,9 +199,18 @@ _NY_METRO_FIPS = ["059", "103", "119", "087", "061", "081", "047", "005", "085",
 
 
 def _census_key():
+    """Canonical Census key resolver. Prefer CENSUS_API_KEY; legacy names kept only for
+    backward-compat and will be removed. The shell-invalid "new Dave" (space) variant is
+    dropped — it can never be set as a real env var. Free key: api.census.gov/data/key_signup.html
+    """
     return (os.environ.get("CENSUS_API_KEY")
-            or os.environ.get("Newdave") or os.environ.get("NewDave")
-            or os.environ.get("new Dave") or os.environ.get("NEWDAVE") or "").strip()
+            or os.environ.get("NEWDAVE") or os.environ.get("Newdave")
+            or os.environ.get("NewDave") or "").strip()
+
+
+def census_key_status() -> str:
+    """Return 'present' or 'ABSENT' — for honest startup/health logging so SAMPLE mode is never silent."""
+    return "present" if _census_key() else "ABSENT"
 
 
 def _fetch_acs(dataset, county_q, state_fips, keyq):
