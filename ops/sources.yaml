@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: Apache-2.0
+# © 2026 SZL Holdings — David Leads · Doctrine v11
+# Single source of truth for external data endpoints. The nightly source-health
+# probe (ops/source_health.py) reads this and alerts on any non-200 / schema drift
+# BEFORE production traffic hits a dead endpoint. verified: last live-check date.
+sources:
+  - id: sec_efts_fts
+    name: SEC EDGAR full-text search
+    url: "https://efts.sec.gov/LATEST/search-index?q=%22compensation%22&forms=8-K"
+    method: GET
+    expect: json
+    expect_keys: [hits]
+    note: undocumented internal ES endpoint; no SLA — watch closely
+    verified: "2026-07-06"
+  - id: bls_v2_ces
+    name: BLS v2 avg weekly earnings
+    url: "https://api.bls.gov/publicAPI/v2/timeseries/data/CES0500000030"
+    method: GET
+    expect: json
+    expect_keys: [Results]
+    verified: "2026-07-06"
+  - id: census_acs5_ny
+    name: Census ACS5 (keyed)
+    url: "https://api.census.gov/data/2023/acs/acs5?get=NAME,B19013_001E&for=state:36&key=${CENSUS_API_KEY}"
+    method: GET
+    expect: json
+    note: MUST send CENSUS_API_KEY or it 302s to missing_key.html
+    verified: "2026-07-06"
+  - id: treasury_avg_rates
+    name: Treasury FiscalData avg interest rates
+    url: "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/avg_interest_rates?sort=-record_date&page%5Bsize%5D=1"
+    method: GET
+    expect: json
+    expect_keys: [data]
+    verified: "2026-07-06"
+  - id: usaspending_awards
+    name: USASpending awards
+    url: "https://api.usaspending.gov/api/v2/search/spending_by_award/"
+    method: POST
+    body: '{"filters":{"award_type_codes":["A"]},"fields":["Award ID"],"limit":1}'
+    expect: json
+    verified: "2026-07-06"
+  - id: propublica_990
+    name: ProPublica Nonprofit 990
+    url: "https://projects.propublica.org/nonprofits/api/v2/search.json?state%5Bid%5D=NY"
+    method: GET
+    expect: json
+    verified: "2026-07-06"
+  - id: irs_soi_zip
+    name: IRS SOI zip income CSV
+    url: "https://www.irs.gov/pub/irs-soi/22zpallagi.csv"
+    method: HEAD
+    expect: any
+    verified: "2026-07-06"
+  # --- Socrata dataset IDs (retire/renumber routinely — primary breakage risk) ---
+  - id: ny_biz_n9v6
+    name: NY DOS Active Corporations
+    url: "https://data.ny.gov/resource/n9v6-gdp6.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: nyc_acris_bnx9
+    name: NYC ACRIS deeds
+    url: "https://data.cityofnewyork.us/resource/bnx9-e6tj.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: nyc_dob_w9ak
+    name: NYC DOB new buildings
+    url: "https://data.cityofnewyork.us/resource/w9ak-ipjd.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: ct_biz_ah3s
+    name: CT business filings
+    url: "https://data.ct.gov/resource/ah3s-bes7.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: ct_lic_ngch
+    name: CT licenses
+    url: "https://data.ct.gov/resource/ngch-56tr.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: de_lic_5zy2
+    name: DE business licenses
+    url: "https://data.delaware.gov/resource/5zy2-grhr.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: de_prof_pjnv
+    name: DE professional licensing
+    url: "https://data.delaware.gov/resource/pjnv-eaih.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: pa_biz_xvd7
+    name: PA registered businesses
+    url: "https://data.pa.gov/resource/xvd7-5r2c.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: md_prop_ed4q
+    name: MD real property assessments
+    url: "https://opendata.maryland.gov/resource/ed4q-f8tm.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  - id: norfolk_biz_dpi6
+    name: Norfolk business licenses
+    url: "https://data.norfolk.gov/resource/dpi6-sct5.json?$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-06"
+  # --- ArcGIS FeatureServer (layer index can change) ---
+  - id: vabeach_arcgis_sales
+    name: VA Beach property sales (ArcGIS)
+    url: "https://services2.arcgis.com/CyVvlIiUfRBmMQuu/arcgis/rest/services/Property_Sales_/FeatureServer/0/query?where=1=1&outFields=*&f=json&resultRecordCount=1"
+    method: GET
+    expect: json
+    verified: "2026-07-06"
+  - id: dc_dcra_bbl
+    name: DC basic business license (ArcGIS)
+    url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/FEEDS/DCRA/FeatureServer/1/query?where=1=1&outFields=*&f=json&resultRecordCount=1"
+    method: GET
+    expect: json
+    verified: "2026-07-06"
+  - id: dc_ddot_permits
+    name: DC construction permits (ArcGIS)
+    url: "https://maps2.dcgis.dc.gov/dcgis/rest/services/FEEDS/DDOT/FeatureServer/48/query?where=1=1&outFields=*&f=json&resultRecordCount=1"
+    method: GET
+    expect: json
+    verified: "2026-07-06"
