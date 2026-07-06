@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>David Leads — Sovereign Insurance Intelligence</title>
 <meta name="description" content="Audit-defensible, public-data lead intelligence for New York Life professionals.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Fonts self-hosted (SZL Doctrine v11: 0 runtime CDN). No fonts.googleapis.com/gstatic. -->
+<link href="fonts/fonts.css" rel="stylesheet">
 <style>
 :root{
   --navy:#1b3a63; --navy-700:#245084; --navy-800:#132741; --ink:#eef4fb;
@@ -784,7 +784,8 @@ footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px
 <!-- app.js loads FIRST and synchronously so login/API never depend on the CDN. -->
 <script src="app.js"></script>
 <!-- three.js + holo are decorative (Holo mode only) and must never block the app. -->
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="window.__holoUnavailable=true"></script>
+<!-- three.js vendored same-origin (SZL Doctrine v11: 0 runtime CDN). -->
+<script defer src="vendor/three.min.js" onerror="window.__holoUnavailable=true"></script>
 <script defer src="holo.js" onerror="window.__holoUnavailable=true"></script>
 </body>
 </html>

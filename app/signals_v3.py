@@ -34,18 +34,29 @@ UA = {"User-Agent": "SZL-David-Leads research@szlholdings.com"}
 TIMEOUT = 9  # short timeout per the brief (8-10s)
 
 
+class CensusKeyMissing(RuntimeError):
+    """Raised when Census 302-redirects an unkeyed request to missing_key.html (see signals.py)."""
+
+
 def _get(url: str, headers=None, timeout=TIMEOUT):
-    """Shared GET → parsed JSON. Mirrors signals.py._get."""
+    """Shared GET → parsed JSON. Mirrors signals.py._get, incl. Census missing-key detection."""
     req = urllib.request.Request(url, headers=headers or UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode())
+        final_url = r.geturl()
+        ctype = (r.headers.get("Content-Type") or "").lower()
+        raw = r.read().decode()
+    if "missing_key" in final_url or ("census.gov" in final_url and "html" in ctype):
+        raise CensusKeyMissing(f"Census redirected to {final_url} — CENSUS_API_KEY absent/invalid")
+    return json.loads(raw)
 
 
 def _census_key() -> str:
-    """Resolve the Census key from the same env-var variants signals.py accepts."""
+    """Canonical Census key resolver (prefer CENSUS_API_KEY). Drops the shell-invalid
+    "new Dave" variant. Free key: api.census.gov/data/key_signup.html
+    """
     return (os.environ.get("CENSUS_API_KEY")
-            or os.environ.get("Newdave") or os.environ.get("NewDave")
-            or os.environ.get("new Dave") or os.environ.get("NEWDAVE") or "").strip()
+            or os.environ.get("NEWDAVE") or os.environ.get("Newdave")
+            or os.environ.get("NewDave") or "").strip()
 
 
 def _now() -> str:
