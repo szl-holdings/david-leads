@@ -1,6 +1,35 @@
 #!/usr/bin/env python3
 """Build the portable offline single-file demo from the live source + embedded data."""
-import json, re
+import json, re, base64, os
+
+STATIC = 'app/static'
+
+def _inline_offline_assets(html):
+    """Make the single-file demo truly zero-network (SZL Doctrine v11: 0 runtime CDN).
+
+    Inlines the vendored three.js and self-hosts the fonts as base64 data URIs so the
+    portable file never reaches out to fonts.googleapis.com / cdnjs / any CDN. Also
+    scrubs any legacy CDN references that may survive from an older index.html."""
+    # 1) self-host fonts: turn fonts/fonts.css url(./x.ttf) refs into base64 data URIs.
+    fonts_css = open(os.path.join(STATIC, 'fonts', 'fonts.css'), encoding='utf-8').read()
+    fonts_css = re.sub(r'/\*.*?\*/', '', fonts_css, flags=re.S).strip()  # drop comments (mention CDN domains)
+    def _embed_ttf(m):
+        ttf = open(os.path.join(STATIC, 'fonts', m.group(1)), 'rb').read()
+        return "url(data:font/ttf;base64," + base64.b64encode(ttf).decode('ascii') + ") format('truetype')"
+    fonts_css = re.sub(r"url\(\./([\w.-]+\.ttf)\)\s*format\('truetype'\)", _embed_ttf, fonts_css)
+    html = html.replace('<link href="fonts/fonts.css" rel="stylesheet">', '<style>' + fonts_css + '</style>')
+
+    # 2) inline vendored three.js (served app uses a relative <script defer src="vendor/three.min.js">).
+    three = open(os.path.join(STATIC, 'vendor', 'three.min.js'), encoding='utf-8').read()
+    html = re.sub(r'<script[^>]*src="vendor/three\.min\.js"[^>]*></script>',
+                  '<script>' + three + '</script>', html)
+
+    # 3) belt-and-suspenders: scrub any legacy CDN refs from older source snapshots.
+    html = re.sub(r'<link[^>]*fonts\.googleapis\.com[^>]*>\s*', '', html)
+    html = re.sub(r'<link[^>]*fonts\.gstatic\.com[^>]*>\s*', '', html)
+    html = html.replace('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>',
+                        '<script>' + three + '</script>')
+    return html
 
 data = json.load(open('/tmp/offline_v4.json'))
 html = open('app/static/index.html', encoding='utf-8').read()
@@ -104,6 +133,9 @@ src = "\n".join(kept)
 
 offline_js = HEAD + "\n" + src
 html = html.replace('<script src="app.js"></script>', '<script>' + offline_js + '</script>')
+
+# make the portable file truly offline (0 runtime CDN — fonts + three.js inlined)
+html = _inline_offline_assets(html)
 open('David_Leads_PORTABLE.html', 'w', encoding='utf-8').write(html)
 
 # validate the inline script
