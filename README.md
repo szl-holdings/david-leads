@@ -10,6 +10,8 @@ license: apache-2.0
 short_description: Audit-defensible, public-data lead intelligence for NYL pros
 ---
 
+> **SZL Holdings** · Doctrine v11 · Λ = Conjecture 1 (advisory, never "green"/theorem) · canonical [a-11-oy.com](https://a-11-oy.com)
+
 # David Leads — Sovereign Insurance Intelligence
 
 Audit-defensible insurance lead intelligence for **New York Life** financial professionals.
