@@ -17,9 +17,10 @@ short_description: Audit-defensible, public-data lead intelligence for NYL pros
 Audit-defensible insurance lead intelligence for **New York Life** financial professionals.
 Built by **SZL Holdings** on the sovereign governed-AI substrate.
 
-**The edge:** the same life-event predictive scoring carriers buy from LexisNexis / Deloitte —
-but transparent, **public-data-only**, and **cryptographically receipted** so every lead is
-audit-defensible. No agent-level competitor offers signed lead provenance.
+**The edge:** the kind of life-event predictive scoring carriers buy from vendors like
+LexisNexis / Deloitte — but transparent, **public-data-only**, and **cryptographically
+receipted** so every lead is audit-defensible. We are not aware of an agent-level competitor
+that ships signed, verifiable lead provenance.
 
 ## What it does
 - Pulls **live public signals**: SEC EDGAR (8-K events), BLS (wages), U.S. Census (income/age), CDC (births).
@@ -41,3 +42,24 @@ Set as Space secrets (Settings → Variables and secrets):
 - `CENSUS_API_KEY` (optional free key for live Census)
 
 © 2026 SZL Holdings · Apache-2.0 · public-data-only · honest by design
+
+---
+
+## ◇ Part of the SZL Holdings estate — *governed AI you can prove*
+
+One sovereign substrate, many organs — every decision carries a signed, checkable receipt.
+
+**[◇ Holographic Estate — the showcase](https://szlholdings-holographic.static.hf.space)** ·
+[▶ a11oy console](https://szlholdings-a11oy.hf.space) ·
+[🛡️ a11oy](https://huggingface.co/spaces/SZLHOLDINGS/a11oy) ·
+[🧬 IMMUNE](https://huggingface.co/spaces/SZLHOLDINGS/immune) ·
+[🦅 killinchu](https://huggingface.co/spaces/SZLHOLDINGS/killinchu) ·
+[🫀 anatomy](https://huggingface.co/spaces/SZLHOLDINGS/anatomy) ·
+[🌌 cosmos](https://huggingface.co/spaces/SZLHOLDINGS/cosmos) ·
+[🛰️ SDA](https://huggingface.co/spaces/SZLHOLDINGS/sda) ·
+[🌊 yarqa](https://huggingface.co/spaces/SZLHOLDINGS/yarqa) ·
+[📜 Governed-Receipt Spec](https://github.com/szl-holdings/governed-receipt-spec) ·
+[🤗 all Spaces](https://huggingface.co/SZLHOLDINGS)
+
+<sub>Doctrine v11 · Λ = Conjecture 1, never green · honest by design · public data only.</sub>
+
