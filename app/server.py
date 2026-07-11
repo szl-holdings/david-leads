@@ -19,6 +19,12 @@ from . import scoring as sc
 from . import receipts as rc
 from . import ask as ask_engine
 
+# V8.4 EDGAR workforce-event window — defensive import so boot never breaks
+try:
+    from . import edgar_fts as efts
+except Exception:  # pragma: no cover
+    efts = None
+
 # V8 genius modules — imported defensively so a missing optional module never breaks boot
 try:
     from . import formulas as fm
@@ -346,6 +352,32 @@ def model(authorization: str | None = Header(default=None)):
         return sc.model_card()
     except Exception:
         raise HTTPException(503, "model card temporarily unavailable")
+
+
+@app.get("/api/methodology")
+def methodology():
+    """PUBLIC transparency surface: the full scoring methodology, unauthenticated.
+
+    The model card contains formula/axes/weights/sources only — no PII, no leads.
+    Transparency is the brand; the black box stays open to everyone."""
+    try:
+        card = sc.model_card()
+        return {
+            "access": "public — no login required (transparency surface; contains no PII or lead data)",
+            "doctrine": "SZL governed-AI · honest by design · Λ = Conjecture 1 (advisory, never proven)",
+            "model_card": card,
+        }
+    except Exception:
+        raise HTTPException(503, "methodology temporarily unavailable")
+
+
+@app.get("/api/edgar-signals")
+def edgar_signals(authorization: str | None = Header(default=None)):
+    """V8.4: SEC EDGAR 8-K workforce-event window (REPORTED pass-through, keyless)."""
+    _auth(authorization)
+    if efts is None:
+        return {"status": "UNAVAILABLE", "basis": "edgar_fts module not loaded (honest absence)"}
+    return efts.workforce_events_window()
 
 
 @app.get("/api/territory")

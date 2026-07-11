@@ -274,7 +274,8 @@ STATE_PORTALS: dict[str, dict[str, Any]] = {
                citations=[("NH Secretary of State", "https://quickstart.sos.nh.gov")]),
     "ME": dict(name="Maine", region="NE", kind="none", richness=0.0, cadence="none", field=None,
                feed="none verified", confirmed=False,
-               headline="No keyless statewide API verified — included for completeness, baseline only",
+               headline=("No keyless statewide API verified — data.maine.gov Socrata is decommissioned "
+                         "(probed 2026-07-11: redirects to socrata.com 404) — honest GAP, baseline only"),
                citations=[("Maine.gov", "https://www.maine.gov")]),
 }
 
