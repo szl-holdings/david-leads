@@ -92,11 +92,14 @@ _CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").sp
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 
-# --- demo credentials (David-only). Override via env in production. ---
-USERS = {
-    os.environ.get("DAVID_USER", "david"): os.environ.get("DAVID_PASS", "David2026!"),
-}
-ACCESS_KEY = os.environ.get("DAVID_ACCESS_KEY", "DAVID-2026-SECURE-DEMO")
+# --- David-only credentials. MUST be provided via Space secrets — NO defaults (fail-closed). ---
+# In a PUBLIC repo, hardcoded defaults are an open gate whenever the Space secrets are unset,
+# so we read from env with no fallback and refuse logins when any credential is missing.
+DAVID_USER = os.environ.get("DAVID_USER")
+DAVID_PASS = os.environ.get("DAVID_PASS")
+ACCESS_KEY = os.environ.get("DAVID_ACCESS_KEY")
+_CREDS_CONFIGURED = bool(DAVID_USER and DAVID_PASS and ACCESS_KEY)
+USERS = {DAVID_USER: DAVID_PASS} if _CREDS_CONFIGURED else {}
 _TOKENS: set[str] = set()
 
 # session cache of last run
@@ -158,6 +161,12 @@ def healthz():
 
 @app.post("/api/login")
 def login(req: LoginReq):
+    if not _CREDS_CONFIGURED:
+        # Fail closed: never fall back to publicly-visible defaults. No credentials → no login.
+        raise HTTPException(
+            503,
+            "credentials not configured — set DAVID_USER / DAVID_PASS / DAVID_ACCESS_KEY in Space settings",
+        )
     expected = USERS.get(req.username)
     pass_ok = expected is not None and secrets.compare_digest(req.password, expected)
     key_ok = secrets.compare_digest(req.access_key, ACCESS_KEY)

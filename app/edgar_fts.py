@@ -46,7 +46,7 @@ OK_TTL = 600      # 10 min when upstream answered
 NEG_TTL = 60      # 60 s after a failure so recovery is fast
 
 
-def _fetch_phrase(phrase: str, start: str, end: str) -> list[dict[str, Any]]:
+def _fetch_phrase(phrase: str, start: str, end: str) -> tuple[list[dict[str, Any]], int]:
     params = urllib.parse.urlencode({
         "q": phrase, "forms": "8-K", "dateRange": "custom",
         "startdt": start, "enddt": end,
@@ -54,8 +54,17 @@ def _fetch_phrase(phrase: str, start: str, end: str) -> list[dict[str, Any]]:
     req = urllib.request.Request(f"{BASE}?{params}", headers=UA)
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         payload = json.loads(r.read().decode())
+    hits = (payload.get("hits", {}) or {})
+    # SEC's OWN total hit count for this phrase (not just this first page of rows).
+    total_obj = hits.get("total")
+    if isinstance(total_obj, dict):
+        reported_total = int(total_obj.get("value") or 0)
+    elif isinstance(total_obj, int):
+        reported_total = total_obj
+    else:
+        reported_total = 0
     out: list[dict[str, Any]] = []
-    for hit in (payload.get("hits", {}) or {}).get("hits", []) or []:
+    for hit in hits.get("hits", []) or []:
         src = hit.get("_source", {}) or {}
         adsh = src.get("adsh")
         if not adsh:
@@ -78,7 +87,7 @@ def _fetch_phrase(phrase: str, start: str, end: str) -> list[dict[str, Any]]:
             "url": url,   # real EDGAR archive doc; None when SEC omits pieces — never synthesized
             "state": (src.get("biz_states") or [None])[0],
         })
-    return out
+    return out, reported_total
 
 
 def workforce_events_window() -> dict[str, Any]:
@@ -95,8 +104,11 @@ def workforce_events_window() -> dict[str, Any]:
     try:
         rows: list[dict[str, Any]] = []
         seen: set[str] = set()
+        reported_totals: dict[str, int] = {}
         for phrase in PHRASES:
-            for row in _fetch_phrase(phrase, start, end):
+            phrase_rows, phrase_total = _fetch_phrase(phrase, start, end)
+            reported_totals[phrase.strip('"')] = phrase_total
+            for row in phrase_rows:
                 if row["adsh"] not in seen:
                     seen.add(row["adsh"])
                     rows.append(row)
@@ -108,10 +120,15 @@ def workforce_events_window() -> dict[str, Any]:
                       "matching disclosed workforce-event phrases in the last "
                       f"{WINDOW_DAYS} days. A phrase match is a real filing, not a "
                       "verdict; Item 2.05 flag is SEC's own classification."),
+            "totals_basis": ("reported_totals are SEC's OWN per-phrase hit counts for this "
+                             "window (payload.hits.total.value), NOT the number of rows shown. "
+                             "Phrases can overlap the same filing, so the per-phrase totals are "
+                             "never summed into one number."),
             "window": {"start": start, "end": end},
             "phrases": [p.strip('"') for p in PHRASES],
             "signals": rows[:MAX_ROWS],
-            "total_matched": len(rows),
+            "rows_returned": len(rows),
+            "reported_totals": reported_totals,
         }
         ttl = OK_TTL
     except Exception as e:  # honest UNAVAILABLE — never fabricate
