@@ -35,6 +35,10 @@ try:
 except Exception:  # pragma: no cover
     wk = None
 try:
+    from . import oroboros as ob
+except Exception:  # pragma: no cover
+    ob = None
+try:
     from . import receipt_lake as lake
 except Exception:  # pragma: no cover
     lake = None
@@ -640,6 +644,70 @@ def work(req: WorkReq, authorization: str | None = Header(default=None)):
         "loop_receipt": out.get("loop_receipt"),
         "lake_size": _lake_size,
     }
+
+
+class OuroborosReq(BaseModel):
+    max_steps: int = 4
+    top_k: int = 5
+    step_minutes: float | None = None
+    convergence_threshold: float = 0.1
+
+
+@app.get("/api/oroboros/manifest")
+def oroboros_manifest():
+    """Public capability/limits manifest; no lead or credential data."""
+    return {
+        "agent": "Ouroboros Director",
+        "version": "1.0",
+        "endpoint": "POST /api/oroboros",
+        "mode": "bounded-read-only",
+        "max_steps": 8,
+        "formulas": [
+            "LambdaMonotonicity", "FalsePosition", "SummationInvariant",
+            "LambdaCompliance", "ConfidenceBand", "FusedTrack", "AdvisorRouting",
+        ],
+        "human_authority": "required before any contact or downstream mutation",
+        "limits": [
+            "No outreach, CRM write, or external mutation is executed.",
+            "Public signals are claims; estimates are labeled and receipted.",
+            "Lambda remains Conjecture 1 (advisory).",
+        ],
+    }
+
+
+@app.post("/api/oroboros")
+def oroboros_director(req: OuroborosReq, authorization: str | None = Header(default=None)):
+    """Run the bounded, read-only Ouroboros Director over the last public-data run.
+
+    The Director composes the existing scoring, compliance, confidence/fusion,
+    formula-brief, routing, and loop engines. It returns proposals only; no
+    outreach, CRM write, or other mutating action is executed.
+    """
+    _auth(authorization)
+    if ob is None:
+        raise HTTPException(503, "Ouroboros Director unavailable")
+    meta = _STATE.get("meta") or {}
+    if not meta:
+        raise HTTPException(409, "run intelligence first so the Director has a public-signal state")
+    config = {
+        "max_steps": req.max_steps,
+        "top_k": req.top_k,
+        "convergence_threshold": req.convergence_threshold,
+    }
+    if req.step_minutes is not None:
+        config["step_minutes"] = req.step_minutes
+    try:
+        result = ob.run_cycle(meta, config)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    except Exception:
+        raise HTTPException(503, "Ouroboros Director temporarily unavailable")
+    # Keep the loop receipt addressable through the existing verification surface.
+    loop_receipt = result.get("loop_receipt") or {}
+    if loop_receipt.get("id"):
+        _STATE.setdefault("receipts", {})[loop_receipt["id"]] = loop_receipt
+    _STATE["oroboros"] = result
+    return result
 
 
 class OutcomeReq(BaseModel):

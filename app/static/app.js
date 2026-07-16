@@ -625,6 +625,29 @@ async function openRouting() {
   }
 }
 
+/* Bounded agentic review: deterministic SZL engines, proposal-only. */
+function openOuroboros() {
+  const card = $("oroborosCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  runOuroboros();
+}
+async function runOuroboros() {
+  const body = $("oroborosBody"); const btn = $("oroborosRun");
+  if (!body || !btn) return;
+  btn.disabled = true; body.innerHTML = `<div style="padding:20px;color:var(--muted)">Running bounded formula review…</div>`;
+  try {
+    const max_steps = Math.max(1, Math.min(8, Number($("oroborosSteps")?.value || 4)));
+    const top_k = Math.max(1, Math.min(20, Number($("oroborosTopK")?.value || 5)));
+    const d = await api("/api/oroboros", { method: "POST", body: JSON.stringify({ max_steps, top_k }) });
+    const proposals = (d.final && d.final.proposals) || [];
+    const rows = proposals.map(p => `<tr><td><strong>${escHtml(p.lead_id || "—")}</strong></td><td><span class="badge ${p.action==='SUPPRESS'?'BLOCKED':p.action==='REVIEW_CALL'?'HOT':'WARM'}">${escHtml(p.action)}</span></td><td>${escHtml(p.reason || "")}</td><td>${escHtml(p.recommended_agent || "—")}</td><td><code>${escHtml((p.formula_ids || []).join(", "))}</code></td></tr>`).join("") || `<tr><td colspan="5">No proposals; run intelligence first.</td></tr>`;
+    $("oroborosMeta").textContent = `${d.trace?.stepsRun || 0} steps · ${d.mode}`;
+    body.innerHTML = `<div class="route-note">${escHtml((d.limits || []).join(" · "))}</div><table class="route-table"><thead><tr><th>Lead</th><th>Proposal</th><th>Why</th><th>Human reviewer</th><th>Formula spine</th></tr></thead><tbody>${rows}</tbody></table><div class="route-note">Loop receipt: <code>${escHtml(d.loop_receipt?.id || "UNAVAILABLE")}</code> · Lambda is intentionally ${d.loop_receipt?.governance?.lambda == null ? "null in the kernel receipt" : "reported"}.</div>`;
+  } catch (e) { body.innerHTML = `<div style="padding:20px;color:var(--hot)">✕ ${escHtml(e.message)}</div>`; }
+  finally { btn.disabled = false; }
+}
+
 /* ---------- V8.2 P1-G Push to CRM (webhook test) ---------- */
 async function pushToCRM() {
   if (!lastData || !lastData.leads) { alert("Run intelligence first."); return; }
