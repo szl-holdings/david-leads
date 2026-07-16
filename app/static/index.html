@@ -539,6 +539,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 How scoring works</button>
       <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
       <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
+      <button class="btn ghost" id="btnOuroboros" onclick="openOuroboros()">🔁 Ouroboros Director</button>
       <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Businesses</button>
       <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ Layoff Alerts</button>
       <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Wealth Map</button>
@@ -607,6 +608,19 @@ footer.legal a:hover{color:var(--ink, #ddd)}
     <div class="card" id="routingCard">
       <h3>🧭 Lead Routing — Best-Fit Advisor <span class="sec-title-meta" id="routingMeta"></span></h3>
       <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
+    </div>
+
+    <!-- Bounded agentic orchestration: proposals only, never automatic outreach -->
+    <div class="card" id="oroborosCard">
+      <h3>🔁 Ouroboros Director — Bounded Agentic Review <span class="sec-title-meta" id="oroborosMeta"></span></h3>
+      <div class="real-banner">Composes the existing Λ gates, formula briefs, confidence/fusion estimates, receipts, and advisor routing. It proposes the next review step; it never contacts a person or writes to a CRM.</div>
+      <div class="real-tools">
+        <label class="real-states">Steps: <input type="number" id="oroborosSteps" min="1" max="8" value="4" style="width:70px"></label>
+        <label class="real-states">Top leads: <input type="number" id="oroborosTopK" min="1" max="20" value="5" style="width:70px"></label>
+        <button class="btn ghost" id="oroborosRun" onclick="runOuroboros()">→ Run bounded review</button>
+        <span class="hint" style="margin-left:auto">Human approval required for every downstream action.</span>
+      </div>
+      <div id="oroborosBody"><div style="padding:20px;color:var(--muted)">Run intelligence, then start a bounded review.</div></div>
     </div>
 
     <!-- Tax-Territory Intelligence — aggregate IRS public statistics (territory targeting, not individuals) -->
