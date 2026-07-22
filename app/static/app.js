@@ -250,6 +250,7 @@ function renderLeads(leads) {
       </td>
       <td><div class="prod">${l.product}</div><div class="prem" title="Illustrative — not a quoted premium">~${money(l.est_premium)}/yr (illustrative)</div></td>
       <td>
+        <button class="verify-btn" onclick="openOperatorTrace('${l.id}')">🔎 Decision Trace</button>
         <button class="verify-btn" onclick="openReceipt('${l.receipt_id}','${l.id}')">🔒 Proof &amp; Sources</button>
         <button class="verify-btn" style="margin-top:6px" onclick="openBrief('${l.id}')">📜 Call Brief</button>
         <div class="outcome-row">
@@ -262,7 +263,7 @@ function renderLeads(leads) {
     <tr class="detail-row" id="detail-${l.id}" style="display:none"><td colspan="5"></td></tr>`;
   }).join("");
   $("leadsWrap").innerHTML = `<table>
-    <thead><tr><th></th><th>Match</th><th>Lead Segment · Why</th><th>NYL Product Match</th><th>Proof · Outcome</th></tr></thead>
+    <thead><tr><th></th><th>Priority</th><th>Lead · Why now</th><th>Product fit</th><th>Decision · Outcome</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
 
@@ -302,18 +303,18 @@ function renderLeadDetail(l) {
     `<div class="moment"><span class="mdot"></span><div><span class="msrc">${m.source}</span> — ${m.label}</div></div>`).join("");
   const wt = l.wealth_tier || {}, lp = l.lapse || {};
   const lfac = (lp.factors||[]).map(s => `<li>${s}</li>`).join("");
-  const adv = `<div class="detail-sec"><h4>Advisory tiers (based on public records)</h4>
+  const adv = `<div class="detail-sec"><h4>Operator context (based on public records)</h4>
     <div class="adv-box" style="margin-bottom:10px"><div class="adv-h">Wealth tier</div>${wealthLadder(wt, false)}</div>
     <div class="adv-grid">
-      <div class="adv-box"><div class="adv-h">Lapse decile</div><div class="adv-v">${lp.decile!=null?lp.decile+'/10':'—'}</div>
-        <div class="adv-note">${lp.interpretation||''} · advisory, NOT FCRA</div><ul class="adv-list">${lfac}</ul></div>
+      <div class="adv-box"><div class="adv-h">Retention signal</div><div class="adv-v">${lp.decile!=null?lp.decile+'/10':'—'}</div>
+        <div class="adv-note">${lp.interpretation||''} · advisory, not a consumer report</div><ul class="adv-list">${lfac}</ul></div>
     </div>
     <div class="adv-foot">Event type: <strong>${l.event_type_label||l.event_type||'—'}</strong> · Urgency: <strong>${l.urgency||'—'}</strong> · observed ${l.hours_since!=null?l.hours_since+'h ago':'—'}</div>
   </div>`;
   const rd = l.receptivity_detail || {};
   const g = l.likely_gap || {};
   const q = l.liquidity || null;
-  const p1 = `<div class="detail-sec"><h4>P1 advisory signals (public-data, honest)</h4>
+  const p1 = `<div class="detail-sec"><h4>Readiness and coverage context</h4>
     <div class="adv-grid">
       <div class="adv-box"><div class="adv-h">Behavioral receptivity</div><div class="adv-v">${l.receptivity!=null?Math.round(l.receptivity):'—'}</div>
         <div class="adv-note">${rd.interpretation||'advisory'} · ${rd.citation ? `<a href="${rd.citation.url}" target="_blank" rel="noopener">${rd.citation.source||'RGA'}</a>` : 'RGA predictive-moments'} (advisory)</div></div>
@@ -323,10 +324,10 @@ function renderLeadDetail(l) {
     ${liqWatch(q)}
   </div>`;
   return `<div class="detail-inner">
-    <div class="detail-sec"><h4>Why this lead (transparent score)</h4>${axes}</div>
+    <div class="detail-sec"><h4>Why this lead ranks here</h4>${axes}</div>
     ${adv}
     ${p1}
-    <div class="detail-sec"><h4>Predictive moments · public sources</h4>${moments}</div>
+    <div class="detail-sec"><h4>Supporting public records</h4>${moments}</div>
     <div class="nba-box"><div class="act">▶ Next best action: ${l.nba.action}</div><div class="tt">“${l.nba.talk_track}”</div></div>
   </div>`;
 }
@@ -477,7 +478,7 @@ function renderPipeline(kpi) {
   $("pipelineCard").style.display = "";
 }
 
-/* ---------- How scoring works (plain-English methodology) ---------- */
+/* ---------- Why leads rank (plain-English methodology) ---------- */
 const AXIS_PLAIN = {
   life_event_strength: "Life event strength", income_fit: "Income fit",
   age_window_fit: "Age fit", product_propensity: "Product fit", recency: "Freshness",
@@ -485,7 +486,7 @@ const AXIS_PLAIN = {
 async function openModel() {
   $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal">
     <button class="mclose" onclick="closeModal()">✕ Close</button>
-    <h3>🔓 How scoring works</h3>
+    <h3>🔓 Why leads rank</h3>
     <div class="mbody" id="modelBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div></div></div>`;
   try {
     const m = await api("/api/model");
@@ -497,9 +498,8 @@ async function openModel() {
       </div>`).join("");
     $("modelBody").innerHTML = `
       <div style="background:#e6f7f6;border:1px solid #bfeae8;border-radius:10px;padding:12px 14px;font-size:13px;color:#0b5957;margin-bottom:14px">
-        Every lead is rated on five plain factors. A lead only scores high when it does well across
-        all five — one weak factor holds the whole score back, so the strongest leads rise to the top.</div>
-      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:6px">The five factors — and the public records behind each:</div>
+        The work list ranks each lead from five operator-facing signals. It is a priority guide—not a probability, quote, underwriting decision, or permission to contact.</div>
+      <div style="font-size:12px;color:var(--muted);font-weight:600;margin-top:6px">The five reasons a lead can move up or down:</div>
       ${axes}
       <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
         <span class="badge HOT">${(m.buckets&&m.buckets.HOT)||"Hot"}</span>
@@ -623,29 +623,6 @@ async function openRouting() {
   } catch (e) {
     $("routingBody").innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${e.message}</div>`;
   }
-}
-
-/* Bounded agentic review: deterministic SZL engines, proposal-only. */
-function openOuroboros() {
-  const card = $("oroborosCard"); if (!card) return;
-  card.classList.add("show");
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
-  runOuroboros();
-}
-async function runOuroboros() {
-  const body = $("oroborosBody"); const btn = $("oroborosRun");
-  if (!body || !btn) return;
-  btn.disabled = true; body.innerHTML = `<div style="padding:20px;color:var(--muted)">Running bounded formula review…</div>`;
-  try {
-    const max_steps = Math.max(1, Math.min(8, Number($("oroborosSteps")?.value || 4)));
-    const top_k = Math.max(1, Math.min(20, Number($("oroborosTopK")?.value || 5)));
-    const d = await api("/api/oroboros", { method: "POST", body: JSON.stringify({ max_steps, top_k }) });
-    const proposals = (d.final && d.final.proposals) || [];
-    const rows = proposals.map(p => `<tr><td><strong>${escHtml(p.lead_id || "—")}</strong></td><td><span class="badge ${p.action==='SUPPRESS'?'BLOCKED':p.action==='REVIEW_CALL'?'HOT':'WARM'}">${escHtml(p.action)}</span></td><td>${escHtml(p.reason || "")}</td><td>${escHtml(p.recommended_agent || "—")}</td><td><code>${escHtml((p.formula_ids || []).join(", "))}</code></td></tr>`).join("") || `<tr><td colspan="5">No proposals; run intelligence first.</td></tr>`;
-    $("oroborosMeta").textContent = `${d.trace?.stepsRun || 0} steps · ${d.mode}`;
-    body.innerHTML = `<div class="route-note">${escHtml((d.limits || []).join(" · "))}</div><table class="route-table"><thead><tr><th>Lead</th><th>Proposal</th><th>Why</th><th>Human reviewer</th><th>Formula spine</th></tr></thead><tbody>${rows}</tbody></table><div class="route-note">Loop receipt: <code>${escHtml(d.loop_receipt?.id || "UNAVAILABLE")}</code> · Lambda is intentionally ${d.loop_receipt?.governance?.lambda == null ? "null in the kernel receipt" : "reported"}.</div>`;
-  } catch (e) { body.innerHTML = `<div style="padding:20px;color:var(--hot)">✕ ${escHtml(e.message)}</div>`; }
-  finally { btn.disabled = false; }
 }
 
 /* ---------- V8.2 P1-G Push to CRM (webhook test) ---------- */
@@ -783,6 +760,64 @@ async function openBrief(leadId) {
       ${b.receipt_id ? `<div class="ask-receipt" style="color:var(--navy)" onclick="openReceipt('${b.receipt_id}')">🔒 Proof &amp; Sources (${b.receipt_id})</div>` : ''}`;
   } catch (e) {
     $("briefBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
+  }
+}
+
+/* ---------- operator decision trace ---------- */
+async function openOperatorTrace(leadId) {
+  const mount = $("modalMount");
+  mount.innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal" style="width:min(900px,96vw)">
+      <button class="mclose" onclick="closeModal()">✕ Close</button>
+      <h3>🔎 Decision Trace</h3>
+      <div class="mbody" id="traceBody"><div class="skeleton" style="width:80%;margin:10px 0"></div><div class="skeleton" style="width:60%"></div></div>
+    </div></div>`;
+  try {
+    const d = await api("/api/operator/trace/" + encodeURIComponent(leadId));
+    const path = (d.decision_path || []).map(step => `
+      <div class="trace-step">
+        <div class="state">${escHtml(step.state)}</div>
+        <div class="name">${escHtml(step.step)}</div>
+        <div class="detail">${escHtml(step.detail)}</div>
+      </div>`).join("");
+    const drivers = (d.drivers || []).map(driver => `
+      <div class="trace-row">
+        <span class="trace-label">${escHtml(driver.label)}</span>
+        <span class="trace-level">${escHtml(driver.level)}</span>
+        <span class="trace-note">How much this signal supports the current work-list position.</span>
+      </div>`).join("");
+    const evidence = (d.evidence || []).map(item => `
+      <div class="trace-row">
+        <span class="trace-label">${escHtml(item.source)}</span>
+        <span class="trace-level">${escHtml(item.state)}</span>
+        <span class="trace-note">${escHtml(item.supports)}</span>
+      </div>`).join("") || `<div class="trace-caveat">No source link was attached to this lead.</div>`;
+    const caveats = (d.caveats || []).map(note => `<div class="trace-caveat">${escHtml(note)}</div>`).join("");
+    const uncertainty = d.uncertainty || {};
+    const range = uncertainty.range || {};
+    const proof = d.proof || {};
+    const proofButton = proof.receipt_id
+      ? `<button class="verify-btn" onclick="openReceipt('${escHtml(proof.receipt_id)}','${escHtml(leadId)}')">Open proof record</button>`
+      : `<span class="trace-level">NO PROOF RECORD</span>`;
+    $("traceBody").innerHTML = `
+      <div style="display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+        <div><div style="font-family:'Fraunces';font-size:21px;font-weight:600">${escHtml(d.lead?.name || leadId)}</div>
+          <div style="font-size:13px;color:var(--muted)">${escHtml(d.lead?.priority || "UNKNOWN")} priority · ${escHtml(d.lead?.why_now || "No reason supplied")}</div></div>
+        <span class="badge ${d.run?.state==='LIVE'?'HOT':d.run?.state==='MIXED'?'WARM':'NURTURE'}">${escHtml(d.run?.state || "UNKNOWN")} RUN</span>
+      </div>
+      <div class="trace-grid">${path}</div>
+      <h4>Why it ranks here</h4><div class="trace-list">${drivers}</div>
+      <h4>Evidence attached</h4><div class="trace-list">${evidence}</div>
+      <h4>What is still uncertain</h4>
+      <div class="trace-row"><span class="trace-label">Confidence</span><span class="trace-level">${escHtml(uncertainty.level || "UNKNOWN")}</span><span class="trace-note">Range ${escHtml(range.low ?? "—")}–${escHtml(range.high ?? "—")} · ${escHtml(uncertainty.source_count ?? 0)} supporting source(s). ${escHtml(uncertainty.note || "")}</span></div>
+      <div class="trace-row"><span class="trace-label">Conflict check</span><span class="trace-level">${escHtml(d.conflict_check?.state || "UNKNOWN")}</span><span class="trace-note">${escHtml(d.conflict_check?.note || "")}</span></div>
+      ${caveats}
+      <div style="display:flex;gap:12px;align-items:center;margin-top:16px;flex-wrap:wrap">
+        ${proofButton}
+        <span class="trace-note">Proof state: ${escHtml(proof.state || "UNKNOWN")} · Contact gate: ${escHtml(d.contact_gate?.state || "UNKNOWN")}</span>
+      </div>`;
+  } catch (e) {
+    $("traceBody").innerHTML = `<div style="color:var(--hot)">✕ ${escHtml(e.message)}</div>`;
   }
 }
 

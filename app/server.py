@@ -3,6 +3,7 @@
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
 import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -365,6 +366,136 @@ def model(authorization: str | None = Header(default=None)):
         return sc.model_card()
     except Exception:
         raise HTTPException(503, "model card temporarily unavailable")
+
+
+_OPERATOR_DRIVER_LABELS = {
+    "life_event_strength": "Life-event need",
+    "income_fit": "Financial fit",
+    "age_window_fit": "Life-stage fit",
+    "product_propensity": "Product fit",
+    "recency": "Signal freshness",
+}
+
+
+def _operator_level(value: float) -> str:
+    """Turn an internal 0..1 factor into an operator label without exposing formula jargon."""
+    if value >= 0.80:
+        return "STRONG"
+    if value >= 0.60:
+        return "SUPPORTING"
+    return "LIMITED"
+
+
+@app.get("/api/operator/trace/{lead_id}")
+def operator_trace(lead_id: str, authorization: str | None = Header(default=None)):
+    """Plain-language decision trace for a lead already present in the current run.
+
+    This endpoint does not rescore or invent evidence.  It projects the exact cached
+    lead, run metadata, source moments, contact gate, and receipt state into the
+    questions an operator needs answered: why now, why this lead, what is uncertain,
+    whether contact is allowed, and what action is recommended.
+    """
+    _auth(authorization)
+    lead = next((item for item in _STATE.get("leads", []) if item.get("id") == lead_id), None)
+    if lead is None:
+        raise HTTPException(404, "lead not found in current run")
+
+    meta = _STATE.get("meta") or {}
+    total_signals = int(meta.get("total_signals") or 0)
+    live_signals = int(meta.get("live_count") or 0)
+    if total_signals > 0 and live_signals >= total_signals:
+        run_state = "LIVE"
+    elif live_signals > 0:
+        run_state = "MIXED"
+    else:
+        run_state = "EXAMPLE"
+
+    axes = lead.get("axes") or {}
+    drivers = []
+    for key, label in _OPERATOR_DRIVER_LABELS.items():
+        try:
+            value = max(0.0, min(1.0, float(axes.get(key, 0.0))))
+        except (TypeError, ValueError):
+            value = 0.0
+        drivers.append({"key": key, "label": label, "level": _operator_level(value), "value": round(value, 4)})
+    drivers.sort(key=lambda item: item["value"], reverse=True)
+
+    evidence_state = run_state if run_state in {"LIVE", "EXAMPLE"} else "MIXED"
+    evidence = [
+        {
+            "source": moment.get("source", "Unknown public source"),
+            "supports": moment.get("label", "Source relation not described"),
+            "state": evidence_state,
+        }
+        for moment in (lead.get("moments") or [])
+        if isinstance(moment, dict)
+    ]
+
+    confidence = lead.get("confidence") or {}
+    compliance = lead.get("compliance") or {}
+    receipt_id = lead.get("receipt_id")
+    caveats = []
+    if run_state == "EXAMPLE":
+        caveats.append("This is an offline example, not a live prospect.")
+    elif run_state == "MIXED":
+        caveats.append("This run mixes live public records with explicitly labeled fallback examples.")
+    if confidence.get("advisory", True):
+        caveats.append("The priority and confidence range are advisory, not eligibility or underwriting decisions.")
+    if lead.get("est_premium_advisory"):
+        caveats.append(lead.get("est_premium_note") or "Premium is illustrative, not a quote.")
+    if not (lead.get("likely_gap") or {}).get("held_policies_known", False):
+        caveats.append("Existing coverage is unknown; confirm it with the person before recommending a product.")
+    if not lead.get("receipt_signed"):
+        caveats.append("The proof record is available but unsigned because no signing key was available for this run.")
+
+    return {
+        "schema": "szl.operator-decision-trace/v1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "lead": {
+            "id": lead.get("id"),
+            "name": lead.get("name"),
+            "priority": lead.get("bucket"),
+            "score": lead.get("score"),
+            "why_now": lead.get("why"),
+        },
+        "run": {
+            "state": run_state,
+            "source_mode": meta.get("mode", "UNKNOWN"),
+            "live_signals": live_signals,
+            "total_signals": total_signals,
+        },
+        "decision_path": [
+            {"step": "SIGNAL", "state": "OBSERVED" if evidence else "UNAVAILABLE", "detail": f"{len(evidence)} public source link(s) attached"},
+            {"step": "PRIORITY", "state": lead.get("bucket", "UNKNOWN"), "detail": lead.get("why") or "No reason supplied"},
+            {"step": "CONTACT", "state": "CLEAR" if compliance.get("clear") else "BLOCKED", "detail": "; ".join(compliance.get("reasons") or ["No contact-gate reason supplied"])},
+            {"step": "ACTION", "state": "HUMAN_REVIEW", "detail": (lead.get("nba") or {}).get("action", "No action available")},
+            {"step": "PROOF", "state": "SIGNED" if lead.get("receipt_signed") else ("UNSIGNED" if receipt_id else "UNAVAILABLE"), "detail": receipt_id or "No proof record available"},
+        ],
+        "drivers": drivers,
+        "evidence": evidence,
+        "uncertainty": {
+            "state": "EXPOSED" if confidence else "UNAVAILABLE",
+            "level": confidence.get("level", "UNKNOWN"),
+            "range": {"low": confidence.get("lo"), "high": confidence.get("hi")},
+            "source_count": confidence.get("n_sources", len(evidence)),
+            "note": confidence.get("note", "No confidence note available"),
+        },
+        "conflict_check": {
+            "state": "NOT_EVALUATED",
+            "note": "No independent contradiction classifier is present in this product; the trace does not imply conflict clearance.",
+        },
+        "contact_gate": {
+            "state": "CLEAR" if compliance.get("clear") else "BLOCKED",
+            "reasons": compliance.get("reasons") or [],
+        },
+        "recommended_action": lead.get("nba") or {},
+        "proof": {
+            "state": "SIGNED" if lead.get("receipt_signed") else ("UNSIGNED" if receipt_id else "UNAVAILABLE"),
+            "receipt_id": receipt_id,
+            "verification_path": f"/api/verify/{receipt_id}" if receipt_id else None,
+        },
+        "caveats": caveats,
+    }
 
 
 @app.get("/api/methodology")

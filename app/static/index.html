@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>David Leads — Sovereign Insurance Intelligence</title>
-<meta name="description" content="Audit-defensible, public-data lead intelligence for New York Life professionals.">
+<title>David Leads — Operator Lead Command</title>
+<meta name="description" content="A public-record lead command center that shows operators who to call, why now, what to do next, and what evidence supports the decision.">
 <!-- Fonts self-hosted (SZL Doctrine v11: 0 runtime CDN). No fonts.googleapis.com/gstatic. -->
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -66,6 +66,21 @@ header.top .logo path{stroke:#fff}
 
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
 .toolbar .hint{font-size:12px;color:var(--muted)}
+.tool-menu{position:relative}
+.tool-menu summary{list-style:none;background:transparent;color:var(--ink);border:1px solid var(--line);padding:10px 15px;border-radius:9px;font-weight:600;font-size:14px;cursor:pointer}
+.tool-menu summary::-webkit-details-marker{display:none}
+.tool-menu[open] summary{background:var(--card);border-color:var(--teal)}
+.tool-menu-panel{position:absolute;z-index:40;top:48px;right:0;width:min(620px,88vw);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;background:#0b1321;border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
+.tool-menu-panel .btn{text-align:left;width:100%}
+.trace-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0 18px}
+.trace-step{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(255,255,255,.025)}
+.trace-step .state{font-size:10px;color:var(--teal-300);font-weight:800;letter-spacing:.05em}
+.trace-step .name{font-weight:700;margin:3px 0;font-size:12px}
+.trace-step .detail{font-size:11px;color:var(--muted);line-height:1.35}
+.trace-list{display:grid;gap:8px;margin:9px 0 16px}
+.trace-row{display:grid;grid-template-columns:130px 90px 1fr;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:12px;align-items:start}
+.trace-label{font-weight:700}.trace-level{font-size:10px;font-weight:800;color:var(--gold-300)}.trace-note{color:var(--muted)}
+.trace-caveat{padding:9px 11px;margin-top:7px;border-left:3px solid var(--gold);background:rgba(215,185,107,.10);border-radius:0 8px 8px 0;font-size:12px;color:#e7c987}
 
 .grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
@@ -156,6 +171,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
   .ticker{font-size:11px}
   .ask-msg{max-width:97%}
   .holo-stage{height:280px!important}
+  .tool-menu{width:100%}.tool-menu summary{width:100%;text-align:center}.tool-menu-panel{position:static;width:100%;grid-template-columns:1fr;margin-top:8px}
+  .trace-grid{grid-template-columns:1fr 1fr}.trace-row{grid-template-columns:1fr}.trace-step:last-child{grid-column:1/-1}
   .brief-score{font-size:15px}
   footer.legal{font-size:10px}
 }
@@ -496,7 +513,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       </svg>
       <h1>David Leads</h1>
     </div>
-    <div class="login-sub">Sovereign Insurance Intelligence — audit-defensible leads from public data. Built for New York Life professionals.</div>
+    <div class="login-sub">Your territory command center: who to call, why now, what to say, and the public evidence behind every recommendation.</div>
     <div class="field"><label>Username</label><input id="u" autocomplete="username" placeholder="david"></div>
     <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
     <div class="field"><label>Secure Access Key</label><input id="k" placeholder="DAVID-2026-SECURE-DEMO"></div>
@@ -515,13 +532,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
     </svg>
     <h2>David Leads</h2>
-    <span class="tag">Sovereign Insurance Intelligence</span>
+    <span class="tag">Lead Operations</span>
     <div class="spacer"></div>
-    <label class="holo-toggle" title="Switch the visuals to holographic 3D">
-      <input type="checkbox" id="holoModeToggle" onchange="toggleHolo(this.checked)">
-      <span class="holo-toggle-track"><span class="holo-toggle-thumb"></span></span>
-      <span class="holo-toggle-label">HOLO MODE</span>
-    </label>
     <span class="who" id="who" style="margin-left:14px"></span>
   </header>
 
@@ -535,17 +547,21 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <button class="btn ghost" id="runSample" onclick="runIntel(false)">See an Example (offline)</button>
       <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Coverage Map</button>
       <button class="btn ghost" id="btnSurge" onclick="openSurge()">📈 Rising Areas</button>
-      <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
-      <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 How scoring works</button>
-      <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Producer Benchmark</button>
-      <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Lead Routing</button>
-      <button class="btn ghost" id="btnOuroboros" onclick="openOuroboros()">🔁 Ouroboros Director</button>
       <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Businesses</button>
-      <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ Layoff Alerts</button>
-      <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Wealth Map</button>
-      <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
-      <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
-      <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
+      <details class="tool-menu">
+        <summary>More tools ▾</summary>
+        <div class="tool-menu-panel">
+          <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
+          <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Why leads rank</button>
+          <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Results</button>
+          <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Best-fit Advisor</button>
+          <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ Layoff Alerts</button>
+          <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Wealth Map</button>
+          <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
+          <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
+          <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
+        </div>
+      </details>
       <span class="hint" id="runHint">Finds people in your territory who just had a life event that creates an insurance need — using public records only.</span>
     </div>
 
@@ -608,19 +624,6 @@ footer.legal a:hover{color:var(--ink, #ddd)}
     <div class="card" id="routingCard">
       <h3>🧭 Lead Routing — Best-Fit Advisor <span class="sec-title-meta" id="routingMeta"></span></h3>
       <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
-    </div>
-
-    <!-- Bounded agentic orchestration: proposals only, never automatic outreach -->
-    <div class="card" id="oroborosCard">
-      <h3>🔁 Ouroboros Director — Bounded Agentic Review <span class="sec-title-meta" id="oroborosMeta"></span></h3>
-      <div class="real-banner">Composes the existing Λ gates, formula briefs, confidence/fusion estimates, receipts, and advisor routing. It proposes the next review step; it never contacts a person or writes to a CRM.</div>
-      <div class="real-tools">
-        <label class="real-states">Steps: <input type="number" id="oroborosSteps" min="1" max="8" value="4" style="width:70px"></label>
-        <label class="real-states">Top leads: <input type="number" id="oroborosTopK" min="1" max="20" value="5" style="width:70px"></label>
-        <button class="btn ghost" id="oroborosRun" onclick="runOuroboros()">→ Run bounded review</button>
-        <span class="hint" style="margin-left:auto">Human approval required for every downstream action.</span>
-      </div>
-      <div id="oroborosBody"><div style="padding:20px;color:var(--muted)">Run intelligence, then start a bounded review.</div></div>
     </div>
 
     <!-- Tax-Territory Intelligence — aggregate IRS public statistics (territory targeting, not individuals) -->
@@ -726,18 +729,6 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       </div>
     </div>
 
-    <!-- Holographic 3D section (shown in Holo mode) -->
-    <div id="holoSection" style="display:none;margin-bottom:22px">
-      <div style="display:grid;grid-template-columns:1.2fr 1fr;gap:16px;margin-bottom:16px">
-        <div class="card holo-card"><h3>🛰️ Lead Constellation <span class="sec-title-meta">score · bucket · shared signals</span></h3>
-          <div id="holoConstellation" class="holo-stage" style="height:340px"></div></div>
-        <div class="card holo-card"><h3>💠 Premium Pipeline 3D</h3>
-          <div id="holoPipe" class="holo-stage" style="height:340px"></div></div>
-      </div>
-      <div class="card holo-card"><h3>🌐 Territory Opportunity Field <span class="sec-title-meta">live Census · height = opportunity</span></h3>
-        <div id="holoGlobe" class="holo-stage" style="height:380px"></div></div>
-    </div>
-
     <!-- Ask the Territory -->
     <div class="card ask-card" id="askCard" style="display:none;margin-bottom:22px">
       <h3>💬 Ask the Territory <span class="sec-title-meta" style="color:var(--teal-300)">conversational · public-data · cited · signed</span></h3>
@@ -769,7 +760,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 
       <div style="display:flex;flex-direction:column;gap:18px">
         <div class="card">
-          <h3>🛡️ Trust &amp; Compliance Check</h3>
+          <h3>🛡️ Contact &amp; Evidence Check</h3>
           <div class="gov" id="gov">
             <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting a search — every lead is checked to confirm it comes from public records and nothing is invented.</div>
           </div>
@@ -779,7 +770,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
           <div class="body" id="pipeBody" style="padding:14px 18px"></div>
         </div>
         <div class="card">
-          <h3>📡 Public Signals Used <span class="sec-title-meta" id="sigMeta"></span></h3>
+          <h3>📡 Source Signals <span class="sec-title-meta" id="sigMeta"></span></h3>
           <div class="body" id="signals">
             <div style="padding:18px;color:var(--muted);font-size:13px">No signals yet.</div>
           </div>
@@ -806,9 +797,5 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 
 <!-- app.js loads FIRST and synchronously so login/API never depend on the CDN. -->
 <script src="app.js"></script>
-<!-- three.js + holo are decorative (Holo mode only) and must never block the app. -->
-<!-- three.js vendored same-origin (SZL Doctrine v11: 0 runtime CDN). -->
-<script defer src="vendor/three.min.js" onerror="window.__holoUnavailable=true"></script>
-<script defer src="holo.js" onerror="window.__holoUnavailable=true"></script>
 </body>
 </html>
