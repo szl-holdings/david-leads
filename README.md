@@ -1,5 +1,6 @@
 ---
-title: David Leads — Sovereign Insurance Intelligence
+thumbnail: https://huggingface.co/spaces/SZLHOLDINGS/david-leads/resolve/main/og-card.png
+title: David Leads — Operator Lead Command
 emoji: 🛡️
 colorFrom: blue
 colorTo: yellow
@@ -7,7 +8,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Audit-defensible, public-data lead intelligence for NYL pros
+short_description: Public-record lead command with transparent decision traces
 tags:
   - insurance
   - lead-intelligence
@@ -17,55 +18,71 @@ tags:
   - szl-holdings
 ---
 
-> **SZL Holdings** · Doctrine v11 · Λ = Conjecture 1 (advisory, never "green"/theorem) · canonical [a-11-oy.com](https://a-11-oy.com)
+# David Leads — Operator Lead Command
 
-# David Leads — Sovereign Insurance Intelligence
+David Leads helps insurance operators answer five questions quickly:
 
-Audit-defensible insurance lead intelligence for **New York Life** financial professionals.
-Built by **SZL Holdings** on the sovereign governed-AI substrate.
+1. Who should I call first?
+2. Why is this lead timely?
+3. What should I do next?
+4. What public evidence supports the recommendation?
+5. What remains uncertain or blocks contact?
 
-**The edge:** the kind of life-event predictive scoring carriers buy from vendors like
-LexisNexis / Deloitte — but transparent, **public-data-only**, and **cryptographically
-receipted** so every lead is audit-defensible. We are not aware of an agent-level competitor
-that ships signed, verifiable lead provenance.
+The workspace combines public-record signals, a prioritized work list, next-best actions,
+territory coverage, best-fit advisor routing, outcomes, and checkable proof records. The
+operator view uses plain language; technical scoring details are kept out of the daily workflow.
 
-## What it does
-- Pulls **live public signals**: SEC EDGAR (8-K events), BLS (wages), U.S. Census (income/age), CDC (births).
-- Scores leads with a transparent Λ-style model → ranks → matches each to the right NYL product.
-- Emits a **compliance-grade signed receipt** (ECDSA-P256 / hash-chain) per lead — verifiable in-app.
-- A **governance gate** enforces public-data-only, zero-fabrication (honest by design).
-- KPI dashboard: qualified appts/week, HOT leads, pipeline premium.
+## The open-box difference
 
+Every ranked lead has a **Decision Trace**. It shows the source path, the reasons that moved the
+lead up or down, contact permission, the recommended human action, proof state, confidence range,
+and explicit caveats. A missing contradiction check is shown as `NOT_EVALUATED`; an offline example
+is shown as `EXAMPLE`; an unavailable signature is shown as `UNSIGNED`.
 
-## V8 — Genius Seaboard (latest)
-- **Territory Pulse** (`GET /api/pulse`): live ranked pulse of the 13-state Atlantic seaboard (CT→ME), grounded in verified free open-data richness. MA/NH/ME honestly flagged as data GAPs.
-- **Signed 4-Part Brief** (`GET /api/brief/{lead_id}`): every lead → WHO / WHY NOW / PRODUCT / NEXT ACTION, citation-grounded, bound to one tamper-evident signed receipt.
-- **Λ with time-decay**: the recency axis now decays as `recency × exp(−0.005·age_min)` (half-life ≈ 139 min), operationalizing speed-to-lead < 60s. Fully disclosed in `/api/model`. Λ remains Conjecture 1.
+The priority score is an advisory work-order signal. It is not a probability, insurance quote,
+underwriting decision, consumer report, or permission to contact.
 
-## V8.4 — Open box + EDGAR workforce window (latest)
-- **Public methodology** (`GET /api/methodology`, no login): the full scoring model card — formula, axes, weights, sources — open to everyone. It contains no PII or lead data; transparency is the brand.
-- **EDGAR workforce-event window** (`GET /api/edgar-signals`, login-gated): 8-K filings matching disclosed workforce-event phrases via the KEYLESS SEC full-text search, REPORTED pass-through with SEC's own Item 2.05 flag — a phrase match is a real filing, never a verdict. Honest `UNAVAILABLE` on upstream failure.
-- **Maine GAP re-verified (2026-07-11):** data.maine.gov Socrata is decommissioned (redirects to socrata.com 404). ME stays an honest GAP — no fabricated feed.
+## Operator workflow
 
-## Access (login-gated)
-Set as Space secrets (Settings → Variables and secrets):
-- `DAVID_USER`, `DAVID_PASS`, `DAVID_ACCESS_KEY`
-- `SZL_COSIGN_PRIVATE_PEM`, `SZL_COSIGN_PUBLIC_PEM` (for real signing; otherwise honest UNSIGNED receipts)
-- `CENSUS_API_KEY` (optional free key for live Census)
+- **Find Leads** gathers current public records. If an upstream source is unavailable, fallback
+  examples remain visibly labeled instead of being presented as live prospects.
+- **Decision Trace** opens the complete operator-readable path from source to action.
+- **Call Brief** gives a concise opening line and next step for human review.
+- **Proof & Sources** exposes the exact evidence record behind a recommendation.
+- **Results** records meeting, sale, and no-sale outcomes without presenting modeled results as facts.
+- **More tools** contains territory, wealth, workforce-event, opt-in, export, routing, and CRM actions.
 
-© 2026 SZL Holdings · Apache-2.0 · public-data-only · honest by design
+## Data and safety boundaries
 
----
+- Public records and explicitly consented submissions only.
+- No private data source is presented as part of the lead signal set.
+- Contact restrictions can block a lead even when its priority score is high.
+- Premium values are illustrative and never quotes.
+- Existing coverage must be confirmed with the person before a recommendation.
+- Proof records are signed only when a real signing key is configured; otherwise they remain honestly unsigned.
 
-## SZL Estate
+## Access configuration
 
-Part of the **SZL Holdings** governed-AI estate — *governed AI you can prove*: every decision carries a signed, checkable receipt.
+Configure these values in the approved secret store for the deployment:
 
-- **Flagship:** [a11oy command console → a-11-oy.com](https://a-11-oy.com)
-- **Orgs:** [GitHub · szl-holdings](https://github.com/szl-holdings) · [Hugging Face · SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
-- **Related Spaces:** [🧬 immune](https://huggingface.co/spaces/SZLHOLDINGS/immune) · [✅ governed-receipt-verifier](https://huggingface.co/spaces/SZLHOLDINGS/governed-receipt-verifier) · [🌌 cosmos](https://huggingface.co/spaces/SZLHOLDINGS/cosmos)
-- **Estate hub (every Space, live status):** [szl-estate-live](https://szlholdings-szl-estate-live.static.hf.space)
+- `DAVID_USER`
+- `DAVID_PASS`
+- `DAVID_ACCESS_KEY`
+- `SZL_COSIGN_PRIVATE_PEM` and `SZL_COSIGN_PUBLIC_PEM` for signed proof records
+- `CENSUS_API_KEY` for optional higher-capacity Census access
 
-**Status:** responding as of 2026-07-11 (HF Space root probe, this session).
+Do not commit credentials or paste them into issues, pull requests, chat, or model cards.
 
-<sub>Doctrine v11 · Λ = Conjecture 1 (advisory — never "green"/theorem; open) · honest by design · public data only.</sub>
+## Source and deployment
+
+- GitHub source of record: private repository `szl-holdings/david-leads`
+- Hugging Face runtime: [SZLHOLDINGS/david-leads](https://huggingface.co/spaces/SZLHOLDINGS/david-leads)
+- Estate command center: [a-11-oy.com](https://a-11-oy.com)
+- Hugging Face organization: [SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
+- GitHub organization: [szl-holdings](https://github.com/szl-holdings)
+
+The GitHub workflow derives the deployed file set from the Dockerfile and performs a post-build
+content comparison. A GitHub merge is not a live deployment until that deployment and verification
+finish successfully.
+
+© 2026 SZL Holdings · Apache-2.0
