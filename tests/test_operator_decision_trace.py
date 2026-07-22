@@ -1,16 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 """Regression tests for the operator-first decision trace and public UI copy."""
 from pathlib import Path
+import importlib.util
 import unittest
 
-from fastapi.testclient import TestClient
-
-from app import server
+_APP_TEST_DEPS_AVAILABLE = all(
+    importlib.util.find_spec(name) is not None
+    for name in ("fastapi", "httpx", "pydantic")
+)
+if _APP_TEST_DEPS_AVAILABLE:
+    from fastapi.testclient import TestClient
+    from app import server
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(_APP_TEST_DEPS_AVAILABLE, "application test dependencies are not installed")
 class OperatorDecisionTraceTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(server.app)
