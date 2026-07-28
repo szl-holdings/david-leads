@@ -3,6 +3,7 @@
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
 import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
+import ipaddress, socket, time
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
@@ -88,6 +89,14 @@ try:
     from . import warn_leads as wl
 except Exception:  # pragma: no cover
     wl = None
+try:
+    from . import dealdesk as dd
+except Exception:  # pragma: no cover
+    dd = None
+try:
+    from . import data_policy as dp
+except Exception:  # pragma: no cover
+    dp = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -103,9 +112,27 @@ SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 DAVID_USER = os.environ.get("DAVID_USER")
 DAVID_PASS = os.environ.get("DAVID_PASS")
 ACCESS_KEY = os.environ.get("DAVID_ACCESS_KEY")
-_CREDS_CONFIGURED = bool(DAVID_USER and DAVID_PASS and ACCESS_KEY)
+_REVOKED_CREDENTIAL_FINGERPRINTS = {
+    # Publicly exposed legacy triplet. The values are intentionally not retained in source.
+    "3377808eda65b578cac8927ff49cf9d511dafe83b81ce8780905cc96641e3abd",
+}
+
+
+def _credential_fingerprint(username: str | None, password: str | None, access_key: str | None) -> str:
+    material = "\0".join((username or "", password or "", access_key or "")).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+_CREDS_PRESENT = bool(DAVID_USER and DAVID_PASS and ACCESS_KEY)
+_CREDS_ROTATION_REQUIRED = (
+    _CREDS_PRESENT
+    and _credential_fingerprint(DAVID_USER, DAVID_PASS, ACCESS_KEY)
+    in _REVOKED_CREDENTIAL_FINGERPRINTS
+)
+_CREDS_CONFIGURED = bool(_CREDS_PRESENT and not _CREDS_ROTATION_REQUIRED)
 USERS = {DAVID_USER: DAVID_PASS} if _CREDS_CONFIGURED else {}
-_TOKENS: set[str] = set()
+_TOKEN_TTL_SECONDS = max(300, int(os.environ.get("DAVID_SESSION_TTL_SECONDS", "28800")))
+_TOKENS: dict[str, float] = {}
 
 # session cache of last run
 _STATE: dict = {"leads": [], "signals": [], "meta": {}, "receipts": {}}
@@ -155,17 +182,108 @@ class RunReq(BaseModel):
 def _auth(authorization: str | None):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
-    if authorization.split(" ", 1)[1] not in _TOKENS:
+    token = authorization.split(" ", 1)[1]
+    expires_at = _TOKENS.get(token)
+    if expires_at is None:
         raise HTTPException(401, "Invalid token")
+    if expires_at <= time.time():
+        _TOKENS.pop(token, None)
+        raise HTTPException(401, "Session expired")
 
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "service": "david-leads", "doctrine": "SZL governed-AI · honest by design"}
+    return {
+        "status": "ok",
+        "service": "david-leads",
+        "authentication": (
+            "ROTATION_REQUIRED"
+            if _CREDS_ROTATION_REQUIRED
+            else "CONFIGURED"
+            if _CREDS_CONFIGURED
+            else "NOT_CONFIGURED"
+        ),
+        "doctrine": "SZL governed-AI · honest by design",
+    }
+
+
+def _runtime_bundle_manifest() -> dict:
+    """Hash the exact runtime files Docker copies so live bytes can be compared to GitHub."""
+    roots = [
+        (APP_DIR, "app"),
+        (os.path.join(os.path.dirname(APP_DIR), "requirements.txt"), "requirements.txt"),
+        (
+            os.path.join(os.path.dirname(APP_DIR), "PUBLICATION_READINESS.md"),
+            "PUBLICATION_READINESS.md",
+        ),
+        (
+            os.path.join(os.path.dirname(APP_DIR), "PUBLIC_DATA_OPERATING_MODEL.md"),
+            "PUBLIC_DATA_OPERATING_MODEL.md",
+        ),
+        (
+            os.path.join(os.path.dirname(APP_DIR), "SPACE_PROVENANCE.json"),
+            "SPACE_PROVENANCE.json",
+        ),
+    ]
+    files: list[dict] = []
+    for absolute, logical in roots:
+        if os.path.isfile(absolute):
+            with open(absolute, "rb") as handle:
+                files.append({"path": logical, "sha256": hashlib.sha256(handle.read()).hexdigest()})
+            continue
+        for directory, dirnames, filenames in os.walk(absolute):
+            dirnames[:] = sorted(name for name in dirnames if name != "__pycache__")
+            for filename in sorted(filenames):
+                if filename.endswith((".pyc", ".pyo")):
+                    continue
+                path = os.path.join(directory, filename)
+                relative = os.path.relpath(path, absolute).replace("\\", "/")
+                with open(path, "rb") as handle:
+                    digest = hashlib.sha256(handle.read()).hexdigest()
+                files.append({"path": f"{logical}/{relative}", "sha256": digest})
+    files.sort(key=lambda item: item["path"])
+    canonical = "\n".join(
+        f"{item['path']}\0{item['sha256']}" for item in files
+    ).encode("utf-8")
+    revision = (
+        os.environ.get("SOURCE_GITHUB_SHA")
+        or os.environ.get("GITHUB_SHA")
+        or os.environ.get("HF_SPACE_COMMIT_SHA")
+    )
+    return {
+        "service": "david-leads",
+        "version": app.version,
+        "build": {
+            "state": "OBSERVED" if revision else "UNAVAILABLE",
+            "revision": revision,
+        },
+        "receipt_minted": False,
+        "bundle_sha256": hashlib.sha256(canonical).hexdigest(),
+        "file_count": len(files),
+        "files": files,
+        "source_revision": revision,
+        "source_revision_state": "OBSERVED" if revision else "UNAVAILABLE",
+        "github_huggingface_alignment": "UNVERIFIED",
+        "alignment_note": (
+            "Compare this runtime bundle digest and file manifest with the Docker-copied GitHub tree. "
+            "A healthy process or HTTP 200 is not source-parity proof."
+        ),
+    }
+
+
+@app.get("/api/build-info")
+def build_info():
+    return _runtime_bundle_manifest()
 
 
 @app.post("/api/login")
 def login(req: LoginReq):
+    if _CREDS_ROTATION_REQUIRED:
+        raise HTTPException(
+            503,
+            "published legacy credentials are revoked; rotate DAVID_USER / DAVID_PASS / "
+            "DAVID_ACCESS_KEY in the approved secret store",
+        )
     if not _CREDS_CONFIGURED:
         # Fail closed: never fall back to publicly-visible defaults. No credentials → no login.
         raise HTTPException(
@@ -178,8 +296,16 @@ def login(req: LoginReq):
     if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
-    _TOKENS.add(tok)
-    return {"token": tok, "user": req.username}
+    _TOKENS[tok] = time.time() + _TOKEN_TTL_SECONDS
+    return {"token": tok, "user": req.username, "expires_in": _TOKEN_TTL_SECONDS}
+
+
+@app.post("/api/logout")
+def logout(authorization: str | None = Header(default=None)):
+    _auth(authorization)
+    token = authorization.split(" ", 1)[1]
+    _TOKENS.pop(token, None)
+    return {"ok": True}
 
 
 @app.post("/api/run")
@@ -467,7 +593,19 @@ def operator_trace(lead_id: str, authorization: str | None = Header(default=None
         "decision_path": [
             {"step": "SIGNAL", "state": "OBSERVED" if evidence else "UNAVAILABLE", "detail": f"{len(evidence)} public source link(s) attached"},
             {"step": "PRIORITY", "state": lead.get("bucket", "UNKNOWN"), "detail": lead.get("why") or "No reason supplied"},
-            {"step": "CONTACT", "state": "CLEAR" if compliance.get("clear") else "BLOCKED", "detail": "; ".join(compliance.get("reasons") or ["No contact-gate reason supplied"])},
+            {
+                "step": "CONTACT",
+                "state": (
+                    "CLEAR"
+                    if compliance.get("clear") is True
+                    else "BLOCKED"
+                    if compliance.get("clear") is False
+                    else "NOT_EVALUATED"
+                ),
+                "detail": "; ".join(
+                    compliance.get("reasons") or ["No contact-gate reason supplied"]
+                ),
+            },
             {"step": "ACTION", "state": "HUMAN_REVIEW", "detail": (lead.get("nba") or {}).get("action", "No action available")},
             {"step": "PROOF", "state": "SIGNED" if lead.get("receipt_signed") else ("UNSIGNED" if receipt_id else "UNAVAILABLE"), "detail": receipt_id or "No proof record available"},
         ],
@@ -485,7 +623,13 @@ def operator_trace(lead_id: str, authorization: str | None = Header(default=None
             "note": "No independent contradiction classifier is present in this product; the trace does not imply conflict clearance.",
         },
         "contact_gate": {
-            "state": "CLEAR" if compliance.get("clear") else "BLOCKED",
+            "state": (
+                "CLEAR"
+                if compliance.get("clear") is True
+                else "BLOCKED"
+                if compliance.get("clear") is False
+                else "NOT_EVALUATED"
+            ),
             "reasons": compliance.get("reasons") or [],
         },
         "recommended_action": lead.get("nba") or {},
@@ -858,6 +1002,8 @@ def outcome(req: OutcomeReq, authorization: str | None = Header(default=None)):
     if outcome_val not in ev.VALID_OUTCOMES:
         raise HTTPException(422, f"outcome must be one of {ev.VALID_OUTCOMES}")
     lead = next((l for l in _STATE.get("leads", []) if l["id"] == req.lead_id), None)
+    if lead is None:
+        raise HTTPException(404, "lead not found; run intelligence and use a current lead id")
     try:
         event_type = (lead or {}).get("event_type") or (ev.classify((lead or {}).get("event", "")) if lead else "unknown")
     except Exception:
@@ -876,7 +1022,12 @@ def outcome(req: OutcomeReq, authorization: str | None = Header(default=None)):
             "bucket": outcome_val.upper(),
             "product": "adaptive-conversion-outcome",
         }
-        sigs_used = [{"source": "agent-logged outcome", "signal": f"{event_type}:{outcome_val}", "public": True}]
+        sigs_used = [{
+            "source": "agent-logged outcome",
+            "signal": f"{event_type}:{outcome_val}",
+            "public": False,
+            "source_class": "INTERNAL_OPERATIONAL",
+        }]
         receipt = rc.make_receipt(pseudo, sigs_used, 100.0 if outcome_val == "sold" else 50.0 if outcome_val == "meeting" else 0.0)
         receipt["organ"] = "conversion-loop"
         receipt["decision"] = "outcome-logged"
@@ -1000,6 +1151,77 @@ def real_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = He
     return out
 
 
+class DealDeskUpdateReq(BaseModel):
+    stage: str
+    next_action: str | None = None
+    note: str | None = None
+    owner: str | None = None
+    clearance_confirmed: bool = False
+
+
+@app.get("/api/deal-desk")
+def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
+    """Broker work queue built only from real public B2B records.
+
+    A public record is a research signal, not permission to contact. Every row
+    remains fail-closed until a human records execution-time outreach clearance.
+    """
+    _auth(authorization)
+    if rl is None or dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
+        "NY", "NJ", "PA", "MD", "DE", "CT"
+    ]
+    try:
+        source = rl.real_callable_leads(state_list, limit_per=12)
+    except Exception:
+        raise HTTPException(503, "public business sources temporarily unavailable")
+    clean: list[dict] = []
+    for lead in source.get("leads", []):
+        receipt = lead.pop("_receipt", None)
+        if isinstance(receipt, dict) and receipt.get("id"):
+            _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+        lead.pop("_account_id", None)
+        clean.append(lead)
+    board = dd.board(clean)
+    board["sources"] = source.get("sources", [])
+    board["generated_at"] = source.get("generated_at")
+    _STATE["deal_desk"] = board
+    return board
+
+
+@app.post("/api/deal-desk/{opportunity_id}")
+def update_deal_desk(
+    opportunity_id: str,
+    req: DealDeskUpdateReq,
+    authorization: str | None = Header(default=None),
+):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    try:
+        opportunity = dd.update(
+            opportunity_id,
+            stage=req.stage,
+            next_action=req.next_action,
+            note=req.note,
+            owner=req.owner,
+            clearance_confirmed=req.clearance_confirmed,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "opportunity": opportunity}
+
+
+@app.get("/api/data-policy")
+def data_policy():
+    if dp is None:
+        raise HTTPException(503, "data policy unavailable")
+    return dp.policy_document()
+
+
 @app.get("/api/warn-leads")
 def warn_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
     """WARN Act layoff leads (public state DOL records) for the covered states. A 60-day WARN
@@ -1079,10 +1301,12 @@ def optin(req: OptInReq):
         "consent_basis": "express consent (opt-in)",
         "submitted_at": ts,
     }
-    # sign a receipt recording the explicit, self-submitted consent (public signal, fabricated=0)
+    # Sign a receipt recording first-party consent. Consent is permitted evidence, but it is
+    # not public data and must never be mislabeled as such.
     try:
         signal = {"source": "self-submitted opt-in form",
-                  "signal": f"express consent to be contacted recorded {ts}", "public": True}
+                  "signal": f"express consent to be contacted recorded {ts}",
+                  "public": False, "source_class": "FIRST_PARTY_CONSENT"}
         pseudo = {"id": "optin_" + hashlib.sha256((name + ts).encode()).hexdigest()[:12],
                   "name": name, "bucket": "OPT-IN", "product": "CONSENT"}
         receipt = rc.make_receipt(pseudo, [signal], 100.0, witness=True)
@@ -1167,6 +1391,41 @@ class WebhookReq(BaseModel):
     lead_id: str | None = None  # optional: export a single enriched lead; default = all ranked leads
 
 
+def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str]:
+    parsed = urllib.parse.urlparse(url)
+    hostname = (parsed.hostname or "").lower().rstrip(".")
+    approved = {
+        host.strip().lower().rstrip(".")
+        for host in os.environ.get("DAVID_CRM_WEBHOOK_ALLOWLIST", "").split(",")
+        if host.strip()
+    }
+    if not approved:
+        raise ValueError("CRM webhook is disabled until DAVID_CRM_WEBHOOK_ALLOWLIST is configured")
+    if parsed.scheme.lower() != "https" or not hostname or hostname not in approved:
+        raise ValueError("destination must be an approved HTTPS CRM hostname")
+    try:
+        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or 443)}
+    except OSError as exc:
+        raise ValueError("approved CRM hostname could not be resolved") from exc
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise ValueError("approved CRM hostname resolves to a non-public address")
+    return parsed, hostname
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # pragma: no cover - stdlib callback
+        return None
+
+
 @app.post("/api/webhook/test")
 def webhook_test(req: WebhookReq, authorization: str | None = Header(default=None)):
     """V8.2 P1-G: Push-to-CRM test. POSTs the enriched-lead JSON to req.url; if no url is
@@ -1199,33 +1458,28 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
     if not req.url:
         return {"ok": True, "sent": False, "reason": "no url supplied",
                 "would_send": payload}
-    # Validate the URL scheme: only http/https outbound is allowed. This blocks file://, ftp://,
-    # gopher:// and other schemes that could be abused for local-file read or SSRF. On an invalid
-    # URL we never raise a 500 — we return the honest would-send payload, same as a blocked send.
     try:
-        parsed = urllib.parse.urlparse(req.url)
-    except Exception:
-        parsed = None
-    if not parsed or parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        _parsed, hostname = _webhook_destination(req.url)
+    except ValueError as exc:
         return {"ok": True, "sent": False,
-                "reason": "invalid url (only http/https allowed)",
-                "url": req.url, "would_send": payload}
+                "reason": str(exc), "would_send": payload}
     try:
         body = json.dumps(payload).encode("utf-8")
         request = urllib.request.Request(
             req.url, data=body, method="POST",
             headers={"Content-Type": "application/json",
                      "User-Agent": "SZL-David-Leads webhook-test"})
-        with urllib.request.urlopen(request, timeout=8) as resp:
+        opener = urllib.request.build_opener(_NoRedirect)
+        with opener.open(request, timeout=8) as resp:
             status = resp.getcode()
-            snippet = resp.read(512).decode("utf-8", "replace")
-        return {"ok": True, "sent": True, "url": req.url,
-                "status": status, "response_snippet": snippet, "count": payload["count"]}
+            resp.read(1)
+        return {"ok": True, "sent": True, "destination": hostname,
+                "status": status, "count": payload["count"]}
     except Exception as e:
         # outbound blocked / unreachable — honest: return the would-send payload, never fake success
         return {"ok": True, "sent": False,
                 "reason": "outbound POST failed (%s)" % type(e).__name__,
-                "url": req.url, "would_send": payload}
+                "destination": hostname, "would_send": payload}
 
 
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)

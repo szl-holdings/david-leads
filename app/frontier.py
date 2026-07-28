@@ -91,8 +91,29 @@ def compliance_axis(lead: dict[str, Any]) -> dict[str, Any]:
         blocked = True
         reasons.append("Universal opt-out honored — suppressed")
     if blocked:
-        return {"value": 0.0, "clear": False, "reasons": reasons}
-    return {"value": 1.0, "clear": True, "reasons": ["DNC clear · not deceased · no opt-out"]}
+        return {
+            "value": 0.0,
+            "clear": False,
+            "status": "BLOCKED",
+            "reasons": reasons,
+        }
+    if lead.get("contact_permission_verified") is True or lead.get("consent_verified") is True:
+        return {
+            "value": 1.0,
+            "clear": True,
+            "status": "CONTACTABLE_VERIFIED",
+            "reasons": ["Execution-time contact permission recorded"],
+        }
+    # Public visibility is not permission to contact. Keep the lead visible for
+    # human research, but never claim DNC/death/opt-out checks that did not run.
+    return {
+        "value": 0.6,
+        "clear": None,
+        "status": "NOT_EVALUATED",
+        "reasons": [
+            "Contact permission not evaluated — verify source, suppression, and outreach rules before contact"
+        ],
+    }
 
 
 # ===========================================================================

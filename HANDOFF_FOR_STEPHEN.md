@@ -35,10 +35,10 @@ A live, login-gated **Sovereign Insurance Intelligence** console that:
 - **Permanent live app (recommended):** **https://szlholdings-david-leads.hf.space** — hosted on your SZLHOLDINGS Hugging Face org, public URL but **login-gated by the access key** (David-only). This is the one to send David.
 - **In-thread preview:** the attached `/computer/a` David Leads app (also live).
 - **Offline backup:** `David_Leads_PORTABLE.html` — double-click, works with **zero network** (your meeting safety net).
-- **Login (all versions):**
-  - Username: `david`
-  - Password: `David2026!`
-  - Access Key: `DAVID-2026-SECURE-DEMO`
+- **Login:** retrieve the assigned username, password, and access key from the
+  approved secret store. Credentials are never committed to this public repository.
+- **Security note:** the legacy demo credential set published before 2026-07-28 is
+  revoked by the application and must be rotated in the Hugging Face Space settings.
 
 ### One optional finish (1 min): fully-live Territory Map
 The Census key couldn't be auto-injected (saved in your vault, value hidden for security). To make the

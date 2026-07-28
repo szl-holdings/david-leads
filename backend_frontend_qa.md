@@ -54,7 +54,7 @@ Audited `index.html`, `app.js`, `holo.css` at **390 / 768 / 1280 px**.
 
 ### Compile & boot
 - `python -m py_compile app/*.py` → **OK**.
-- Boot + login (`david` / `David2026!` / `DAVID-2026-SECURE-DEMO`) → token issued.
+- Boot + login using temporary test credentials supplied only through environment variables → token issued.
 
 ### API endpoints (authenticated, after a sample run)
 | Endpoint | Result |

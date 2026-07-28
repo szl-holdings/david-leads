@@ -11,9 +11,8 @@ comes with a **signed, audit-defensible receipt**. Here's exactly what you'll se
 ## How to open it
 1. Go to the link your consultant sent you.
 2. Enter your access:
-   - **Username:** david
-   - **Password:** David2026!
-   - **Secure Access Key:** DAVID-2026-SECURE-DEMO
+   - Retrieve your assigned username, password, and access key from Stephen's
+     approved secret store. They are not included in this public document.
 3. Click **Access Intelligence Console**.
 
 It's gated to you. No one else can open it without the key.

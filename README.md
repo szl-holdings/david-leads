@@ -46,6 +46,9 @@ underwriting decision, consumer report, or permission to contact.
 
 - **Find Leads** gathers current public records. If an upstream source is unavailable, fallback
   examples remain visibly labeled instead of being presented as live prospects.
+- **Opportunity Desk** turns official business and license records into a research queue with
+  explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
+  is never treated as permission to contact.
 - **Decision Trace** opens the complete operator-readable path from source to action.
 - **Call Brief** gives a concise opening line and next step for human review.
 - **Proof & Sources** exposes the exact evidence record behind a recommendation.
@@ -60,6 +63,9 @@ underwriting decision, consumer report, or permission to contact.
 - Premium values are illustrative and never quotes.
 - Existing coverage must be confirmed with the person before a recommendation.
 - Proof records are signed only when a real signing key is configured; otherwise they remain honestly unsigned.
+- Social-profile scraping and consumer-data enrichment are prohibited by default. See
+  [`PUBLIC_DATA_OPERATING_MODEL.md`](PUBLIC_DATA_OPERATING_MODEL.md).
+- Modeled lead segments are not named prospects and cannot be advanced to the broker queue.
 
 ## Access configuration
 
@@ -88,5 +94,9 @@ The publication boundary and its verification record are documented in
 The GitHub workflow derives the deployed file set from the Dockerfile and performs a post-build
 content comparison. A GitHub merge is not a live deployment until that deployment and verification
 finish successfully.
+
+The runtime exposes `/api/build-info` with an exact bundle digest and a source revision truth
+label. It intentionally reports parity as `UNVERIFIED` inside the process; the pinned deployment
+workflow performs the external GitHub-to-Hugging-Face attestation.
 
 © 2026 SZL Holdings · Apache-2.0
