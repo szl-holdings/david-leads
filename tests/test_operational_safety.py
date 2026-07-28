@@ -41,27 +41,49 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("Delete repository-scoped copies of the four `DAVID_*`", guide)
         self.assertIn("Keep this pull request in draft", guide)
 
-    def test_deploy_is_protected_main_push_only_and_migration_gated(self):
-        workflow = (
+    def test_deploy_follows_successful_exact_main_migration(self):
+        deploy_workflow = (
             ROOT / ".github" / "workflows" / "hf-deploy.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("branches: [main]", workflow)
-        self.assertNotIn("workflow_dispatch", workflow)
-        self.assertNotIn("rotate-app-secrets", workflow)
-        self.assertNotIn("secrets: inherit", workflow)
-        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", workflow)
+        migration_workflow = (
+            ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("branches: [main]", migration_workflow)
         self.assertIn(
-            "migrate:\n    uses: ./.github/workflows/migrate-neon-persistence.yml",
-            workflow,
+            'workflows: ["Migrate David Neon persistence"]',
+            deploy_workflow,
         )
-        self.assertIn("deploy:\n    needs: migrate", workflow)
+        self.assertIn(
+            "github.event.workflow_run.conclusion == 'success'",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "github.event.workflow_run.event == 'push'",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "github.event.workflow_run.head_branch == 'main'",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "github.event.workflow_run.head_sha == github.sha",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "ref: ${{ github.event.workflow_run.head_sha }}",
+            deploy_workflow,
+        )
+        self.assertNotIn("workflow_dispatch", deploy_workflow)
+        self.assertNotIn("rotate-app-secrets", deploy_workflow)
+        self.assertNotIn("secrets: inherit", deploy_workflow)
+        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy_workflow)
         for name in (
             "DAVID_USER",
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
         ):
-            self.assertNotIn(f"secrets.{name}", workflow)
+            self.assertNotIn(f"secrets.{name}", deploy_workflow)
 
     def test_repository_has_no_credential_stdout_reader(self):
         self.assertFalse((ROOT / "ops" / "get_david_credentials.ps1").exists())

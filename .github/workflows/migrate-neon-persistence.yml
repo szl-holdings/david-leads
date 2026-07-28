@@ -2,6 +2,18 @@
 name: Migrate David Neon persistence
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "README.md"
+      - "PUBLICATION_READINESS.md"
+      - "PUBLIC_DATA_OPERATING_MODEL.md"
+      - "SPACE_PROVENANCE.json"
+      - ".github/workflows/hf-deploy.yml"
+      - ".github/workflows/migrate-neon-persistence.yml"
   workflow_call: {}
   workflow_dispatch: {}
 
