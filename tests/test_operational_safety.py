@@ -92,14 +92,28 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("secrets.DAVID_DATABASE_ADMIN_URL", workflow)
         self.assertIn("secrets.DAVID_DATABASE_URL", workflow)
         self.assertIn("sql.Identifier(runtime_role)", workflow)
-        self.assertIn('("david_dealdesk_state", "SELECT, INSERT, UPDATE")', workflow)
+        self.assertIn(
+            '"david_dealdesk_state": {"SELECT", "INSERT", "UPDATE"}',
+            workflow,
+        )
         self.assertIn('sql.SQL("GRANT {} ON TABLE {}.{} TO {}")', workflow)
         self.assertIn("runtime_role in {admin_role, database_owner}", workflow)
         self.assertIn("runtime_attributes[0] is not True", workflow)
         self.assertIn("pg_has_role(", workflow)
         self.assertIn("runtime database role inherits privileged membership", workflow)
+        self.assertIn('sql.SQL("ALTER TABLE {}.{} OWNER TO {}")', workflow)
+        self.assertIn("REVOKE CREATE ON SCHEMA {} FROM PUBLIC", workflow)
+        self.assertIn("REVOKE ALL PRIVILEGES ON TABLE {}.{} FROM {}", workflow)
+        self.assertIn("has_schema_privilege(", workflow)
+        self.assertIn("has_table_privilege(", workflow)
+        self.assertIn(
+            "legacy do-not-call identity requires governed backfill",
+            workflow,
+        )
         self.assertIn("schema_sha256", workflow)
         self.assertIn("least-privilege runtime secret", guide)
+        self.assertIn("transfers service-table ownership", guide)
+        self.assertIn("governed identity backfill", guide)
         self.assertIn("never attempts `CREATE TABLE`", guide)
 
     def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
@@ -723,6 +737,30 @@ class PersistenceContractSafety(unittest.TestCase):
         dealdesk._PERSISTENCE_HEALTH = self.original_health
         dealdesk._LAST_PROBE_AT = self.original_probe
         dealdesk.reset_for_tests()
+
+    def test_unidentified_legacy_do_not_call_blocks_persistence_readiness(self):
+        unresolved = {
+            "opp_legacy": {
+                "last_disposition": "DO_NOT_CALL",
+                "stage": "BLOCKED",
+            },
+        }
+        with self.assertRaises(dealdesk._LegacySuppressionIdentityRequired):
+            dealdesk._assert_no_unresolved_legacy_suppressions(unresolved)
+
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        with (
+            patch.object(dealdesk, "_database_snapshot", return_value=unresolved),
+            patch.object(dealdesk.time, "sleep"),
+        ):
+            dealdesk._load()
+            self.assertFalse(dealdesk.persistence_ready())
+
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
+        self.assertEqual(
+            dealdesk._PERSISTENCE_DIAGNOSTIC,
+            "LEGACY_DNC_IDENTITY_REQUIRED",
+        )
 
     def test_checked_in_schema_migration_is_versioned_and_complete(self):
         schema = (ROOT / "app" / "dealdesk_schema.sql").read_text(encoding="utf-8")

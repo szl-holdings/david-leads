@@ -14,11 +14,14 @@ Schema creation is a separate owner-approved operation:
 3. Restrict `david-space-credential-rotation` to protected `main` and require owner approval.
 4. Approve the migration job for the exact protected-main deployment. The deploy job cannot start
    until that migration succeeds.
-5. The migration grants only schema usage plus the table-specific select/insert/update privileges
-   required by the runtime role.
-6. Run `Verify David Neon persistence` from protected `main` with the least-privilege
+5. The migration fails if a legacy do-not-call row lacks a durable business identity. Complete a
+   governed identity backfill before retrying; never infer one from a changed trigger date or URL.
+6. The migration transfers service-table ownership to the administrator, revokes schema creation
+   and prior broad table grants from the runtime role and `PUBLIC`, grants only schema usage plus
+   the table-specific privileges required by the runtime, and validates the effective result.
+7. Run `Verify David Neon persistence` from protected `main` with the least-privilege
    `DAVID_DATABASE_URL`.
-7. Confirm live health independently reports `POSTGRES_READY`.
+8. Confirm live health independently reports `POSTGRES_READY`.
 
 The runtime performs read-only schema-contract checks. It fails closed on a missing or mismatched
 schema and never attempts `CREATE TABLE`, `CREATE INDEX`, or another privileged migration.

@@ -383,6 +383,24 @@ class _DatabaseSchemaIncompatible(RuntimeError):
     pass
 
 
+class _LegacySuppressionIdentityRequired(RuntimeError):
+    pass
+
+
+def _assert_no_unresolved_legacy_suppressions(
+    state: dict[str, dict[str, Any]],
+) -> None:
+    for saved in state.values():
+        if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
+            continue
+        suppression = saved.get("suppression")
+        if isinstance(suppression, dict) and suppression.get("active") is True:
+            continue
+        raise _LegacySuppressionIdentityRequired(
+            "legacy do-not-call identity requires governed backfill"
+        )
+
+
 def _assert_schema_contract(cursor: Any) -> None:
     cursor.execute(
         "SELECT schema_version FROM david_dealdesk_schema WHERE schema_name = %s",
@@ -568,6 +586,10 @@ def _refresh_postgres_health(*, force: bool = False) -> None:
                         _assert_schema_contract(cursor)
             else:
                 recovered = _database_snapshot()
+                backfilled = _backfill_legacy_suppressions(recovered)
+                _assert_no_unresolved_legacy_suppressions(recovered)
+                if backfilled:
+                    _persist(recovered)
                 _STATE.clear()
                 _STATE.update(recovered)
             _PERSISTENCE_HEALTH = "POSTGRES_READY"
@@ -579,7 +601,7 @@ def _refresh_postgres_health(*, force: bool = False) -> None:
         _PERSISTENCE_LOCK.release()
 
 
-def _probe_file_store() -> None:
+def _probe_file_store() -> dict[str, dict[str, Any]]:
     if not _PATH or not os.path.isabs(_PATH):
         raise PersistenceUnavailable("file persistence is not configured")
     directory = os.path.dirname(_PATH)
@@ -610,6 +632,11 @@ def _probe_file_store() -> None:
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+    return {
+        str(key): value
+        for key, value in persisted.items()
+        if isinstance(value, dict)
+    }
 
 
 @contextmanager
@@ -652,9 +679,18 @@ def _file_store_lock():
 def _refresh_file_health() -> None:
     global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     try:
-        _probe_file_store()
+        loaded = _probe_file_store()
+        backfilled = _backfill_legacy_suppressions(loaded)
+        _assert_no_unresolved_legacy_suppressions(loaded)
+        if backfilled:
+            _persist(loaded)
+        _STATE.clear()
+        _STATE.update(loaded)
         _PERSISTENCE_HEALTH = "FILE_READY"
         _PERSISTENCE_DIAGNOSTIC = "OK"
+    except _LegacySuppressionIdentityRequired:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "LEGACY_DNC_IDENTITY_REQUIRED"
     except Exception:
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
         _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
@@ -667,6 +703,8 @@ def _classify_database_error(exc: Exception) -> str:
         return "SCHEMA_UNAVAILABLE"
     if isinstance(exc, _DatabaseSchemaIncompatible):
         return "SCHEMA_INCOMPATIBLE"
+    if isinstance(exc, _LegacySuppressionIdentityRequired):
+        return "LEGACY_DNC_IDENTITY_REQUIRED"
     if psycopg is None or "psycopg is required" in message:
         return "DRIVER_UNAVAILABLE"
     if "does not exist" in message or "undefinedtable" in name:
@@ -694,6 +732,7 @@ def _load() -> None:
             try:
                 loaded = _database_snapshot()
                 backfilled = _backfill_legacy_suppressions(loaded)
+                _assert_no_unresolved_legacy_suppressions(loaded)
                 _STATE.clear()
                 _STATE.update(loaded)
                 if backfilled:
@@ -712,15 +751,18 @@ def _load() -> None:
     if not _PATH or not os.path.isabs(_PATH):
         return
     try:
-        _probe_file_store()
-        if os.path.exists(_PATH):
-            with open(_PATH, "r", encoding="utf-8") as handle:
-                data = json.load(handle)
-            _STATE.update({str(k): v for k, v in data.items() if isinstance(v, dict)})
-            if _backfill_legacy_suppressions(_STATE):
-                _persist(_STATE)
+        loaded = _probe_file_store()
+        _STATE.clear()
+        _STATE.update(loaded)
+        if _backfill_legacy_suppressions(_STATE):
+            _persist(_STATE)
+        _assert_no_unresolved_legacy_suppressions(_STATE)
         _PERSISTENCE_HEALTH = "FILE_READY"
         _PERSISTENCE_DIAGNOSTIC = "OK"
+    except _LegacySuppressionIdentityRequired:
+        _STATE.clear()
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "LEGACY_DNC_IDENTITY_REQUIRED"
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
@@ -733,6 +775,7 @@ def _persist(
 ) -> None:
     global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     snapshot = _STATE if state is None else state
+    _assert_no_unresolved_legacy_suppressions(snapshot)
     if _DATABASE_URL:
         try:
             with _db_connect() as connection:

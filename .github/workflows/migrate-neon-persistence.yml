@@ -163,7 +163,7 @@ jobs:
                                   OR privileged_role.rolcreatedb
                                   OR privileged_role.rolreplication
                                   OR privileged_role.rolbypassrls
-                                  OR privileged_role.rolname = %s
+                                  OR privileged_role.rolname IN (%s, %s)
                               )
                               AND pg_has_role(
                                   %s,
@@ -172,7 +172,7 @@ jobs:
                               )
                           )
                           """,
-                          (database_owner, runtime_role),
+                          (admin_role, database_owner, runtime_role),
                       )
                       if cursor.fetchone() != (False,):
                           raise RuntimeError(
@@ -181,16 +181,101 @@ jobs:
                       cursor.execute("SELECT current_schema()")
                       schema_name = cursor.fetchone()[0]
                       cursor.execute(
+                          """
+                          SELECT pg_get_userbyid(namespace_meta.nspowner)
+                          FROM pg_catalog.pg_namespace AS namespace_meta
+                          WHERE namespace_meta.nspname = %s
+                          """,
+                          (schema_name,),
+                      )
+                      schema_owner = cursor.fetchone()[0]
+                      cursor.execute(
+                          "SELECT pg_has_role(%s, %s, 'MEMBER')",
+                          (runtime_role, schema_owner),
+                      )
+                      if (
+                          runtime_role == schema_owner
+                          or cursor.fetchone() != (False,)
+                      ):
+                          raise RuntimeError(
+                              "runtime database role inherits schema ownership"
+                          )
+                      cursor.execute(
+                          """
+                          SELECT EXISTS (
+                              SELECT 1
+                              FROM david_dealdesk_state
+                              WHERE payload ->> 'last_disposition' = 'DO_NOT_CALL'
+                                AND NOT (
+                                    jsonb_typeof(payload -> 'suppression') = 'object'
+                                    AND payload #>> '{suppression,active}' = 'true'
+                                )
+                                AND NULLIF(
+                                    btrim(payload #>> '{subject_identity,name}'),
+                                    ''
+                                ) IS NULL
+                                AND NOT jsonb_path_exists(
+                                    payload,
+                                    '$.subject_identity.authoritative_entity_ids[*] ? (@.system != "" && @.value != "")'
+                                )
+                          )
+                          """
+                      )
+                      if cursor.fetchone() != (False,):
+                          raise RuntimeError(
+                              "legacy do-not-call identity requires governed backfill"
+                          )
+                      table_privileges = {
+                          "david_dealdesk_schema": {"SELECT"},
+                          "david_dealdesk_state": {"SELECT", "INSERT", "UPDATE"},
+                          "david_dealdesk_events": {"SELECT", "INSERT"},
+                      }
+                      for table_name in table_privileges:
+                          cursor.execute(
+                              sql.SQL("ALTER TABLE {}.{} OWNER TO {}").format(
+                                  sql.Identifier(schema_name),
+                                  sql.Identifier(table_name),
+                                  sql.Identifier(admin_role),
+                              )
+                          )
+                      cursor.execute(
+                          sql.SQL("REVOKE CREATE ON SCHEMA {} FROM PUBLIC").format(
+                              sql.Identifier(schema_name)
+                          )
+                      )
+                      cursor.execute(
+                          sql.SQL(
+                              "REVOKE ALL PRIVILEGES ON SCHEMA {} FROM {}"
+                          ).format(
+                              sql.Identifier(schema_name),
+                              sql.Identifier(runtime_role),
+                          )
+                      )
+                      cursor.execute(
                           sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(
                               sql.Identifier(schema_name),
                               sql.Identifier(runtime_role),
                           )
                       )
-                      for table_name, privileges in (
-                          ("david_dealdesk_schema", "SELECT"),
-                          ("david_dealdesk_state", "SELECT, INSERT, UPDATE"),
-                          ("david_dealdesk_events", "SELECT, INSERT"),
-                      ):
+                      for table_name, allowed in table_privileges.items():
+                          cursor.execute(
+                              sql.SQL(
+                                  "REVOKE ALL PRIVILEGES ON TABLE {}.{} FROM PUBLIC"
+                              ).format(
+                                  sql.Identifier(schema_name),
+                                  sql.Identifier(table_name),
+                              )
+                          )
+                          cursor.execute(
+                              sql.SQL(
+                                  "REVOKE ALL PRIVILEGES ON TABLE {}.{} FROM {}"
+                              ).format(
+                                  sql.Identifier(schema_name),
+                                  sql.Identifier(table_name),
+                                  sql.Identifier(runtime_role),
+                              )
+                          )
+                          privileges = ", ".join(sorted(allowed))
                           cursor.execute(
                               sql.SQL("GRANT {} ON TABLE {}.{} TO {}").format(
                                   sql.SQL(privileges),
@@ -199,6 +284,79 @@ jobs:
                                   sql.Identifier(runtime_role),
                               )
                           )
+                      cursor.execute(
+                          """
+                          SELECT relation.relname, pg_get_userbyid(relation.relowner)
+                          FROM pg_catalog.pg_class AS relation
+                          JOIN pg_catalog.pg_namespace AS namespace_meta
+                            ON namespace_meta.oid = relation.relnamespace
+                          WHERE namespace_meta.nspname = %s
+                            AND relation.relkind = 'r'
+                            AND relation.relname = ANY(%s)
+                          """,
+                          (schema_name, list(table_privileges)),
+                      )
+                      observed_owners = dict(cursor.fetchall())
+                      if observed_owners != {
+                          table_name: admin_role
+                          for table_name in table_privileges
+                      }:
+                          raise RuntimeError(
+                              "service table ownership transfer is incomplete"
+                          )
+                      cursor.execute(
+                          """
+                          SELECT
+                              has_schema_privilege(%s, %s, 'USAGE'),
+                              has_schema_privilege(%s, %s, 'CREATE')
+                          """,
+                          (
+                              runtime_role,
+                              schema_name,
+                              runtime_role,
+                              schema_name,
+                          ),
+                      )
+                      if cursor.fetchone() != (True, False):
+                          raise RuntimeError(
+                              "runtime database schema privileges are not least privilege"
+                          )
+                      table_privilege_names = (
+                          "SELECT",
+                          "INSERT",
+                          "UPDATE",
+                          "DELETE",
+                          "TRUNCATE",
+                          "REFERENCES",
+                          "TRIGGER",
+                      )
+                      for table_name, allowed in table_privileges.items():
+                          for privilege in table_privilege_names:
+                              cursor.execute(
+                                  """
+                                  SELECT has_table_privilege(
+                                      %s,
+                                      relation.oid,
+                                      %s
+                                  )
+                                  FROM pg_catalog.pg_class AS relation
+                                  JOIN pg_catalog.pg_namespace AS namespace_meta
+                                    ON namespace_meta.oid = relation.relnamespace
+                                  WHERE namespace_meta.nspname = %s
+                                    AND relation.relname = %s
+                                    AND relation.relkind = 'r'
+                                  """,
+                                  (
+                                      runtime_role,
+                                      privilege,
+                                      schema_name,
+                                      table_name,
+                                  ),
+                              )
+                              if cursor.fetchone() != (privilege in allowed,):
+                                  raise RuntimeError(
+                                      "runtime table privileges are not least privilege"
+                                  )
                       cursor.execute(
                           "SELECT schema_version FROM david_dealdesk_schema "
                           "WHERE schema_name = %s",
