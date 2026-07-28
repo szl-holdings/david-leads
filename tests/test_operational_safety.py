@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import hashlib
+import json
 import socket
 import sys
 import tempfile
@@ -557,6 +558,55 @@ class OpportunityDeskSafety(unittest.TestCase):
         observed_second = dealdesk.enrich(second)
         self.assertEqual(observed_second["contact_gate"], "RESEARCH_REQUIRED")
         self.assertEqual(observed_second["stage"], "REVIEW")
+
+    def test_legacy_unnamed_suppression_survives_only_for_the_same_opportunity(self):
+        original = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/legacy-blank"},
+        }
+        original_id = dealdesk.opportunity_id(original)
+        legacy_identity = {
+            "name": "",
+            "state": original["state"],
+        }
+        legacy_raw = json.dumps(
+            legacy_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        legacy_id = "subj_" + hashlib.sha256(legacy_raw).hexdigest()[:24]
+        dealdesk._STATE[original_id] = {
+            "stage": "BLOCKED",
+            "next_action": "Suppressed: do not contact",
+            "suppression": {
+                "subject_id": legacy_id,
+                "subject_ids": [legacy_id],
+                "type": "DO_NOT_CALL",
+                "active": True,
+                "recorded_at": "2026-07-25T12:00:00Z",
+                "actor": "David",
+            },
+        }
+
+        observed_original = dealdesk.enrich(original)
+        self.assertEqual(
+            observed_original["contact_gate"],
+            "DO_NOT_CONTACT_SUPPRESSED",
+        )
+        self.assertEqual(observed_original["stage"], "BLOCKED")
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(original_id, stage="RESEARCH")
+
+        unrelated = {
+            **original,
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/other-blank"},
+        }
+        observed_unrelated = dealdesk.enrich(unrelated)
+        self.assertEqual(observed_unrelated["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_unrelated["stage"], "REVIEW")
 
     def test_cross_signal_suppression_replaces_a_stale_call_action(self):
         later = {
