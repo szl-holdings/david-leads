@@ -1,6 +1,6 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **READY FOR PUBLIC VISIBILITY**
+> Status: **PUBLIC · CREDENTIAL ROTATION REQUIRED**
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
@@ -15,12 +15,14 @@
   contact.
 - Missing evidence remains `NOT_EVALUATED`; offline examples remain
   `EXAMPLE`; unavailable signatures remain `UNSIGNED`.
-- Runtime credentials and signing material are read from the approved secret
-  store and are excluded from the repository.
+- Runtime credentials and signing material must be read from the approved
+  secret store and excluded from the repository. The application now revokes
+  the known legacy public credential fingerprint and fails closed until the
+  Hugging Face Space secrets are rotated.
 
-## Pre-publication evidence
+## Pre-publication evidence and correction
 
-The preflight was run against default-branch head
+The original preflight was run against default-branch head
 `0fa3430671a54f14c3fdb5597127340f47993473` on 2026-07-27:
 
 - GitHub secret scanning reported zero open alerts.
@@ -28,12 +30,27 @@ The preflight was run against default-branch head
   credential files.
 - Current-tree and full-history scans found no private-key, GitHub-token,
   cloud-key, or provider-secret signatures.
-- The embedded access-tour document contained no credential assignments,
-  secret signatures, email addresses, or phone numbers.
+- The original record claimed the embedded access-tour document and tracked
+  handoff artifacts contained no credential assignments.
 - All 24 unit tests passed.
 - Python syntax compilation passed for `app/` and `ops/`.
 - GitHub Actions workflows use read-only repository permissions; deployment
   credentials remain in the secret store.
+
+That credential claim was disproved on 2026-07-28. A complete legacy login
+triplet was present in multiple tracked handoff/demo artifacts and still
+authenticated successfully against the live Space. Current-tree remediation:
+
+- removed the triplet and historical token from text artifacts;
+- regenerated the DOCX without credentials;
+- sanitized the portable HTML and converted it to an explicitly unauthenticated
+  offline preview;
+- added a repository regression test that rejects the exposed markers;
+- added a fail-closed fingerprint revocation in the application.
+
+The repository history and external copies must be treated as permanently
+exposed. Publication readiness cannot return to `READY` until the Hugging Face
+Space secrets are rotated and the deployed fingerprint revocation is observed.
 
 ## Operational caution
 

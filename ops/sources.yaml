@@ -34,12 +34,19 @@ sources:
     expect_keys: [data]
     verified: "2026-07-06"
   - id: usaspending_awards
-    name: USASpending awards
+    name: USAspending contract activity
     url: "https://api.usaspending.gov/api/v2/search/spending_by_award/"
     method: POST
-    body: '{"filters":{"award_type_codes":["A"]},"fields":["Award ID"],"limit":1}'
+    body: '{"filters":{"time_period":[{"start_date":"2026-07-01","end_date":"2026-07-28"}],"award_type_codes":["A","B","C","D"],"recipient_scope":"domestic","recipient_locations":[{"country":"USA","state":"NY"}]},"fields":["Award ID","Recipient Name","Recipient UEI","Recipient Location","Award Amount","Awarding Agency","Description","generated_internal_id"],"page":1,"limit":1,"sort":"Award Amount","order":"desc","subawards":false}'
     expect: json
-    verified: "2026-07-06"
+    expect_keys: [results, page_metadata]
+    verified: "2026-07-28"
+  - id: fmcsa_company_census
+    name: FMCSA Company Census entity fields
+    url: "https://data.transportation.gov/resource/az4n-8mr2.json?$select=dot_number,legal_name,add_date,phy_state&$where=status_code%3D%27A%27%20AND%20legal_name%20is%20not%20null&$limit=1"
+    method: GET
+    expect: json_array
+    verified: "2026-07-28"
   - id: propublica_990
     name: ProPublica Nonprofit 990
     url: "https://projects.propublica.org/nonprofits/api/v2/search.json?state%5Bid%5D=NY"

@@ -31,4 +31,4 @@ permissions:
 
 jobs:
   hf-drift:
-    uses: szl-holdings/.github/.github/workflows/reusable-hf-module-drift-check.yml@main
+    uses: szl-holdings/.github/.github/workflows/reusable-hf-module-drift-check.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03

@@ -143,7 +143,7 @@ class LocalSignerRoundTrips(unittest.TestCase):
             [{"source": "SEC-EDGAR", "signal": "8-K", "public": True}],
             88.0, witness=False)
         self.assertTrue(r["signed"])
-        self.assertEqual(receipts.verify_receipt(r)["verdict"], "VERIFIED")
+        self.assertEqual(receipts.verify_receipt(r)["verdict"], "SIGNATURE_VERIFIED")
 
 
 if __name__ == "__main__":

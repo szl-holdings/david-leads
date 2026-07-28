@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "service": "david-leads",
+  "source_of_record": "https://github.com/szl-holdings/david-leads",
+  "deployment_target": "https://huggingface.co/spaces/SZLHOLDINGS/david-leads",
+  "runtime_source_binding": {
+    "variable": "SOURCE_GITHUB_SHA",
+    "probe": "/api/build-info",
+    "state_field": "build.state",
+    "revision_field": "build.revision"
+  },
+  "truth_labels": {
+    "process_health": "OBSERVED_BY_/healthz",
+    "runtime_bytes": "OBSERVED_BY_/api/build-info",
+    "github_huggingface_parity": "ATTESTED_EXTERNALLY_BY_DEPLOY_WORKFLOW",
+    "release_receipt": "UNAVAILABLE"
+  },
+  "note": "HTTP 200 and a running Space are not source-parity proof. Use the pinned deploy attestation and exact runtime revision probe."
+}

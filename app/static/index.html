@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>David Leads — Operator Lead Command</title>
-<meta name="description" content="A public-record lead command center that shows operators who to call, why now, what to do next, and what evidence supports the decision.">
+<meta name="description" content="A governed public-record opportunity desk that shows brokers what to research, why now, the next permitted action, and the evidence behind it.">
 <!-- Fonts self-hosted (SZL Doctrine v11: 0 runtime CDN). No fonts.googleapis.com/gstatic. -->
 <link href="fonts/fonts.css" rel="stylesheet">
 <style>
@@ -53,6 +53,10 @@ header.top .logo path{stroke:#fff}
 .top .tag{font-size:11px;color:var(--gold-300);font-family:'Inter';font-weight:600;letter-spacing:.05em;text-transform:uppercase}
 .spacer{flex:1}
 .who{font-size:13px;color:#cdd9e6}
+.source-stamp{font-size:10px;color:#c7d4e4;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 9px;white-space:nowrap}
+.source-stamp.observed{color:#8af2d8;border-color:rgba(58,244,200,.35)}
+.source-stamp.unverified{color:#f0d694;border-color:rgba(215,185,107,.45)}
+.logout-btn{background:transparent;color:#cdd9e6;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px 9px;font-size:11px}
 .wrap{max-width:1180px;margin:0 auto;padding:26px 22px 70px}
 
 /* KPI cards */
@@ -120,6 +124,7 @@ tr.lead-row:hover{background:var(--paper)}
 .gov{padding:16px 18px}
 .gov .line{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px}
 .gov .ok{color:var(--teal);font-weight:700}
+.gov .warn{color:var(--gold-300);font-weight:900}
 .gov .verdict{margin-top:10px;background:rgba(58,244,200,.10);border:1px solid rgba(58,244,200,.32);color:#6fe6cf;font-size:13px;font-weight:600;padding:10px 12px;border-radius:9px}
 
 /* modal */
@@ -430,6 +435,14 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 /* Real Prospects panel — public B2B records (separate from illustrative leads) */
 #realCard{display:none;margin-bottom:22px}
 #realCard.show{display:block}
+#frontierCard{display:none;margin-bottom:22px}
+#frontierCard.show{display:block}
+.frontier-badge{display:inline-flex;align-items:center;width:max-content;border-radius:999px;padding:3px 8px;
+  font-size:9px;font-weight:900;letter-spacing:.06em;background:rgba(92,196,191,.12);color:#6fe6cf;
+  border:1px solid rgba(92,196,191,.28)}
+.frontier-signal{font-size:11px;line-height:1.45;color:var(--ink);padding:9px 10px;
+  border:1px solid rgba(92,196,191,.18);background:rgba(92,196,191,.05);border-radius:8px}
+.frontier-limit{font-size:10.5px;line-height:1.4;color:var(--muted);padding-top:8px;border-top:1px solid var(--line)}
 .real-banner{margin:0 18px 12px;padding:11px 14px;background:rgba(215,185,107,.12);border:1px solid rgba(215,185,107,.4);border-left:4px solid var(--gold);border-radius:10px;font-size:12px;color:#e7c987;line-height:1.5}
 .real-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 18px 12px}
 .real-states{font-size:12px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -469,6 +482,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
   font-weight:800;font-size:10px;letter-spacing:.05em}
 .blocked-badge{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:900;
   letter-spacing:.03em;background:#7a0d0d;color:#fff;white-space:nowrap}
+.contact-review{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:800;
+  letter-spacing:.02em;background:rgba(215,185,107,.13);color:#e7c987;border:1px solid rgba(215,185,107,.4);white-space:nowrap}
 .score-pill.blocked{color:#7a0d0d;font-weight:900}
 .score-pill.blocked s{color:var(--muted);font-weight:600;margin-right:3px}
 .badge.BLOCKED{background:#7a0d0d;color:#fff}
@@ -495,6 +510,27 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 .optin-lead .nm{font-weight:700;color:var(--ink)}
 .optin-lead .meta{font-size:11px;color:var(--muted);margin-top:3px}
 .optin-consent-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(58,244,200,.10);color:#6fe6cf;border:1px solid rgba(58,244,200,.32);margin-top:5px}
+.desk-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 18px 14px}
+.desk-stat{border:1px solid var(--line);border-radius:11px;padding:12px;background:rgba(255,255,255,.025)}
+.desk-stat b{display:block;font-family:'Fraunces';font-size:24px;color:var(--ink)}
+.desk-stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.opp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 18px 18px}
+.opp-card{border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.025);padding:14px;display:grid;gap:10px}
+.opp-head{display:flex;gap:10px;align-items:flex-start}.opp-head .real-name{font-size:14px}
+.opp-priority{margin-left:auto;font-family:'Fraunces';font-size:22px;color:var(--gold-300)}
+.opp-meta,.opp-source{font-size:11px;color:var(--muted)}
+.opp-angle{font-size:12px;color:var(--ink);line-height:1.45}
+.opp-next{font-size:12px;padding:9px 10px;border-left:3px solid var(--teal);background:rgba(58,244,200,.07);border-radius:0 8px 8px 0}
+.opp-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+.opp-stage{font:inherit;font-size:11px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+.gate{font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px}
+.gate.review{color:#e7c987;background:rgba(215,185,107,.13)}.gate.ready{color:#6fe6cf;background:rgba(58,244,200,.10)}
+.gate.blocked{color:#ff9b8f;background:rgba(232,116,110,.14)}
+.policy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 18px 18px}
+.policy-item{border:1px solid var(--line);border-radius:11px;padding:12px}.policy-item h4{font-size:12px}.policy-item p{font-size:11px;color:var(--muted);margin-top:4px}
+@media(max-width:820px){.desk-summary,.opp-grid,.policy-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:560px){.desk-summary,.opp-grid,.policy-grid{grid-template-columns:1fr}.source-stamp{display:none}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 @media(max-width:720px){.optin-grid{grid-template-columns:1fr}.optin-row{grid-template-columns:1fr}}
 </style>
 <link rel="stylesheet" href="holo.css">
@@ -513,13 +549,13 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       </svg>
       <h1>David Leads</h1>
     </div>
-    <div class="login-sub">Your territory command center: who to call, why now, what to say, and the public evidence behind every recommendation.</div>
-    <div class="field"><label>Username</label><input id="u" autocomplete="username" placeholder="david"></div>
-    <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password" placeholder="••••••••"></div>
-    <div class="field"><label>Secure Access Key</label><input id="k" placeholder="DAVID-2026-SECURE-DEMO"></div>
+    <div class="login-sub">Your governed territory desk: what to research, why now, the next permitted action, and the public evidence behind every opportunity.</div>
+    <div class="field"><label for="u">Username</label><input id="u" autocomplete="username" placeholder="Assigned username"></div>
+    <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" placeholder="Password"></div>
+    <div class="field"><label for="k">Secure Access Key</label><input id="k" type="password" autocomplete="off" placeholder="Access key from your secret store"></div>
     <button class="btn gold" style="width:100%;margin-top:6px" id="loginBtn" onclick="doLogin()">Access Intelligence Console</button>
     <div class="login-err" id="loginErr"></div>
-    <div class="trust-foot"><span class="dot"></span> Private session · public-data-only · honest by design</div>
+    <div class="trust-foot"><span class="dot"></span> Private session · source-classified evidence · honest by design</div>
   </div>
 </div>
 
@@ -534,7 +570,9 @@ footer.legal a:hover{color:var(--ink, #ddd)}
     <h2>David Leads</h2>
     <span class="tag">Lead Operations</span>
     <div class="spacer"></div>
+    <span class="source-stamp unverified" id="sourceStamp">Runtime source · checking</span>
     <span class="who" id="who" style="margin-left:14px"></span>
+    <button class="logout-btn" type="button" onclick="doLogout()">Sign out</button>
   </header>
 
   <div class="wrap">
@@ -547,7 +585,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <button class="btn ghost" id="runSample" onclick="runIntel(false)">See an Example (offline)</button>
       <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Coverage Map</button>
       <button class="btn ghost" id="btnSurge" onclick="openSurge()">📈 Rising Areas</button>
-      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">📇 Real Businesses</button>
+      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">Opportunity Desk</button>
+      <button class="btn ghost" id="btnFrontier" onclick="openFrontiers()">Frontier Radar</button>
       <details class="tool-menu">
         <summary>More tools ▾</summary>
         <div class="tool-menu-panel">
@@ -560,23 +599,24 @@ footer.legal a:hover{color:var(--ink, #ddd)}
           <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
           <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
           <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
+          <button class="btn ghost" id="btnPolicy" onclick="openDataPolicy()">Data &amp; Outreach Policy</button>
         </div>
       </details>
-      <span class="hint" id="runHint">Finds people in your territory who just had a life event that creates an insurance need — using public records only.</span>
+      <span class="hint" id="runHint">Ranks public business and territory signals for broker research; it does not grant permission to contact.</span>
     </div>
 
     <div class="ticker" id="tickerBar"></div>
 
     <div class="frontier-note" id="frontierNote">
-      Every lead shows its momentum, a confidence level, and a proof trail — built only from
-      public records. Anyone who can't be contacted is automatically removed.
+      Modeled lead segments show public evidence and uncertainty. Named public businesses enter
+      the Opportunity Desk as research-only until a human records outreach clearance.
     </div>
 
     <div class="trust-strip" id="trustStrip">
       <span>✅ Public records only</span>
-      <span>🔒 Nothing private</span>
+      <span>🔒 No purchased personal profiles</span>
       <span>🚫 Nothing invented</span>
-      <span>🛡️ Every lead checked for compliance</span>
+      <span>🛡️ Contact gate shown explicitly</span>
     </div>
 
     <!-- V8 Territory Pulse — color-coded seaboard coverage map -->
@@ -644,13 +684,13 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <div id="taxBody"><div style="padding:20px;color:var(--muted)">Loading IRS tax-territory data…</div></div>
     </div>
 
-    <!-- Real Callable Leads — public B2B business & license records (SEPARATE from illustrative leads) -->
+    <!-- Public B2B research records (separate from illustrative modeled leads) -->
     <div class="card" id="realCard">
-      <h3>📇 Real Businesses — Public Business &amp; License Records <span class="sec-title-meta" id="realMeta"></span></h3>
+      <h3>Opportunity Desk — Public B2B Research Queue <span class="sec-title-meta" id="realMeta"></span></h3>
       <div class="real-banner" id="realBanner">
-        Real, currently-filed public business &amp; license records — public business addresses only,
-        no private personal data. Verify each via its public source. Do your own compliant outreach
-        (no auto-dialing).
+        A broker-ready queue built from official business and license records. Public visibility is
+        <strong>not permission to contact</strong>: verify the current source, find a business-published
+        contact channel, check suppression and state rules, then record manual clearance.
       </div>
       <div class="real-tools">
         <label class="real-states">States:
@@ -660,7 +700,36 @@ footer.legal a:hover{color:var(--ink, #ddd)}
         <button class="btn ghost" id="realReload" onclick="loadRealLeads()">↻ Refresh</button>
         <span class="hint" id="realHint" style="margin-left:auto"></span>
       </div>
+      <div class="desk-summary" id="deskSummary"></div>
       <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
+    </div>
+
+    <div class="card" id="frontierCard">
+      <h3>Frontier Radar — Official Growth &amp; Operations Signals <span class="sec-title-meta" id="frontierMeta"></span></h3>
+      <div class="real-banner">
+        FMCSA carrier additions and USAspending contract activity are converted into
+        <strong>entity-level research packets</strong>. David Leads does not request or retain
+        phone, email, named officer, crash, safety-rating, insurance, or policy fields. Contract
+        activity may be a modification to an existing award and is never labeled a new deal
+        without a verified action history.
+      </div>
+      <div class="real-tools">
+        <label class="real-states">States:
+          <input type="text" id="frontierStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="frontierReload" onclick="loadFrontiers()">↻ Refresh</button>
+        <span class="hint" id="frontierHint" style="margin-left:auto"></span>
+      </div>
+      <div class="desk-summary" id="frontierSummary"></div>
+      <div id="frontierBody"><div style="padding:20px;color:var(--muted)">Loading official frontier signals…</div></div>
+    </div>
+
+    <div class="card" id="policyCard" style="display:none;margin-bottom:22px">
+      <h3>Data &amp; Outreach Policy <span class="sec-title-meta" id="policyMeta"></span></h3>
+      <div class="real-banner">Official APIs and public registries are allowed only with provenance,
+        rate limits, and purpose controls. Social-profile scraping and consumer-data enrichment are
+        blocked by default.</div>
+      <div id="policyBody"><div style="padding:20px;color:var(--muted)">Loading policy…</div></div>
     </div>
 
     <!-- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) -->
@@ -750,8 +819,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
             <div class="welcome-hero">Find the right person, at the right moment, with proof you can stand behind.</div>
             <div class="welcome-steps">
               <div class="welcome-step"><span class="num">1</span><div><strong>We scan public records</strong> for life events that create insurance needs.</div></div>
-              <div class="welcome-step"><span class="num">2</span><div><strong>We rank who to call</strong>, when, and what to say.</div></div>
-              <div class="welcome-step"><span class="num">3</span><div><strong>Every lead comes with its sources</strong> and a confidence level — and anyone who can't be contacted is removed automatically.</div></div>
+              <div class="welcome-step"><span class="num">2</span><div><strong>We rank who to research first</strong> using evidence-completeness signals.</div></div>
+              <div class="welcome-step"><span class="num">3</span><div><strong>Every lead keeps its sources visible</strong>, while contact permission stays NOT_EVALUATED until a broker records clearance.</div></div>
             </div>
             <div class="welcome-cta">Press <strong>Find Leads</strong> above to start, or <strong>See an Example</strong> to preview.</div>
           </div>
@@ -779,8 +848,8 @@ footer.legal a:hover{color:var(--ink, #ddd)}
     </div>
 
     <footer class="legal">
-      David Leads uses <strong>public, aggregate data only</strong> (SEC EDGAR · BLS · U.S. Census · CDC) — never private PII.<br>
-      Every lead score carries a tamper-evident, compliance-grade receipt. Honest by design — no fabricated signals, ever.<br>
+      Prospecting evidence uses <strong>official public business and aggregate sources</strong>; first-party opt-ins and broker outcomes are separately classified.<br>
+      Every proof record exposes its hash and signature state; unsigned evidence remains UNSIGNED. Honest by design — no fabricated signals declared.<br>
       © 2026 SZL Holdings · Sovereign Governed AI · Apache-2.0<br>
       <a href="https://a-11-oy.com" target="_blank" rel="noopener">a-11-oy.com</a> ·
       <a href="https://szlholdings-szl-estate-live.static.hf.space" target="_blank" rel="noopener">SZL estate hub</a> ·

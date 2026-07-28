@@ -162,7 +162,8 @@ class ReceiptSignatureHonesty(unittest.TestCase):
         self.assertIsNotNone(r["signature"])
         # The signature must genuinely verify against the payload — not a fabricated literal.
         verdict = receipts.verify_receipt(r)
-        self.assertEqual(verdict["verdict"], "VERIFIED")
+        self.assertEqual(verdict["verdict"], "SIGNATURE_VERIFIED")
+        self.assertEqual(verdict["signature_state"], "VERIFIED")
         self.assertTrue(any(c["check"].startswith("ECDSA-P256 signature verifies") and c["pass"]
                             for c in verdict["checks"]))
 
@@ -182,7 +183,8 @@ class ReceiptVerifiedClaimResolves(unittest.TestCase):
     def test_verified_claim_resolves_for_untampered_receipt(self):
         r = receipts.make_receipt(_sample_lead(), _sample_signals(), 73.0, witness=False)
         verdict = receipts.verify_receipt(r)
-        self.assertEqual(verdict["verdict"], "VERIFIED")
+        self.assertEqual(verdict["verdict"], "HASH_INTEGRITY_VERIFIED")
+        self.assertEqual(verdict["signature_state"], "UNSIGNED")
         self.assertEqual(verdict["recomputed_hash"], r["payload_sha256"])
         self.assertTrue(all(c["pass"] for c in verdict["checks"]))
 

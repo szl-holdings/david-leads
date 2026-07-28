@@ -39,13 +39,12 @@ function cell(text, { bold = false, color = INK, shade = null, size = 21, align 
   });
 }
 
-// ---- Access credentials card (table) ----
+// ---- Access card (credentials are never embedded in public artifacts) ----
 function credTable() {
   const rows = [
     ["Web address", "https://szlholdings-david-leads.hf.space"],
-    ["Username", "david"],
-    ["Password", "David2026!"],
-    ["Secure access key", "DAVID-2026-SECURE-DEMO"],
+    ["Credentials", "Retrieve from Stephen's approved secret store"],
+    ["Security", "Never share credentials in email, chat, or public documents"],
   ].map(([k, v]) => new TableRow({ children: [
     cell(k, { bold: true, color: NAVY, shade: "EFF3F8" }),
     cell(v, { bold: true, color: INK }),
@@ -145,6 +144,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then(buf => {
-  fs.writeFileSync("/home/user/workspace/doc_build/David_Leads_Access_and_Tour.docx", buf);
+  fs.writeFileSync("David_Leads_Access_and_Tour.docx", buf);
   console.log("written", buf.length, "bytes");
 });

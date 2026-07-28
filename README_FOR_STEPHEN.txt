@@ -11,7 +11,8 @@ with exactly what to click and what to say.
 THE DEMO IS THE REAL, LIVE APP — NOT A SIMULATION
 ------------------------------------------------------------------------
 Live URL:   https://szlholdings-david-leads.hf.space
-Login:      david  /  David2026!  /  key DAVID-2026-SECURE-DEMO
+Login:      Retrieve the assigned credentials from the approved secret store.
+Security:   Legacy public demo credentials are revoked and require Space-secret rotation.
 
 Everything David sees is computed live from PUBLIC data (SEC EDGAR, BLS,
 U.S. Census, CDC, and 13-state open-data portals). Every lead and brief

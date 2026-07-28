@@ -31,7 +31,7 @@ The app is **production-ready for demo use** with two items requiring fixes befo
 
 | Test | Expected | Actual | PASS/FAIL |
 |---|---|---|---|
-| Correct credentials (`david` / `David2026!` / `DAVID-2026-SECURE-DEMO`) | 200 + token | **HTTP 200** `{"token":"CxdJdq_07QSJznkLx4Oprrty3uAhQ5dL","user":"david"}` | **PASS** |
+| Correct environment-supplied test credentials | 200 + token | **Historical result: HTTP 200; token redacted. The published legacy triplet is now revoked and requires deployment-secret rotation.** | **REMEDIATION REQUIRED** |
 | Wrong password | 401 | **HTTP 401** `{"detail":"Invalid credentials or access key"}` | **PASS** |
 | Wrong access_key | 401 | **HTTP 401** `{"detail":"Invalid credentials or access key"}` | **PASS** |
 | Wrong username | 401 | **HTTP 401** `{"detail":"Invalid credentials or access key"}` | **PASS** |
