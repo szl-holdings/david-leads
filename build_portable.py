@@ -43,13 +43,11 @@ html = html.replace('<script src="holo.js"></script>', '<script>' + holojs + '</
 
 HEAD = '/* David Leads V4 — PORTABLE OFFLINE */\n'
 HEAD += 'const EMBEDDED = ' + json.dumps(data, ensure_ascii=True) + ';\n'
-HEAD += r'''const ACCESS={u:"david",p:"David2026!",k:"DAVID-2026-SECURE-DEMO"};
-let TOKEN="offline";const $=(id)=>document.getElementById(id);const money=(n)=>"$"+Number(n).toLocaleString();
+HEAD += r'''let TOKEN="offline";const $=(id)=>document.getElementById(id);const money=(n)=>"$"+Number(n).toLocaleString();
 let lastData=null,apptHistory=[],leadsById={},holoOn=false,askGreeted=false;
 const ASK_CHIPS=["Who should I call first?","Where should I prospect?","What are rates doing?","Any new businesses to reach out to?","Why did the top lead score high?","Is this compliant?"];
 function doLogin(){const err=$("loginErr");err.textContent="";
-  if(!($("u").value.trim()===ACCESS.u&&$("p").value===ACCESS.p&&$("k").value.trim()===ACCESS.k)){err.textContent="\u2717 Invalid credentials or access key";return;}
-  $("who").textContent="Signed in as "+ACCESS.u;$("login").classList.add("hidden");$("bg3d").classList.add("hidden");$("app").classList.remove("hidden");renderKpis(null);}
+  $("who").textContent="Offline preview \u00b7 no live data";$("login").classList.add("hidden");$("bg3d").classList.add("hidden");$("app").classList.remove("hidden");renderKpis(null);}
 document.addEventListener("keydown",(e)=>{if(e.key==="Enter"&&!$("login").classList.contains("hidden"))doLogin();});
 function runIntel(live){const b1=$("runLive"),b2=$("runSample");b1.disabled=b2.disabled=true;showLeadSkeleton();
   setTimeout(()=>{const d=EMBEDDED;lastData=d;leadsById={};d.leads.forEach(l=>leadsById[l.id]=l);

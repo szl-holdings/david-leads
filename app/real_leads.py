@@ -563,8 +563,11 @@ def _dedupe_key(rec: dict[str, Any]) -> str:
 
 
 def real_callable_leads(states: list[str] | None = None, limit_per: int = 12) -> dict[str, Any]:
-    """Fetch, clean, de-dupe and sign real callable B2B leads from the given states.
-    Each record gets a signed receipt (public signals, fabricated=0) + a public citation."""
+    """Fetch, clean, de-dupe and attest real B2B research records.
+
+    Each record gets an evidence receipt and public citation. The record is not
+    callable until the separate deal-desk clearance contract is satisfied.
+    """
     states = [s.strip().upper() for s in (states or ["DE", "CT"]) if s.strip()]
     sources: list[dict[str, Any]] = []
     leads: list[dict[str, Any]] = []

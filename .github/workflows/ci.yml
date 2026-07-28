@@ -1,30 +1,27 @@
 # Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
-name: CI — receipt honesty
+name: CI — operational safety
 
-# Stdlib-only, no-network, no-dep guard for the receipt / provenance layer
-# (app/receipts.py + app/receipt_lake.py). It verifies the receipt emitter stays
-# honest per SZL doctrine:
-#   * energy is measured-or-UNAVAILABLE — a receipt NEVER carries a fabricated joule.
-#   * signatures are real-or-UNSIGNED — a receipt NEVER carries a fabricated base64
-#     signature literal (a signature only ever comes from a real key.sign()).
-#   * every served "verified" claim resolves and tamper is rejected.
-#
-# It runs on the runner's pre-installed Python 3, so CI needs no network beyond the
-# checkout. It does NOT touch lead business logic or the hf-deploy/hf-drift workflows.
+# Full application safety gate: dependencies are required, application tests may
+# not silently skip, public credential markers are rejected, and the governed
+# opportunity/contact/receipt contracts execute on every product change.
 
 on:
   push:
     branches: [main]
     paths:
-      - "app/receipts.py"
-      - "app/receipt_lake.py"
+      - "app/**"
       - "tests/**"
+      - "ops/**"
+      - "Dockerfile"
+      - "requirements*.txt"
       - ".github/workflows/ci.yml"
   pull_request:
     paths:
-      - "app/receipts.py"
-      - "app/receipt_lake.py"
+      - "app/**"
       - "tests/**"
+      - "ops/**"
+      - "Dockerfile"
+      - "requirements*.txt"
       - ".github/workflows/ci.yml"
   workflow_dispatch: {}
 
@@ -36,10 +33,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  receipt-honesty:
+  operational-safety:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Run receipt-honesty guard (stdlib only, no network, no deps)
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install application and test dependencies
+        run: python3 -m pip install --requirement requirements-dev.txt
+      - name: Compile application and operations modules
+        run: python3 -m compileall -q app ops
+      - name: Run full safety and application test suite
         run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v

@@ -538,8 +538,14 @@ def _attach_frontier(lead: dict[str, Any]) -> None:
     # T1 — Λ-gate compliance axis (structural, non-compensatory)
     try:
         comp = fr.compliance_axis(lead)
-        lead["compliance"] = {"clear": comp["clear"], "reasons": comp["reasons"]}
-        if not comp["clear"]:
+        lead["compliance"] = {
+            "clear": comp["clear"],
+            "status": comp.get("status", "NOT_EVALUATED"),
+            "reasons": comp["reasons"],
+        }
+        # Only an observed block is a structural zero. NOT_EVALUATED preserves
+        # research priority while remaining visibly ineligible for outreach.
+        if comp["clear"] is False:
             lead["score_pre_gate"] = lead.get("score", 0.0)
             lead["score"] = 0.0
             lead["bucket"] = "BLOCKED"

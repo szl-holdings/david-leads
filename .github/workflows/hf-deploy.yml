@@ -32,7 +32,10 @@ concurrency:
 
 jobs:
   deploy:
-    uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@main
+    uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
     secrets: inherit
     with:
       include-readme: true
+      source-revision-variable: SOURCE_GITHUB_SHA
+      source-revision-probe-path: /api/build-info
+      smoke-paths: '["/", "/healthz", "/api/build-info"]'

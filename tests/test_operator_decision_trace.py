@@ -2,6 +2,7 @@
 """Regression tests for the operator-first decision trace and public UI copy."""
 from pathlib import Path
 import importlib.util
+import time
 import unittest
 
 _APP_TEST_DEPS_AVAILABLE = all(
@@ -21,7 +22,7 @@ class OperatorDecisionTraceTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(server.app)
         self.token = "operator-trace-test-token"
-        server._TOKENS.add(self.token)
+        server._TOKENS[self.token] = time.time() + 60
         server._STATE.clear()
         server._STATE.update(
             meta={"mode": "SAMPLE (offline)", "total_signals": 3, "live_count": 0},
@@ -65,7 +66,7 @@ class OperatorDecisionTraceTests(unittest.TestCase):
         )
 
     def tearDown(self):
-        server._TOKENS.discard(self.token)
+        server._TOKENS.pop(self.token, None)
 
     @property
     def headers(self):

@@ -67,21 +67,34 @@ def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: flo
 
     When witness=True, attach a 3-of-4 khipu multi-party consensus block over the payload."""
     ts = datetime.now(timezone.utc).isoformat()
+    normalized_signals = []
+    for signal in signals:
+        public = bool(signal.get("public", True))
+        source_class = signal.get("source_class") or ("PUBLIC" if public else "UNCLASSIFIED")
+        normalized_signals.append({
+            "source": signal["source"],
+            "signal": signal["signal"],
+            "public": public,
+            "source_class": source_class,
+            "fabricated": bool(signal.get("fabricated", False)),
+        })
+    permitted_classes = {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
     body = {
         "lead_id": lead["id"],
         "lead_name": lead["name"],
         "score": round(float(score), 2),
         "bucket": lead["bucket"],
         "product": lead["product"],
-        "signals_used": [
-            {"source": s["source"], "signal": s["signal"], "public": s.get("public", True)}
-            for s in signals
-        ],
-        "all_signals_public": all(s.get("public", True) for s in signals),
-        "fabricated_signals": 0,  # honest-by-design: gate rejects fabricated before this point
+        "signals_used": normalized_signals,
+        "source_classes": sorted({s["source_class"] for s in normalized_signals}),
+        "all_sources_permitted": all(
+            s["source_class"] in permitted_classes for s in normalized_signals
+        ),
+        "all_signals_public": all(s["public"] for s in normalized_signals),
+        "fabricated_signals": sum(1 for s in normalized_signals if s["fabricated"]),
         "timestamp": ts,
         "prev_receipt_hash": _chain_tip["hash"],
-        "doctrine": "SZL governed-AI · public-data-only · honest by design",
+        "doctrine": "SZL governed-AI · source-classified · honest by design",
     }
     body_bytes = _canon(body)
     body_hash = hashlib.sha256(body_bytes).hexdigest()
@@ -157,15 +170,26 @@ def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]],
 
 
 def verify_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
-    """Re-derive the payload hash and (if signed) verify the signature. Returns a verdict."""
+    """Verify payload integrity and signature as distinct truth states."""
     body_bytes = _canon(receipt["payload"])
     recomputed = hashlib.sha256(body_bytes).hexdigest()
     hash_ok = recomputed == receipt["payload_sha256"]
+    payload = receipt["payload"]
+    source_classes = payload.get("source_classes")
+    if source_classes is None:
+        source_classes = ["PUBLIC"] if payload.get("all_signals_public") else ["UNCLASSIFIED"]
+    sources_permitted = payload.get(
+        "all_sources_permitted",
+        all(
+            value in {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
+            for value in source_classes
+        ),
+    )
     checks = [
         {"check": "Payload hash re-derives (tamper-evident)", "pass": hash_ok},
-        {"check": "All signals are public data", "pass": receipt["payload"]["all_signals_public"]},
-        {"check": "Zero fabricated signals (honest by design)", "pass": receipt["payload"]["fabricated_signals"] == 0},
-        {"check": "Chained to prior receipt", "pass": bool(receipt["payload"]["prev_receipt_hash"])},
+        {"check": "Evidence source classes are permitted", "pass": bool(sources_permitted)},
+        {"check": "Zero fabricated signals declared", "pass": payload["fabricated_signals"] == 0},
+        {"check": "Chained to prior receipt", "pass": bool(payload["prev_receipt_hash"])},
     ]
     sig_ok = None
     if receipt.get("signature"):
@@ -182,10 +206,23 @@ def verify_receipt(receipt: dict[str, Any]) -> dict[str, Any]:
             sig_ok = False
         checks.append({"check": "ECDSA-P256 signature verifies", "pass": bool(sig_ok)})
 
-    overall = all(c["pass"] for c in checks)
+    integrity_ok = all(
+        check["pass"] for check in checks if "signature" not in check["check"].lower()
+    )
+    signed = bool(receipt.get("signature"))
+    if not integrity_ok or (signed and sig_ok is not True):
+        verdict = "FAILED"
+    elif signed:
+        verdict = "SIGNATURE_VERIFIED"
+    else:
+        verdict = "HASH_INTEGRITY_VERIFIED"
     return {
         "receipt_id": receipt["id"],
-        "verdict": "VERIFIED" if overall else "FAILED",
+        "verdict": verdict,
+        "integrity_state": "VERIFIED" if integrity_ok else "FAILED",
+        "signature_state": "VERIFIED" if sig_ok is True else "FAILED" if signed else "UNSIGNED",
+        "source_classes": source_classes,
+        "claim_scope": "INTEGRITY_AND_PROVENANCE_METADATA_ONLY",
         "checks": checks,
         "recomputed_hash": recomputed,
     }

@@ -26,12 +26,39 @@ async function doLogin() {
     $("bg3d").classList.add("hidden");
     $("app").classList.remove("hidden");
     renderKpis(null);
+    loadBuildInfo();
   } catch (e) {
     err.textContent = "✗ " + e.message;
     btn.disabled = false; btn.innerHTML = "Access Intelligence Console";
   }
 }
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("login").classList.contains("hidden")) doLogin(); });
+
+async function doLogout() {
+  try { if (TOKEN) await api("/api/logout", { method: "POST" }); } catch (_) {}
+  TOKEN = null;
+  $("p").value = ""; $("k").value = "";
+  $("app").classList.add("hidden");
+  $("login").classList.remove("hidden");
+  $("bg3d").classList.remove("hidden");
+  $("loginBtn").disabled = false;
+  $("loginBtn").textContent = "Access Intelligence Console";
+}
+
+async function loadBuildInfo() {
+  const stamp = $("sourceStamp"); if (!stamp) return;
+  try {
+    const info = await api("/api/build-info");
+    const digest = String(info.bundle_sha256 || "").slice(0, 10);
+    const revision = info.source_revision ? String(info.source_revision).slice(0, 8) : "revision unavailable";
+    stamp.textContent = `Runtime ${digest || "digest unavailable"} · ${revision}`;
+    stamp.className = "source-stamp observed";
+    stamp.title = info.alignment_note || "Runtime bytes observed; parity requires external comparison.";
+  } catch (_) {
+    stamp.textContent = "Runtime source · unavailable";
+    stamp.className = "source-stamp unverified";
+  }
+}
 
 /* ---------- run intelligence ---------- */
 let lastData = null;
@@ -77,29 +104,24 @@ function renderKpis(k) {
   const z = (v) => (k ? v : "—");
   $("kpis").innerHTML = `
     <div class="kpi accent">
-      <div class="label">Qualified Appts / Week</div>
+      <div class="label">Modeled appointment potential</div>
       <div class="val">${z(k && k.qualified_appts_per_week)}</div>
       <div class="sub">modeled from lead quality (HOT 70% · WARM 35%)</div>
     </div>
     <div class="kpi">
-      <div class="label">HOT Leads</div>
+      <div class="label">High-match segments</div>
       <div class="val">${z(k && k.hot_count)}</div>
-      <div class="sub">score ≥ 80 · ready to engage now</div>
+      <div class="sub">score ≥ 80 · contact permission not evaluated</div>
     </div>
     <div class="kpi">
-      <div class="label">Pipeline Premium</div>
+      <div class="label">Modeled premium potential</div>
       <div class="val" style="font-size:27px">${k ? money(k.pipeline_premium) : "—"}</div>
       <div class="sub">illustrative — not a quoted premium</div>
     </div>
     <div class="kpi">
-      <div class="label">Avg Lead Score</div>
+      <div class="label">Average match score</div>
       <div class="val">${z(k && k.avg_score)}</div>
       <div class="sub">${k ? k.total_leads + " leads scored" : "run to populate"}</div>
-    </div>
-    <div class="kpi">
-      <div class="label">Appts/Week Trend</div>
-      <div class="val" style="font-size:27px">${z(k && k.qualified_appts_per_week)}</div>
-      ${k && apptHistory.length > 1 ? sparkline(apptHistory) : '<div class="sub">this device · recent runs</div>'}
     </div>`;
 }
 
@@ -212,13 +234,16 @@ function confidenceLine(l) {
   return `<div class="conf-line" title="Confidence reflects how many public records confirm this lead — more records, higher confidence.">` +
     `Match ${c.point} · Confidence: ${word} · ${src}${range}</div>`;
 }
-/* Cannot-contact badge — compliance removed this lead from outreach */
+/* Contact-gate badge — public data never implies permission to contact. */
 function blockedBadge(l) {
-  if (!l.compliance || l.compliance.clear !== false) return "";
+  if (!l.compliance || l.compliance.clear === true) return "";
   const reasons = (l.compliance.reasons || []).map(plainBlockReason);
   const tip = reasons.join(" · ").replace(/"/g,'&quot;');
-  const why = reasons[0] || "Cannot be contacted";
-  return `<span class="blocked-badge" title="${tip}">🚫 Cannot contact — ${why}</span>`;
+  if (l.compliance.clear === false) {
+    const why = reasons[0] || "Cannot be contacted";
+    return `<span class="blocked-badge" title="${tip}">Cannot contact — ${why}</span>`;
+  }
+  return `<span class="contact-review" title="${tip}">Research only · contact not evaluated</span>`;
 }
 /* Map raw compliance reason codes/text to plain English */
 function plainBlockReason(r) {
@@ -342,9 +367,9 @@ function renderSignals(sigs, meta) {
     const fresh = s.freshness ? `<span class="fresh-badge ${s.freshness === 'updated daily' || s.freshness === 'real-time' ? 'hot' : ''}">${s.freshness}</span>` : "";
     return `
     <div class="sig">
-      <span class="src">${s.source.replace(/\[SAMPLE\]/,'')}</span>${s.live?'<span class="live">LIVE</span>':'<span class="live smp">PUBLIC</span>'}${fresh}
-      <div class="txt">${s.signal}</div>
-      <div class="det">${s.detail||''}</div>
+      <span class="src">${escHtml(String(s.source||"").replace(/\[SAMPLE\]/,''))}</span>${s.live?'<span class="live">LIVE</span>':'<span class="live smp">PUBLIC</span>'}${fresh}
+      <div class="txt">${escHtml(s.signal||"")}</div>
+      <div class="det">${escHtml(s.detail||"")}</div>
     </div>`; }).join("");
 }
 
@@ -357,9 +382,10 @@ function renderGov(g, meta) {
   }
   $("gov").innerHTML = `
     <div class="gov-inner">
-      <div class="line"><span class="ok">✓</span> Every lead checked against ${g.signals_checked} public records</div>
-      <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> 100% public data — nothing private, nothing invented</div>
+      <div class="line"><span class="ok">✓</span> Evidence evaluated against ${g.signals_checked} public records</div>
+      <div class="line"><span class="ok">${g.all_public?'✓':'✗'}</span> Run evidence is public-data only</div>
       <div class="line"><span class="ok">✓</span> ${g.rejected_nonpublic} non-public items rejected</div>
+      <div class="line"><span class="warn">!</span> Contact permission is NOT_EVALUATED until a human records execution-time clearance</div>
       ${checksWord ? `<div class="line"><span class="ok">✓</span> <strong style="margin-left:0">${checksWord}</strong></div>` : ''}
       <div class="verdict">🛡️ ${g.verdict}</div>
     </div>`;
@@ -460,7 +486,7 @@ function focusLead(id) {
 /* ---------- intelligence ticker ---------- */
 function renderTicker(sigs) {
   if (!sigs || !sigs.length) return;
-  const ticks = sigs.map(s => `<span class="tick"><b>${s.source.replace(/\[SAMPLE\]/,'').trim()}</b> · ${(s.detail||s.signal).slice(0,70)}</span>`);
+  const ticks = sigs.map(s => `<span class="tick"><b>${escHtml(String(s.source||"").replace(/\[SAMPLE\]/,'').trim())}</b> · ${escHtml(String(s.detail||s.signal||"").slice(0,70))}</span>`);
   const track = ticks.join('<span class="tick-sep">◆</span>');
   $("tickerBar").innerHTML = `<div class="ticker-track">${track}<span class="tick-sep">◆</span>${track}</div>`;
   $("tickerBar").classList.add("show");
@@ -508,8 +534,8 @@ async function openModel() {
       </div>
       <div style="font-size:12.5px;color:var(--navy);font-weight:600;margin-top:14px;background:#fbf7ec;border-left:3px solid var(--gold);padding:10px 12px;border-radius:6px">
         Public records only — SEC filings, U.S. Census, labor statistics, public health data, and county
-        records. Nothing private is used and nothing is invented. Each lead also shows a confidence level
-        based on how many public records confirm it, and anyone who can't be contacted is removed.</div>
+        records. Nothing private is used and nothing is invented. Each lead also shows an evidence-completeness
+        priority, while contact permission remains NOT_EVALUATED until a broker records clearance.</div>
       <div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Honest by design · open methodology · every lead carries a proof trail you can open and check.</div>`;
   } catch (e) {
     $("modelBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
@@ -834,14 +860,22 @@ async function openReceipt(rid, leadId) {
     const r = await api("/api/receipt/" + rid);
     const v = await api("/api/verify/" + rid);
     const checks = v.checks.map(c => `
-      <div class="vcheck"><span class="ic ${c.pass?'p':'f'}">${c.pass?'✓':'✗'}</span> ${c.check}</div>`).join("");
+      <div class="vcheck"><span class="ic ${c.pass?'p':'f'}">${c.pass?'✓':'✗'}</span> ${escHtml(c.check)}</div>`).join("");
+    const signed = v.signature_state === "VERIFIED";
+    const intact = v.integrity_state === "VERIFIED";
+    const verdictClass = intact ? "ok" : "bad";
+    const verdictLabel = signed
+      ? "Signature verified"
+      : intact
+      ? "Hash integrity verified · unsigned"
+      : "Verification failed";
     $("rcptBody").innerHTML = `
-      <div class="vverdict ${v.verdict==='VERIFIED'?'ok':'bad'}">${v.verdict==='VERIFIED'?'✓ Verified':'✗ Needs review'}</div>
-      <div style="font-size:13px;color:#0b5957;font-weight:600;margin-bottom:8px">Verified · 100% public data · sources listed below · nothing invented</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Reference <code>${r.id}</code></div>
+      <div class="vverdict ${verdictClass}">${intact?'✓':'✗'} ${verdictLabel}</div>
+      <div style="font-size:13px;color:var(--muted);font-weight:600;margin-bottom:8px">Integrity and provenance metadata only · not proof that a real-world claim is true</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Reference <code>${escHtml(r.id)}</code> · Sources ${escHtml((v.source_classes||[]).join(", ")||"UNCLASSIFIED")}</div>
       ${checks}
-      <div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">The exact public data behind this lead:</div>
-      <div class="codeblock">${JSON.stringify(r.payload, null, 2)}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:14px;font-weight:600">The exact evidence metadata bound to this receipt:</div>
+      <div class="codeblock">${escHtml(JSON.stringify(r.payload, null, 2))}</div>
     `;
   } catch (e) {
     $("rcptBody").innerHTML = `<div style="color:var(--hot)">✗ ${e.message}</div>`;
@@ -864,47 +898,117 @@ function openRealLeads() {
 async function loadRealLeads() {
   const body = $("realBody"); if (!body) return;
   const states = ($("realStates") && $("realStates").value || "DE,CT").trim() || "DE,CT";
-  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Fetching real public records (live)…</div>`;
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Building the governed opportunity queue…</div>`;
   try {
-    const d = await api("/api/real-leads?states=" + encodeURIComponent(states));
-    const leads = d.leads || [];
+    const d = await api("/api/deal-desk?states=" + encodeURIComponent(states));
+    const leads = d.opportunities || [];
     const s = d.summary || {};
     if (!leads.length) {
       body.innerHTML = `<div style="padding:20px;color:var(--muted)">No public records returned for ${escHtml(states)}. Try DE,CT.</div>`;
       $("realMeta").textContent = "";
+      $("deskSummary").innerHTML = "";
       return;
     }
-    const rows = leads.map(l => {
+    $("deskSummary").innerHTML = [
+      ["Official records", s.live || 0],
+      ["Ready after clearance", s.call_ready || 0],
+      ["Needs research", s.needs_research || 0],
+      ["Examples blocked", s.examples || 0],
+    ].map(([label, value]) => `<div class="desk-stat"><b>${escHtml(value)}</b><span>${escHtml(label)}</span></div>`).join("");
+    const stages = ["REVIEW","RESEARCH","READY","CONTACTED","MEETING","PROPOSAL","WON","LOST","BLOCKED"];
+    const cards = leads.map(l => {
       const addr = [l.address, l.city, l.state, l.zip].filter(Boolean).map(escHtml).join(", ");
-      const cqClass = l.contact_quality === "business address (public)" ? "addr"
-        : (l.contact_quality === "[SAMPLE]" ? "sample" : "entity");
-      const catOrCred = escHtml(l.credential || l.category || "—");
       const verifyBtn = l.receipt_id
-        ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">🔏 Verify</button>`
-        : `<span class="real-sub">no receipt</span>`;
+        ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">Proof</button>`
+        : "";
       const cite = (l.citation && l.citation.url)
         ? `<a class="real-cite" href="${escHtml(l.citation.url)}" target="_blank" rel="noopener">${escHtml(l.citation.label || "source")} ↗</a>`
         : "";
-      return `<tr>
-        <td><div class="real-name">${escHtml(l.name)}</div>
-          <div class="real-sub">${escHtml((l.type||"").toUpperCase())}${l.status?" · "+escHtml(l.status):""}</div></td>
-        <td>${catOrCred}</td>
-        <td>${addr ? addr : `<span class="real-cq ${cqClass}">${escHtml(l.contact_quality)}</span>`}</td>
-        <td class="real-sub">${escHtml(l.license_or_issue_date || "date withheld")}</td>
-        <td><div class="real-angle">${escHtml(l.product_angle || "")}</div>
-          <div class="real-why">${escHtml(l.why || "")}</div></td>
-        <td>${verifyBtn}<div style="margin-top:6px">${cite}</div></td>
-      </tr>`;
+      const gateClass = l.call_ready ? "ready" : l.truth_label === "EXAMPLE" ? "blocked" : "review";
+      const options = stages.map(stage =>
+        `<option value="${stage}"${stage===l.stage?" selected":""}>${stage.replace("_"," ")}</option>`).join("");
+      return `<article class="opp-card">
+        <div class="opp-head">
+          <div><div class="real-name">${escHtml(l.name)}</div>
+            <div class="opp-meta">${escHtml(l.credential || l.category || l.type || "Public entity")} · ${escHtml(l.state || "")} · observed ${escHtml(l.license_or_issue_date || "date unavailable")}</div></div>
+          <div class="opp-priority" title="Transparent evidence-completeness priority">${escHtml(l.priority)}</div>
+        </div>
+        <div class="opp-source">${addr || escHtml(l.contact_quality || "No business address")}<br>${cite}</div>
+        <div class="opp-angle"><strong>${escHtml(l.product_angle || "Coverage review")}</strong><br>${escHtml(l.why || "")}</div>
+        <div class="opp-next"><strong>Next action</strong><br>${escHtml(l.next_action || "")}</div>
+        <div class="opp-actions">
+          <span class="gate ${gateClass}">${escHtml(l.contact_gate || "NOT_EVALUATED")}</span>
+          <label class="real-sub" for="stage-${escHtml(l.opportunity_id)}">Stage</label>
+          <select class="opp-stage" id="stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this)">
+            ${options}
+          </select>
+          ${verifyBtn}
+        </div>
+      </article>`;
     }).join("");
-    $("realMeta").textContent = `${s.live_count||0} live · ${s.sample_count||0} sample · ${leads.length} total`;
+    $("realMeta").textContent = `${s.live||0} live · ${s.call_ready||0} cleared · ${d.persistence||"IN_MEMORY"}`;
     const srcChips = (d.sources || []).map(src =>
-      `<span class="real-mode ${src.mode==='LIVE'?'live':'sample'}">${escHtml(src.state)} ${escHtml(src.mode)} (${src.count})</span>`).join(" ");
+      `<span class="real-mode ${src.mode==='LIVE'?'live':'sample'}">${escHtml(src.state)} · ${escHtml(src.source || (src.citation||{}).label || "official source")} · ${escHtml(src.mode)} (${escHtml(src.count)})</span>`).join(" ");
     $("realHint").innerHTML = srcChips;
-    body.innerHTML =
-      `<div class="real-wrap"><table class="real-table">
-        <thead><tr><th>Business / Name</th><th>Category / Credential</th><th>Public Address</th>
-          <th>Record date</th><th>Suggested NYL angle</th><th>Receipt · Source</th></tr></thead>
-        <tbody>${rows}</tbody></table></div>`;
+    body.innerHTML = `<div class="opp-grid">${cards}</div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function updateOpportunity(opportunityId, select) {
+  const stage = select.value;
+  const prior = select.dataset.prior || "REVIEW";
+  const requiresClearance = ["READY","CONTACTED","MEETING","PROPOSAL","WON"].includes(stage);
+  let clearance = false;
+  if (requiresClearance) {
+    clearance = window.confirm(
+      "Confirm you verified the current official source, found a business-published contact channel, checked suppression lists, and reviewed applicable outreach rules."
+    );
+    if (!clearance) { select.value = prior; return; }
+  }
+  select.disabled = true;
+  try {
+    await api("/api/deal-desk/" + encodeURIComponent(opportunityId), {
+      method: "POST",
+      body: JSON.stringify({
+        stage,
+        clearance_confirmed: clearance,
+        next_action: stage === "RESEARCH"
+          ? "Verify the source and find the official business contact channel"
+          : stage === "READY"
+          ? "Place one manual, truthful business call and record the outcome"
+          : "",
+      }),
+    });
+    select.dataset.prior = stage;
+    await loadRealLeads();
+  } catch (e) {
+    select.value = prior;
+    window.alert(e.message);
+  } finally {
+    select.disabled = false;
+  }
+}
+
+function openDataPolicy() {
+  const card = $("policyCard"); if (!card) return;
+  card.style.display = "block";
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadDataPolicy();
+}
+
+async function loadDataPolicy() {
+  const body = $("policyBody"); if (!body) return;
+  try {
+    const policy = await api("/api/data-policy");
+    $("policyMeta").textContent = `v${policy.version} · ${policy.legal_status}`;
+    body.innerHTML = `<div class="policy-grid">${(policy.source_classes||[]).map(item => `
+      <div class="policy-item">
+        <h4>${escHtml(item.label)} · ${escHtml(item.ingestion)}</h4>
+        <p>${escHtml((item.controls||[]).join(" "))}</p>
+      </div>`).join("")}</div>
+      <div class="real-banner">Purpose: ${escHtml(policy.purpose)} Counsel review is required before automated outreach, social ingestion, purchased personal data, consumer profiling, or cross-state campaigns.</div>`;
   } catch (e) {
     body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;
   }

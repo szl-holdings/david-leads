@@ -7,9 +7,9 @@ cryptographically verifiable receipt. Honest by design: public-data only, no fab
 estimates clearly labeled.
 
 **Login (live, in front of David):**
-- Username: `david`
-- Password: `David2026!`
-- Secure access key: `DAVID-2026-SECURE-DEMO`
+- Retrieve the assigned credentials from the approved secret store.
+- Never paste credentials into email, chat, a public issue, or this repository.
+- The legacy public demo credentials are revoked and require rotation in the Space settings.
 
 ---
 
