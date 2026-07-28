@@ -1,6 +1,10 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · OPERATIONAL WITH EXPLICIT RECEIPT EXCEPTION**
+> Status: **PUBLIC · OPERATIONAL WITH EXPLICIT EVIDENCE EXCEPTIONS**
+>
+> Exceptions: `receipt_minted=false`; administrator-login evidence remains
+> `UNVERIFIED`; current vault/Hugging Face credential-policy conformance and the
+> current GitHub Actions secret inventory remain `UNVERIFIED`.
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
@@ -63,19 +67,21 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Production application and database values are governed through the approved
-local administrator vault and write-only Hugging Face Space secret interfaces.
+The intended credential-authority policy governs production application and
+database values through the approved local administrator vault and write-only
+Hugging Face Space secret interfaces. Current conformance to that policy remains
+`UNVERIFIED` because this record did not inspect the current GitHub Actions
+secret inventory or capture immutable evidence of the current vault and Space
+secret state.
 Historical Neon preflight run `30388377093` read `DAVID_DATABASE_URL` from a
-scoped GitHub Actions repository secret to verify schema reads, transactional
-writes, and rollback; the credential value was not included in its evidence.
+scoped GitHub Actions secret to verify schema reads, transactional writes, and
+rollback; the credential value was not included in its evidence.
 The current deployment workflow receives only the scoped Hugging Face token, and
 the former GitHub workflow that rotated application and database values has been
-removed. The current GitHub repository-secret inventory was not inspected for
-this record and remains `UNVERIFIED`; this record does not claim that every
-present or future Actions workflow can never read a separately scoped
-credential.
-Rotation is a local, non-displaying administrator operation documented in
-`ops/credential-rotation.md`.
+removed. This record does not claim that every present or future Actions
+workflow can never read a separately scoped credential. The intended local,
+non-displaying administrator rotation policy is documented in
+`ops/credential-rotation.md`; current conformance remains `UNVERIFIED`.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,
