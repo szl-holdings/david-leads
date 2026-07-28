@@ -521,6 +521,108 @@ class OpportunityDeskSafety(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot be reopened"):
             dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
 
+    def test_unnamed_records_do_not_share_a_state_only_suppression_identity(self):
+        first = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/blank-1"},
+        }
+        second = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/blank-2"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([first, second])["opportunities"]
+        }
+        first_opportunity = opportunities[dealdesk.opportunity_id(first)]
+        second_opportunity = opportunities[dealdesk.opportunity_id(second)]
+        self.assertNotEqual(first_opportunity["opportunity_id"], second_opportunity["opportunity_id"])
+        self.assertNotEqual(first_opportunity["subject_id"], second_opportunity["subject_id"])
+
+        researched = self._research(first_opportunity["opportunity_id"])
+        self._clear(
+            first_opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            first_opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        observed_second = dealdesk.enrich(second)
+        self.assertEqual(observed_second["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_second["stage"], "REVIEW")
+
+    def test_cross_signal_suppression_replaces_a_stale_call_action(self):
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([self.record, later])["opportunities"]
+        }
+        original = opportunities[dealdesk.opportunity_id(self.record)]
+        later_opportunity = opportunities[dealdesk.opportunity_id(later)]
+        for opportunity in (original, later_opportunity):
+            researched = self._research(opportunity["opportunity_id"])
+            self._clear(
+                opportunity["opportunity_id"],
+                researched["channels"][0]["channel_id"],
+            )
+
+        dealdesk.record_disposition(
+            original["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+        observed = dealdesk.enrich(later)
+
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+        self.assertIsNotNone(
+            dealdesk._STATE[later_opportunity["opportunity_id"]]["clearance"]["revoked_at"]
+        )
+
+    def test_cross_signal_suppression_derives_blocked_from_research(self):
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([self.record, later])["opportunities"]
+        }
+        original = opportunities[dealdesk.opportunity_id(self.record)]
+        later_opportunity = opportunities[dealdesk.opportunity_id(later)]
+        self._research(later_opportunity["opportunity_id"])
+        researched = self._research(original["opportunity_id"])
+        self._clear(
+            original["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            original["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        observed = dealdesk.enrich(later)
+
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+
     def test_not_interested_revokes_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
         researched = self._research(opportunity["opportunity_id"])

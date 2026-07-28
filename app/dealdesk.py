@@ -214,7 +214,7 @@ def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     if name:
         identities.append({"name": name, "state": state})
     aliases: list[str] = []
-    for identity in identities or [{"name": "", "state": state}]:
+    for identity in identities or [{"opportunity": opportunity_id(record)}]:
         raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
         aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
     return tuple(dict.fromkeys(aliases))
@@ -518,6 +518,7 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
             **saved,
             "clearance": {**clearance, "revoked_at": _now()},
             "stage": "BLOCKED",
+            "next_action": "Suppressed: do not contact",
         }
         event = {
             "at": _now(),
@@ -534,12 +535,15 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     elif isinstance(saved.get("clearance"), dict) and not blocked:
         gate = "CLEARANCE_EXPIRED_OR_REVOKED"
     stage = saved.get("stage") or ("BLOCKED" if blocked else "REVIEW")
-    if stage in CONTACT_STAGES and not call_ready:
+    if gate == "DO_NOT_CONTACT_SUPPRESSED":
+        stage = "BLOCKED"
+    elif stage in CONTACT_STAGES and not call_ready:
         stage = "RESEARCH"
-    next_action = saved.get("next_action") or (
+    next_action = (
         "Suppressed: do not contact"
         if gate == "DO_NOT_CONTACT_SUPPRESSED"
-        else record.get("recommended_next_action")
+        else saved.get("next_action")
+        or record.get("recommended_next_action")
         or (
             "Use for demonstration only"
             if gate.startswith("DO_NOT_CONTACT")
