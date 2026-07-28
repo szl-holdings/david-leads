@@ -252,6 +252,12 @@ def _classify_database_error(exc: Exception) -> str:
     return "CONNECTION_UNAVAILABLE"
 
 
+def _read_database_rows(connection: Any) -> list[tuple[Any, Any]]:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
+        return list(cursor.fetchall())
+
+
 def _load() -> None:
     global _LAST_PERSISTENCE_ATTEMPT
     global _PERSISTENCE_DIAGNOSTIC
@@ -260,14 +266,19 @@ def _load() -> None:
         _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
         try:
             with _db_connect() as connection:
-                _ensure_database_schema(connection)
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
-                    for oid, payload in cursor.fetchall():
-                        if isinstance(payload, str):
-                            payload = json.loads(payload)
-                        if isinstance(payload, dict):
-                            _STATE[str(oid)] = payload
+                try:
+                    rows = _read_database_rows(connection)
+                except Exception as exc:
+                    if _classify_database_error(exc) != "SCHEMA_UNAVAILABLE":
+                        raise
+                    connection.rollback()
+                    _ensure_database_schema(connection)
+                    rows = _read_database_rows(connection)
+                for oid, payload in rows:
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+                    if isinstance(payload, dict):
+                        _STATE[str(oid)] = payload
             _PERSISTENCE_HEALTH = "POSTGRES_READY"
             _PERSISTENCE_DIAGNOSTIC = "OK"
         except Exception as exc:
@@ -316,7 +327,6 @@ def _persist(
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
         with _db_connect() as connection:
-            _ensure_database_schema(connection)
             with connection.cursor() as cursor:
                 for oid, payload in snapshot.items():
                     cursor.execute(

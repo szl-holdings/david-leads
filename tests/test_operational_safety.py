@@ -294,34 +294,44 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertNotIn("DROP ", " ".join(statements).upper())
         self.assertNotIn("ALTER ", " ".join(statements).upper())
 
-    def test_database_load_bootstraps_schema_before_reading_state(self):
+    def test_database_load_does_not_run_ddl_when_schema_exists(self):
         connection = mock.MagicMock()
         connection.__enter__.return_value = connection
-        cursor = connection.cursor.return_value.__enter__.return_value
-        cursor.fetchall.return_value = []
-        calls: list[str] = []
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_read_database_rows", return_value=[]),
+            patch.object(
+                dealdesk,
+                "_ensure_database_schema",
+            ) as ensure,
+        ):
+            dealdesk._load()
 
-        def record_schema(observed):
-            self.assertIs(observed, connection)
-            calls.append("schema")
+        ensure.assert_not_called()
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
 
-        def record_select(statement, *args):
-            if statement.strip().startswith("SELECT"):
-                calls.append("select")
-
-        cursor.execute.side_effect = record_select
+    def test_database_load_bootstraps_only_after_undefined_table(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
         with (
             patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
             patch.object(dealdesk, "_db_connect", return_value=connection),
             patch.object(
                 dealdesk,
-                "_ensure_database_schema",
-                side_effect=record_schema,
-            ),
+                "_read_database_rows",
+                side_effect=[
+                    RuntimeError('relation "david_dealdesk_state" does not exist'),
+                    [],
+                ],
+            ) as read,
+            patch.object(dealdesk, "_ensure_database_schema") as ensure,
         ):
             dealdesk._load()
 
-        self.assertEqual(calls, ["schema", "select"])
+        connection.rollback.assert_called_once()
+        ensure.assert_called_once_with(connection)
+        self.assertEqual(read.call_count, 2)
         self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
 
     def _research(self, oid):
