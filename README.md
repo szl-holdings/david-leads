@@ -93,8 +93,8 @@ Configure these values in the approved secret store for the deployment:
 Do not commit credentials or paste them into issues, pull requests, chat, or model cards.
 The fail-closed rotation procedure is documented in
 [`ops/credential-rotation.md`](ops/credential-rotation.md).
-The repository includes `ops/get_david_credentials.ps1` only as an administrator-side reader for
-Windows Credential Manager; the script contains no credential values.
+Credential values must stay inside the approved vault's non-displaying administrator flow. No
+repository script reads credentials into terminal output, logs, chat, screenshots, or clipboard.
 
 ## Source and deployment
 

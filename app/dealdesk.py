@@ -10,11 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import pathlib
 import re
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -82,14 +82,11 @@ _PATH = os.environ.get("DAVID_DEAL_DESK_PATH")
 _DATABASE_URL = os.environ.get("DAVID_DATABASE_URL")
 _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
-_PERSISTENCE_PROBE_LOCK = threading.Lock()
-_PERSISTENCE_READY_PATH: str | None = None
-_PERSISTENCE_RETRY_SECONDS = max(
-    5,
-    int(os.environ.get("DAVID_DATABASE_RETRY_SECONDS", "15")),
-)
+_SCHEMA_VERSION = 1
 _PERSISTENCE_LOCK = threading.Lock()
-_LAST_PERSISTENCE_ATTEMPT = 0.0
+_LAST_PROBE_AT = 0.0
+_READY_PROBE_INTERVAL_SECONDS = 10.0
+_FAILED_PROBE_INTERVAL_SECONDS = 3.0
 _PERSISTENCE_DIAGNOSTIC = "NOT_CONFIGURED"
 _PERSISTENCE_HEALTH = (
     "POSTGRES_CONFIGURED"
@@ -109,59 +106,17 @@ def persistence_configured() -> bool:
 
 
 def persistence_state() -> str:
-    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     if _DATABASE_URL:
-        _recover_postgres_if_due()
+        _refresh_postgres_health()
         return _PERSISTENCE_HEALTH
-    if not _PATH or not os.path.isabs(_PATH):
-        return "NOT_CONFIGURED"
-
-    with _PERSISTENCE_PROBE_LOCK:
-        path = os.path.abspath(_PATH)
-        directory = os.path.dirname(path)
-        if not os.path.isdir(directory) or (
-            os.path.exists(path) and not os.path.isfile(path)
-        ):
-            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-            _PERSISTENCE_READY_PATH = None
-            return "FILE_UNAVAILABLE"
-        if _PERSISTENCE_HEALTH == "FILE_READY" and _PERSISTENCE_READY_PATH == path:
-            return "FILE_BACKED"
-
-        temporary: str | None = None
-        try:
-            original = pathlib.Path(path).read_bytes() if os.path.exists(path) else b"{}"
-            fd, temporary = tempfile.mkstemp(
-                prefix=".dealdesk-readiness-",
-                suffix=".tmp",
-                dir=directory,
-            )
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(original)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, path)
-            temporary = None
-            if pathlib.Path(path).read_bytes() != original:
-                _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-                return "FILE_UNAVAILABLE"
-            _PERSISTENCE_HEALTH = "FILE_READY"
-            _PERSISTENCE_READY_PATH = path
-            return "FILE_BACKED"
-        except OSError:
-            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-            _PERSISTENCE_READY_PATH = None
-            return "FILE_UNAVAILABLE"
-        finally:
-            if temporary and os.path.exists(temporary):
-                try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
+    if _PATH and os.path.isabs(_PATH):
+        _refresh_file_health()
+        return _PERSISTENCE_HEALTH
+    return "NOT_CONFIGURED"
 
 
 def persistence_ready() -> bool:
-    return persistence_state() in {"FILE_BACKED", "POSTGRES_READY"}
+    return persistence_state() in {"FILE_READY", "POSTGRES_READY"}
 
 
 def persistence_diagnostic() -> str:
@@ -195,45 +150,218 @@ def opportunity_id(record: dict[str, Any]) -> str:
     return "opp_" + hashlib.sha256(raw).hexdigest()[:16]
 
 
+def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
+    """Stable business aliases used for irreversible contact suppression."""
+    official_keys = (
+        "credential",
+        "license_number",
+        "usdot_number",
+        "uei",
+        "cage_code",
+        "entity_number",
+    )
+    identities = [
+        {"official": f"{key}:{_clean(record.get(key), 160).lower()}"}
+        for key in official_keys
+        if _clean(record.get(key), 160)
+    ]
+    name = _clean(record.get("name"), 240).lower()
+    state = _clean(record.get("state"), 16).upper()
+    if name:
+        identities.append({"name": name, "state": state})
+    aliases = []
+    for identity in identities or [{"name": "", "state": state}]:
+        raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
+    return tuple(dict.fromkeys(aliases))
+
+
+def subject_id(record: dict[str, Any]) -> str:
+    """Primary stable identity; volatile trigger dates and URLs are excluded."""
+    return subject_ids(record)[0]
+
+
+def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
+    stable_ids = set(subject_ids(record))
+    for saved in _STATE.values():
+        suppression = saved.get("suppression")
+        suppressed_ids = set(suppression.get("subject_ids") or ()) if isinstance(
+            suppression, dict
+        ) else set()
+        if isinstance(suppression, dict) and suppression.get("subject_id"):
+            suppressed_ids.add(str(suppression["subject_id"]))
+        if (
+            isinstance(suppression, dict)
+            and stable_ids.intersection(suppressed_ids)
+            and suppression.get("active") is True
+        ):
+            return suppression
+    return None
+
+
 def _db_connect():
     if not _DATABASE_URL:
         raise RuntimeError("database persistence is not configured")
     if psycopg is None:
         raise RuntimeError("psycopg is required when DAVID_DATABASE_URL is configured")
-    return psycopg.connect(_DATABASE_URL, connect_timeout=8)
+    return psycopg.connect(_DATABASE_URL, connect_timeout=4)
 
 
-def _ensure_database_schema(connection: Any) -> None:
-    """Create only the fixed, idempotent tables this service owns."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS david_dealdesk_state (
-                opportunity_id text PRIMARY KEY,
-                payload jsonb NOT NULL,
-                version bigint NOT NULL DEFAULT 1,
-                updated_at timestamptz NOT NULL DEFAULT now()
+class PersistenceUnavailable(RuntimeError):
+    """Sanitized persistence failure safe to return without connection details."""
+
+
+def _assert_schema_contract(cursor: Any) -> None:
+    cursor.execute(
+        "SELECT schema_version FROM david_dealdesk_schema WHERE schema_name = %s",
+        ("dealdesk",),
+    )
+    row = cursor.fetchone()
+    if row != (_SCHEMA_VERSION,):
+        raise RuntimeError("unsupported deal-desk schema version")
+    cursor.execute(
+        "SELECT opportunity_id, payload, version, updated_at "
+        "FROM david_dealdesk_state LIMIT 0"
+    )
+    cursor.execute(
+        "SELECT event_id, opportunity_id, event_type, actor, payload, created_at "
+        "FROM david_dealdesk_events LIMIT 0"
+    )
+
+
+def _database_snapshot() -> dict[str, dict[str, Any]]:
+    loaded: dict[str, dict[str, Any]] = {}
+    with _db_connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+            _assert_schema_contract(cursor)
+            cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
+            for oid, payload in cursor.fetchall():
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                if isinstance(payload, dict):
+                    loaded[str(oid)] = payload
+    return loaded
+
+
+def _mark_postgres_unavailable(
+    *,
+    error: Exception | None = None,
+    retry_immediately: bool = False,
+) -> None:
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+    _PERSISTENCE_DIAGNOSTIC = (
+        _classify_database_error(error) if error is not None else "CONNECTION_UNAVAILABLE"
+    )
+    _LAST_PROBE_AT = 0.0 if retry_immediately else time.monotonic()
+
+
+def _refresh_postgres_health(*, force: bool = False) -> None:
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    now = time.monotonic()
+    interval = (
+        _READY_PROBE_INTERVAL_SECONDS
+        if _PERSISTENCE_HEALTH == "POSTGRES_READY"
+        else _FAILED_PROBE_INTERVAL_SECONDS
+    )
+    if not force and _LAST_PROBE_AT and now - _LAST_PROBE_AT < interval:
+        return
+    if not _PERSISTENCE_LOCK.acquire(blocking=False):
+        return
+    try:
+        now = time.monotonic()
+        if not force and _LAST_PROBE_AT and now - _LAST_PROBE_AT < interval:
+            return
+        try:
+            if _PERSISTENCE_HEALTH == "POSTGRES_READY":
+                with _db_connect() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+                        _assert_schema_contract(cursor)
+            else:
+                recovered = _database_snapshot()
+                _STATE.clear()
+                _STATE.update(recovered)
+            _PERSISTENCE_HEALTH = "POSTGRES_READY"
+            _PERSISTENCE_DIAGNOSTIC = "OK"
+            _LAST_PROBE_AT = time.monotonic()
+        except Exception as exc:
+            _mark_postgres_unavailable(error=exc)
+    finally:
+        _PERSISTENCE_LOCK.release()
+
+
+def _probe_file_store() -> None:
+    if not _PATH or not os.path.isabs(_PATH):
+        raise PersistenceUnavailable("file persistence is not configured")
+    directory = os.path.dirname(_PATH)
+    if not os.path.isdir(directory) or (os.path.exists(_PATH) and not os.path.isfile(_PATH)):
+        raise PersistenceUnavailable("file persistence path is unavailable")
+    with _file_store_lock():
+        original = b"{}"
+        if os.path.exists(_PATH):
+            with open(_PATH, "rb") as handle:
+                original = handle.read()
+        persisted = json.loads(original)
+        if not isinstance(persisted, dict):
+            raise PersistenceUnavailable("file persistence payload is invalid")
+        fd, temporary = tempfile.mkstemp(
+            prefix="dealdesk-probe-",
+            suffix=".tmp",
+            dir=directory,
+        )
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(original)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, _PATH)
+            with open(_PATH, "rb") as handle:
+                if handle.read() != original:
+                    raise PersistenceUnavailable("file persistence probe is invalid")
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+
+
+@contextmanager
+def _file_store_lock():
+    if not _PATH:
+        raise PersistenceUnavailable("file persistence is not configured")
+    lock_path = _PATH + ".lock"
+    deadline = time.monotonic() + 2.0
+    descriptor = None
+    while descriptor is None:
+        try:
+            descriptor = os.open(
+                lock_path,
+                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                0o600,
             )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS david_dealdesk_events (
-                event_id text PRIMARY KEY,
-                opportunity_id text NOT NULL,
-                event_type text NOT NULL,
-                actor text NOT NULL,
-                payload jsonb NOT NULL,
-                created_at timestamptz NOT NULL
-            )
-            """
-        )
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx
-            ON david_dealdesk_events (opportunity_id, created_at)
-            """
-        )
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                raise PersistenceUnavailable("file persistence lock is unavailable") from None
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        os.close(descriptor)
+        try:
+            os.unlink(lock_path)
+        except FileNotFoundError:
+            pass
+
+
+def _refresh_file_health() -> None:
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    try:
+        _probe_file_store()
+        _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
+    except Exception:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
 
 
 def _classify_database_error(exc: Exception) -> str:
@@ -252,130 +380,115 @@ def _classify_database_error(exc: Exception) -> str:
     return "CONNECTION_UNAVAILABLE"
 
 
-def _read_database_rows(connection: Any) -> list[tuple[Any, Any]]:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
-        return list(cursor.fetchall())
-
-
 def _load() -> None:
-    global _LAST_PERSISTENCE_ATTEMPT
-    global _PERSISTENCE_DIAGNOSTIC
-    global _PERSISTENCE_HEALTH
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     if _DATABASE_URL:
-        _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
-        try:
-            with _db_connect() as connection:
-                try:
-                    rows = _read_database_rows(connection)
-                except Exception as exc:
-                    if _classify_database_error(exc) != "SCHEMA_UNAVAILABLE":
-                        raise
-                    connection.rollback()
-                    _ensure_database_schema(connection)
-                    rows = _read_database_rows(connection)
-                for oid, payload in rows:
-                    if isinstance(payload, str):
-                        payload = json.loads(payload)
-                    if isinstance(payload, dict):
-                        _STATE[str(oid)] = payload
-            _PERSISTENCE_HEALTH = "POSTGRES_READY"
-            _PERSISTENCE_DIAGNOSTIC = "OK"
-        except Exception as exc:
-            _STATE.clear()
-            _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
-            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+        last_error = None
+        for attempt in range(3):
+            try:
+                loaded = _database_snapshot()
+                _STATE.clear()
+                _STATE.update(loaded)
+                _PERSISTENCE_HEALTH = "POSTGRES_READY"
+                _PERSISTENCE_DIAGNOSTIC = "OK"
+                _LAST_PROBE_AT = time.monotonic()
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(0.25 * (attempt + 1))
+        _STATE.clear()
+        _mark_postgres_unavailable(error=last_error, retry_immediately=True)
         return
-    if not _PATH or not os.path.exists(_PATH):
+    if not _PATH or not os.path.isabs(_PATH):
         return
     try:
-        with open(_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if isinstance(data, dict):
+        _probe_file_store()
+        if os.path.exists(_PATH):
+            with open(_PATH, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
             _STATE.update({str(k): v for k, v in data.items() if isinstance(v, dict)})
-        _PERSISTENCE_HEALTH = "FILE_READABLE"
-        if persistence_state() != "FILE_BACKED":
-            _STATE.clear()
+        _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-
-
-def _recover_postgres_if_due() -> None:
-    if not _DATABASE_URL or _PERSISTENCE_HEALTH == "POSTGRES_READY":
-        return
-    if time.monotonic() - _LAST_PERSISTENCE_ATTEMPT < _PERSISTENCE_RETRY_SECONDS:
-        return
-    if not _PERSISTENCE_LOCK.acquire(blocking=False):
-        return
-    try:
-        if (
-            _PERSISTENCE_HEALTH != "POSTGRES_READY"
-            and time.monotonic() - _LAST_PERSISTENCE_ATTEMPT
-            >= _PERSISTENCE_RETRY_SECONDS
-        ):
-            _load()
-    finally:
-        _PERSISTENCE_LOCK.release()
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
 
 
 def _persist(
     state: dict[str, dict[str, Any]] | None = None,
     event: dict[str, Any] | None = None,
 ) -> None:
-    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
-        with _db_connect() as connection:
-            with connection.cursor() as cursor:
-                for oid, payload in snapshot.items():
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_state
-                            (opportunity_id, payload, version, updated_at)
-                        VALUES (%s, %s::jsonb, 1, now())
-                        ON CONFLICT (opportunity_id) DO UPDATE SET
-                            payload = EXCLUDED.payload,
-                            version = david_dealdesk_state.version + 1,
-                            updated_at = now()
-                        """,
-                        (oid, json.dumps(payload, sort_keys=True)),
-                    )
-                if event:
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_events
-                            (event_id, opportunity_id, event_type, actor, payload, created_at)
-                        VALUES (%s, %s, %s, %s, %s::jsonb, %s)
-                        ON CONFLICT (event_id) DO NOTHING
-                        """,
-                        (
-                            event["event_id"],
-                            event["opportunity_id"],
-                            event["type"],
-                            event.get("actor") or "unknown",
-                            json.dumps(event, sort_keys=True),
-                            event["at"],
-                        ),
-                    )
-        _PERSISTENCE_HEALTH = "POSTGRES_READY"
+        try:
+            with _db_connect() as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+                    _assert_schema_contract(cursor)
+                    for oid, payload in snapshot.items():
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_state
+                                (opportunity_id, payload, version, updated_at)
+                            VALUES (%s, %s::jsonb, 1, now())
+                            ON CONFLICT (opportunity_id) DO UPDATE SET
+                                payload = EXCLUDED.payload,
+                                version = david_dealdesk_state.version + 1,
+                                updated_at = now()
+                            """,
+                            (oid, json.dumps(payload, sort_keys=True)),
+                        )
+                    if event:
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_events
+                                (event_id, opportunity_id, event_type, actor, payload, created_at)
+                            VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+                            ON CONFLICT (event_id) DO NOTHING
+                            """,
+                            (
+                                event["event_id"],
+                                event["opportunity_id"],
+                                event["type"],
+                                event.get("actor") or "unknown",
+                                json.dumps(event, sort_keys=True),
+                                event["at"],
+                            ),
+                        )
+            _PERSISTENCE_HEALTH = "POSTGRES_READY"
+            _PERSISTENCE_DIAGNOSTIC = "OK"
+        except Exception as exc:
+            _mark_postgres_unavailable(error=exc)
+            raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
         return
     if not _PATH:
         return
     directory = os.path.dirname(os.path.abspath(_PATH))
-    os.makedirs(directory, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix="dealdesk-", suffix=".json", dir=directory)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(snapshot, handle, indent=2, sort_keys=True)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, _PATH)
+        with _file_store_lock():
+            fd, temporary = tempfile.mkstemp(
+                prefix="dealdesk-",
+                suffix=".json",
+                dir=directory,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(snapshot, handle, indent=2, sort_keys=True)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, _PATH)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
         _PERSISTENCE_HEALTH = "FILE_READY"
-        _PERSISTENCE_READY_PATH = os.path.abspath(_PATH)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        _PERSISTENCE_DIAGNOSTIC = "OK"
+    except Exception:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
+        raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
 
 
 _load()
@@ -424,6 +537,14 @@ def _default_gate(record: dict[str, Any]) -> tuple[str, list[str]]:
     ]
 
 
+def _contact_gate(record: dict[str, Any]) -> tuple[str, list[str]]:
+    if _active_suppression(record):
+        return "DO_NOT_CONTACT_SUPPRESSED", [
+            "A prior do-not-call request permanently suppresses this business identity."
+        ]
+    return _default_gate(record)
+
+
 def _parse_time(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -457,7 +578,7 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
     _KNOWN[oid] = dict(record)
-    gate, checklist = _default_gate(record)
+    gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
     clearance = _current_clearance(saved)
     blocked = gate.startswith(("DO_NOT_CONTACT", "BLOCKED"))
@@ -492,6 +613,7 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     return {
         **record,
         "opportunity_id": oid,
+        "subject_id": subject_id(record),
         "priority": _priority(record),
         "stage": stage,
         "next_action": next_action,
@@ -597,7 +719,7 @@ def record_research(
     note: str = "",
 ) -> dict[str, Any]:
     record, previous = _saved(oid)
-    gate, _ = _default_gate(record)
+    gate, _ = _contact_gate(record)
     if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")):
         raise ValueError("this record cannot be researched for outreach")
     current_stage = previous.get("stage") or "REVIEW"
@@ -669,7 +791,7 @@ def record_clearance(
     expires_hours: int = 24,
 ) -> dict[str, Any]:
     record, previous = _saved(oid)
-    gate, _ = _default_gate(record)
+    gate, _ = _contact_gate(record)
     if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")):
         raise ValueError("this record cannot be cleared for contact")
     if (previous.get("stage") or "REVIEW") != "RESEARCH":
@@ -745,6 +867,9 @@ def update(
     normalized_stage = _clean(stage, 24).upper()
     if normalized_stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}")
+    gate, _ = _contact_gate(record)
+    if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")) and normalized_stage != "BLOCKED":
+        raise ValueError("a suppressed record cannot be reopened for outreach")
     current = previous.get("stage") or "REVIEW"
     if normalized_stage != current and normalized_stage not in TRANSITIONS.get(current, set()):
         raise ValueError(f"invalid transition: {current} -> {normalized_stage}")
@@ -790,6 +915,8 @@ def call_sheet(oid: str) -> dict[str, Any]:
         item for item in saved.get("channels") or []
         if item.get("channel_id") == clearance.get("channel_id")
     )
+    if channel.get("type") != "BUSINESS_PHONE":
+        raise ValueError("a call sheet requires clearance for a recorded business phone")
     return {
         "opportunity_id": oid,
         "generated_at": _now(),
@@ -857,9 +984,14 @@ def record_disposition(
     }
     if normalized == "DO_NOT_CALL":
         candidate["stage"] = "BLOCKED"
-        clearance = candidate.get("clearance")
-        if isinstance(clearance, dict):
-            candidate["clearance"] = {**clearance, "revoked_at": event_at}
+        candidate["suppression"] = {
+            "subject_id": subject_id(record),
+            "subject_ids": list(subject_ids(record)),
+            "type": "DO_NOT_CALL",
+            "active": True,
+            "recorded_at": event_at,
+            "actor": _clean(actor, 80) or "David",
+        }
         candidate["next_action"] = "Suppressed: do not contact"
     elif normalized == "MEETING_BOOKED":
         candidate["stage"] = "MEETING"
@@ -867,6 +999,10 @@ def record_disposition(
         candidate["stage"] = "LOST"
     elif normalized in {"CONNECTED", "LEFT_VOICEMAIL", "NO_ANSWER", "FOLLOW_UP"}:
         candidate["stage"] = "CONTACTED"
+    if normalized in {"DO_NOT_CALL", "NOT_INTERESTED", "WRONG_BUSINESS"}:
+        clearance = candidate.get("clearance")
+        if isinstance(clearance, dict) and not clearance.get("revoked_at"):
+            candidate["clearance"] = {**clearance, "revoked_at": event_at}
     event = {
         "at": event_at,
         "opportunity_id": oid,

@@ -13,9 +13,21 @@ concurrency:
 
 jobs:
   verify:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment:
+      name: david-space-credential-rotation
     steps:
+      - name: Require protected-main execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "::error::Persistence preflight may run only from protected main"
+            exit 1
+          }
+
       - name: Require encrypted database URL
         env:
           DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
@@ -23,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${DAVID_DATABASE_URL:-}" ]; then
-            echo "::error::Missing encrypted repository secret: DAVID_DATABASE_URL"
+            echo "::error::Missing protected environment secret: DAVID_DATABASE_URL"
             exit 1
           fi
           echo "::add-mask::$DAVID_DATABASE_URL"
@@ -33,7 +45,7 @@ jobs:
           python3 -m pip install --disable-pip-version-check
           "psycopg[binary]==3.2.9"
 
-      - name: Verify connection and required schema
+      - name: Verify TLS connection and versioned schema contract
         env:
           DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
         shell: bash
@@ -47,25 +59,25 @@ jobs:
           import psycopg
           from psycopg.conninfo import conninfo_to_dict
 
+          def emit(state, failure_class=None):
+              payload = {
+                  "schema": "szl.david-neon-preflight/v2",
+                  "connection": state,
+                  "credential_values_recorded": False,
+              }
+              if failure_class:
+                  payload["failure_class"] = failure_class
+              print(json.dumps(payload, sort_keys=True))
+
           dsn = os.environ["DAVID_DATABASE_URL"]
           try:
               fields = conninfo_to_dict(dsn)
-          except Exception as exc:
-              print(
-                  json.dumps(
-                      {
-                          "schema": "szl.david-neon-preflight/v1",
-                          "connection": "FAILED",
-                          "failure_class": type(exc).__name__,
-                          "credential_values_recorded": False,
-                      },
-                      sort_keys=True,
-                  )
-              )
+          except Exception:
+              emit("FAILED", "INVALID_CONNECTION_INFORMATION")
               raise SystemExit("DAVID_DATABASE_URL is not valid PostgreSQL connection information")
 
           if fields.get("hostaddr"):
-              raise SystemExit("DAVID_DATABASE_URL must not select an address separately from its host")
+              raise SystemExit("DAVID_DATABASE_URL must not override its validated hostname")
           hostnames = [
               member.strip().lower().rstrip(".")
               for member in str(fields.get("host") or "").split(",")
@@ -87,20 +99,25 @@ jobs:
           connection = None
           verification = None
           try:
-              connection = psycopg.connect(dsn, connect_timeout=20)
+              connection = psycopg.connect(dsn, connect_timeout=8)
               with connection.cursor() as cursor:
-                  cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1")
+                  cursor.execute("SET LOCAL statement_timeout = '5000ms'")
+                  cursor.execute(
+                      "SELECT schema_version FROM david_dealdesk_schema "
+                      "WHERE schema_name = %s",
+                      ("dealdesk",),
+                  )
+                  if cursor.fetchone() != (1,):
+                      raise RuntimeError("unsupported schema version")
+                  cursor.execute(
+                      "SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1"
+                  )
                   cursor.fetchall()
-                  read_verified = True
                   cursor.execute(
                       """
                       INSERT INTO david_dealdesk_state
                           (opportunity_id, payload, version, updated_at)
                       VALUES (%s, %s::jsonb, 1, now())
-                      ON CONFLICT (opportunity_id) DO UPDATE SET
-                          payload = EXCLUDED.payload,
-                          version = david_dealdesk_state.version + 1,
-                          updated_at = now()
                       """,
                       (probe_id, json.dumps({"preflight_probe": True})),
                   )
@@ -109,7 +126,6 @@ jobs:
                       INSERT INTO david_dealdesk_events
                           (event_id, opportunity_id, event_type, actor, payload, created_at)
                       VALUES (%s, %s, %s, %s, %s::jsonb, now())
-                      ON CONFLICT (event_id) DO NOTHING
                       """,
                       (
                           event_id,
@@ -120,85 +136,41 @@ jobs:
                       ),
                   )
                   cursor.execute(
-                      """
-                      SELECT
-                          EXISTS (
-                              SELECT 1 FROM david_dealdesk_state
-                              WHERE opportunity_id = %s
-                          ),
-                          EXISTS (
-                              SELECT 1 FROM david_dealdesk_events
-                              WHERE event_id = %s AND opportunity_id = %s
-                          )
-                      """,
-                      (probe_id, event_id, probe_id),
+                      "SELECT EXISTS (SELECT 1 FROM david_dealdesk_state "
+                      "WHERE opportunity_id = %s), "
+                      "EXISTS (SELECT 1 FROM david_dealdesk_events WHERE event_id = %s)",
+                      (probe_id, event_id),
                   )
                   state_written, event_written = cursor.fetchone()
-                  transactional_writes_verified = bool(state_written and event_written)
-                  if not transactional_writes_verified:
-                      raise RuntimeError("transactional persistence probe was not readable")
+                  if not state_written or not event_written:
+                      raise RuntimeError("transactional write probe was not readable")
               connection.rollback()
               connection.close()
               connection = None
 
-              verification = psycopg.connect(dsn, connect_timeout=20)
+              verification = psycopg.connect(dsn, connect_timeout=8)
               with verification.cursor() as cursor:
+                  cursor.execute("SET TRANSACTION READ ONLY")
+                  cursor.execute("SET LOCAL statement_timeout = '5000ms'")
                   cursor.execute(
-                      """
-                      SELECT
-                          NOT EXISTS (
-                              SELECT 1 FROM david_dealdesk_state
-                              WHERE opportunity_id = %s
-                          ),
-                          NOT EXISTS (
-                              SELECT 1 FROM david_dealdesk_events
-                              WHERE event_id = %s
-                          ),
-                          current_database()
-                      """,
+                      "SELECT NOT EXISTS (SELECT 1 FROM david_dealdesk_state "
+                      "WHERE opportunity_id = %s), "
+                      "NOT EXISTS (SELECT 1 FROM david_dealdesk_events WHERE event_id = %s)",
                       (probe_id, event_id),
                   )
-                  state_absent, event_absent, current_database = cursor.fetchone()
-              rollback_verified = bool(state_absent and event_absent)
-              if not rollback_verified:
-                  raise RuntimeError("transactional persistence probe was not rolled back")
-          except Exception as exc:
-              if connection is not None:
-                  connection.rollback()
-              print(
-                  json.dumps(
-                      {
-                          "schema": "szl.david-neon-preflight/v1",
-                          "connection": "FAILED",
-                          "failure_class": type(exc).__name__,
-                          "sqlstate": getattr(exc, "sqlstate", None),
-                          "credential_values_recorded": False,
-                      },
-                      sort_keys=True,
-                  )
-              )
-              raise SystemExit("Neon connection, schema, or privilege verification failed")
+                  state_absent, event_absent = cursor.fetchone()
+                  rollback_verified = bool(state_absent and event_absent)
+                  if not rollback_verified:
+                      raise RuntimeError("transactional probe was not rolled back")
+          except Exception:
+              emit("FAILED", "CONNECTION_OR_SCHEMA_UNAVAILABLE")
+              raise SystemExit("Neon connection or versioned schema verification failed")
           finally:
               if connection is not None:
+                  connection.rollback()
                   connection.close()
               if verification is not None:
                   verification.close()
 
-          if current_database != "neondb":
-              raise SystemExit("Neon connection selected an unexpected database")
-
-          print(
-              json.dumps(
-                  {
-                      "schema": "szl.david-neon-preflight/v1",
-                      "connection": "VERIFIED",
-                      "database": current_database,
-                      "read_verified": read_verified,
-                      "transactional_writes_verified": transactional_writes_verified,
-                      "rollback_verified": rollback_verified,
-                      "credential_values_recorded": False,
-                  },
-                  sort_keys=True,
-              )
-          )
+          emit("VERIFIED")
           PY
