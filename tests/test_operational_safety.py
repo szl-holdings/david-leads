@@ -23,31 +23,128 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
-    def test_github_actions_cannot_rotate_application_credentials(self):
-        rotation = ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        self.assertFalse(rotation.exists())
-        preflight = ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
-        self.assertFalse(preflight.exists())
+    def test_rotation_requires_the_named_protected_environment(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        job_configuration = workflow.split("    steps:", 1)[0]
+        guide = (ROOT / "ops" / "credential-rotation.md").read_text(encoding="utf-8")
 
-        deploy = (ROOT / ".github" / "workflows" / "hf-deploy.yml").read_text(
-            encoding="utf-8"
+        self.assertIn(
+            "    environment:\n      name: david-space-credential-rotation",
+            job_configuration,
         )
-        workflow_text = "\n".join(
-            path.read_text(encoding="utf-8")
-            for path in sorted((ROOT / ".github" / "workflows").glob("*.yml"))
+        self.assertIn("deployment branches restricted to the protected `main` branch", guide)
+        self.assertIn("a required owner approval", guide)
+        self.assertIn("stored as\n  environment secrets", guide)
+        self.assertIn("Delete repository-scoped copies of the four `DAVID_*`", guide)
+        self.assertIn("Keep this pull request in draft", guide)
+
+    def test_deploy_is_protected_main_push_only_and_migration_gated(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "hf-deploy.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("branches: [main]", workflow)
+        self.assertNotIn("workflow_dispatch", workflow)
+        self.assertNotIn("rotate-app-secrets", workflow)
+        self.assertNotIn("secrets: inherit", workflow)
+        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", workflow)
+        self.assertIn(
+            "migrate:\n    uses: ./.github/workflows/migrate-neon-persistence.yml",
+            workflow,
         )
+        self.assertIn("deploy:\n    needs: migrate", workflow)
         for name in (
             "DAVID_USER",
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
         ):
-            self.assertNotIn(name, deploy)
-            self.assertNotIn(name, workflow_text)
-        self.assertNotIn("workflow_dispatch", deploy)
-        self.assertNotIn("secrets: inherit", deploy)
-        self.assertNotIn("rotate-app-secrets", deploy)
-        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy)
+            self.assertNotIn(f"secrets.{name}", workflow)
+
+    def test_repository_has_no_credential_stdout_reader(self):
+        self.assertFalse((ROOT / "ops" / "get_david_credentials.ps1").exists())
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "repository script reads credentials into terminal output",
+            readme,
+        )
+
+    def test_neon_preflight_is_main_only_and_environment_bound(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("name: david-space-credential-rotation", workflow)
+        self.assertIn("SET TRANSACTION READ ONLY", workflow)
+        self.assertIn("david_dealdesk_schema", workflow)
+        self.assertIn("cursor.fetchone() != (1,)", workflow)
+        self.assertIn("credential_values_recorded", workflow)
+        self.assertNotIn("type(exc).__name__", workflow)
+
+    def test_neon_migration_uses_a_separate_protected_admin_credential(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        guide = (ROOT / "ops" / "neon-persistence.md").read_text(encoding="utf-8")
+        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
+        self.assertIn("name: david-space-credential-rotation", workflow)
+        self.assertIn("secrets.DAVID_DATABASE_ADMIN_URL", workflow)
+        self.assertIn("secrets.DAVID_DATABASE_URL", workflow)
+        self.assertIn("sql.Identifier(runtime_role)", workflow)
+        self.assertIn('("david_dealdesk_state", "SELECT, INSERT, UPDATE")', workflow)
+        self.assertIn('sql.SQL("GRANT {} ON TABLE {}.{} TO {}")', workflow)
+        self.assertIn("schema_sha256", workflow)
+        self.assertIn("least-privilege runtime secret", guide)
+        self.assertIn("never attempts `CREATE TABLE`", guide)
+
+    def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        job_configuration = workflow.split("    steps:", 1)[0]
+        for name in (
+            "DAVID_USER",
+            "DAVID_PASS",
+            "DAVID_ACCESS_KEY",
+            "DAVID_DATABASE_URL",
+        ):
+            reference = f"{name}: ${{{{ secrets.{name} }}}}"
+            self.assertNotIn(reference, job_configuration)
+            self.assertEqual(workflow.count(reference), 2)
+
+    def test_rotation_preserves_an_unexposed_factor_during_partial_writes(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        order = workflow.split("          rotation_order = (", 1)[1].split(
+            "          )", 1
+        )[0]
+        self.assertLess(order.index('"DAVID_ACCESS_KEY"'), order.index('"DAVID_USER"'))
+        self.assertIn("          for key in rotation_order:", workflow)
+
+    def test_restart_poll_waits_for_replacement_login(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        poll = workflow.split(
+            "          while time.monotonic() < deadline:", 1
+        )[1].split("          if health is None:", 1)[0]
+        self.assertIn('requests.post(', poll)
+        self.assertIn('f"{base_url}/api/login"', poll)
+        self.assertIn("if login.status_code == 200:", poll)
+        self.assertIn("session_token = candidate_token", poll)
+        self.assertIn("response.status_code in {200, 503}", poll)
+        login_prefix = poll.split("requests.post(", 1)[0]
+        self.assertNotIn("POSTGRES_READY", login_prefix)
+
+    def test_rotation_uses_secret_triggered_restarts_with_bounded_convergence(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("api.restart_space(", workflow)
+        self.assertIn("deadline = time.monotonic() + 900", workflow)
+        self.assertIn("timeout-minutes: 25", workflow)
 
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
@@ -181,7 +278,7 @@ class OpportunityDeskSafety(unittest.TestCase):
     def tearDown(self):
         dealdesk.reset_for_tests()
 
-    def test_persistence_requires_absolute_usable_root(self):
+    def test_file_persistence_requires_an_absolute_usable_store(self):
         with (
             patch.object(dealdesk, "_DATABASE_URL", None),
             patch.object(dealdesk, "_PATH", "relative/dealdesk.json"),
@@ -197,8 +294,8 @@ class OpportunityDeskSafety(unittest.TestCase):
                 patch.object(dealdesk, "_DATABASE_URL", None),
                 patch.object(dealdesk, "_PATH", str(store)),
             ):
-                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
-                self.assertTrue(dealdesk.persistence_configured())
+                self.assertEqual(dealdesk.persistence_state(), "FILE_READY")
+                self.assertTrue(dealdesk.persistence_ready())
             self.assertEqual(store.read_bytes(), before)
 
             missing_root = Path(directory) / "missing" / "dealdesk.json"
@@ -207,18 +304,29 @@ class OpportunityDeskSafety(unittest.TestCase):
                 patch.object(dealdesk, "_PATH", str(missing_root)),
             ):
                 self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
-                self.assertTrue(dealdesk.persistence_configured())
                 self.assertFalse(dealdesk.persistence_ready())
+
+    def test_orphaned_file_lock_does_not_block_the_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            lock = Path(str(store) + ".lock")
+            store.write_text("{}", encoding="utf-8")
+            lock.write_text("orphaned predecessor", encoding="utf-8")
+
+            with patch.object(dealdesk, "_PATH", str(store)):
+                with dealdesk._file_store_lock():
+                    self.assertTrue(lock.exists())
+                with dealdesk._file_store_lock():
+                    self.assertTrue(lock.exists())
 
             with (
                 patch.object(dealdesk, "_DATABASE_URL", None),
                 patch.object(dealdesk, "_PATH", directory),
             ):
                 self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
-                self.assertTrue(dealdesk.persistence_configured())
                 self.assertFalse(dealdesk.persistence_ready())
 
-    def test_persistence_probe_fails_closed_when_atomic_replace_fails(self):
+    def test_file_persistence_probe_fails_closed_when_atomic_replace_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Path(directory) / "dealdesk.json"
             with (
@@ -227,10 +335,9 @@ class OpportunityDeskSafety(unittest.TestCase):
                 patch.object(dealdesk.os, "replace", side_effect=OSError("read-only volume")),
             ):
                 self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
-                self.assertTrue(dealdesk.persistence_configured())
                 self.assertFalse(dealdesk.persistence_ready())
 
-    def test_persistence_probe_replaces_the_configured_target_with_identical_bytes(self):
+    def test_file_probe_replaces_exact_target_under_shared_lock(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Path(directory) / "dealdesk.json"
             original = b'{"existing":{"stage":"REVIEW"}}'
@@ -239,88 +346,31 @@ class OpportunityDeskSafety(unittest.TestCase):
             with (
                 patch.object(dealdesk, "_DATABASE_URL", None),
                 patch.object(dealdesk, "_PATH", str(store)),
-                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READABLE"),
                 patch.object(dealdesk.os, "replace", wraps=real_replace) as replace,
             ):
-                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+                self.assertEqual(dealdesk.persistence_state(), "FILE_READY")
+
             replace.assert_called_once()
             self.assertEqual(Path(replace.call_args.args[1]), store)
             self.assertEqual(store.read_bytes(), original)
+            self.assertTrue(Path(str(store) + ".lock").exists())
+            with patch.object(dealdesk, "_PATH", str(store)):
+                with dealdesk._file_store_lock():
+                    pass
 
-    def test_database_state_preserves_runtime_health(self):
-        with (
-            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
-            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_UNAVAILABLE"),
-        ):
-            self.assertTrue(dealdesk.persistence_configured())
-            self.assertEqual(dealdesk.persistence_state(), "POSTGRES_UNAVAILABLE")
-            self.assertFalse(dealdesk.persistence_ready())
+    def test_file_probe_never_replaces_malformed_store(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            store.write_text("{malformed", encoding="utf-8")
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk.os, "replace") as replace,
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
 
-    def test_database_schema_bootstrap_is_fixed_and_idempotent(self):
-        connection = mock.MagicMock()
-        cursor = connection.cursor.return_value.__enter__.return_value
-
-        dealdesk._ensure_database_schema(connection)
-
-        statements = [
-            " ".join(call.args[0].split())
-            for call in cursor.execute.call_args_list
-        ]
-        self.assertEqual(len(statements), 3)
-        self.assertIn(
-            "CREATE TABLE IF NOT EXISTS david_dealdesk_state",
-            statements[0],
-        )
-        self.assertIn(
-            "CREATE TABLE IF NOT EXISTS david_dealdesk_events",
-            statements[1],
-        )
-        self.assertIn(
-            "CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx",
-            statements[2],
-        )
-        self.assertNotIn("DROP ", " ".join(statements).upper())
-        self.assertNotIn("ALTER ", " ".join(statements).upper())
-
-    def test_database_load_does_not_run_ddl_when_schema_exists(self):
-        connection = mock.MagicMock()
-        connection.__enter__.return_value = connection
-        with (
-            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
-            patch.object(dealdesk, "_db_connect", return_value=connection),
-            patch.object(dealdesk, "_read_database_rows", return_value=[]),
-            patch.object(
-                dealdesk,
-                "_ensure_database_schema",
-            ) as ensure,
-        ):
-            dealdesk._load()
-
-        ensure.assert_not_called()
-        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
-
-    def test_database_load_bootstraps_only_after_undefined_table(self):
-        connection = mock.MagicMock()
-        connection.__enter__.return_value = connection
-        with (
-            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
-            patch.object(dealdesk, "_db_connect", return_value=connection),
-            patch.object(
-                dealdesk,
-                "_read_database_rows",
-                side_effect=[
-                    RuntimeError('relation "david_dealdesk_state" does not exist'),
-                    [],
-                ],
-            ) as read,
-            patch.object(dealdesk, "_ensure_database_schema") as ensure,
-        ):
-            dealdesk._load()
-
-        connection.rollback.assert_called_once()
-        ensure.assert_called_once_with(connection)
-        self.assertEqual(read.call_count, 2)
-        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
+            replace.assert_not_called()
+            self.assertEqual(store.read_text(encoding="utf-8"), "{malformed")
 
     def _research(self, oid):
         return dealdesk.record_research(
@@ -402,21 +452,21 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertEqual(observed["contact_gate"], "RESEARCH_REQUIRED")
 
     def test_postgres_readiness_recovers_after_a_transient_startup_failure(self):
-        def recover():
-            dealdesk._PERSISTENCE_HEALTH = "POSTGRES_READY"
-            dealdesk._PERSISTENCE_DIAGNOSTIC = "OK"
-            dealdesk._LAST_PERSISTENCE_ATTEMPT = time.monotonic()
-
+        recovered = {"opp_recovered": {"stage": "RESEARCH"}}
         with (
             patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
             patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_UNAVAILABLE"),
             patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "CONNECTION_TIMEOUT"),
-            patch.object(dealdesk, "_LAST_PERSISTENCE_ATTEMPT", 0.0),
-            patch.object(dealdesk, "_load", side_effect=recover) as load,
+            patch.object(dealdesk, "_LAST_PROBE_AT", 0.0),
+            patch.object(
+                dealdesk,
+                "_database_snapshot",
+                return_value=recovered,
+            ) as load,
         ):
             self.assertEqual(dealdesk.persistence_state(), "POSTGRES_READY")
             self.assertEqual(dealdesk.persistence_diagnostic(), "OK")
-        load.assert_called_once()
+        load.assert_called_once_with()
 
     def test_postgres_diagnostics_never_echo_connection_details(self):
         secret_host = "secret-db.example.invalid"
@@ -491,6 +541,293 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertFalse(blocked["call_ready"])
         with self.assertRaises(ValueError):
             dealdesk.call_sheet(opportunity["opportunity_id"])
+
+    def test_do_not_call_suppression_survives_a_new_signal_identity(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+            note="Business requested no further contact",
+        )
+
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        observed = dealdesk.board([later])["opportunities"][0]
+
+        self.assertNotEqual(observed["opportunity_id"], opportunity["opportunity_id"])
+        self.assertEqual(observed["subject_id"], opportunity["subject_id"])
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        with self.assertRaisesRegex(ValueError, "cannot be researched"):
+            self._research(observed["opportunity_id"])
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
+
+    def test_do_not_call_alias_survives_when_later_source_omits_official_id(self):
+        identified = {**self.record, "credential": "USDOT 1234567"}
+        opportunity = dealdesk.board([identified])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        observed = dealdesk.board([later])["opportunities"][0]
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertFalse(observed["call_ready"])
+
+    def test_non_unique_credential_category_is_not_an_official_alias(self):
+        first = {
+            **self.record,
+            "name": "First Connecticut Brokerage LLC",
+            "state": "CT",
+            "credential": "Real Estate Broker",
+        }
+        second = {
+            **self.record,
+            "name": "Second Connecticut Brokerage LLC",
+            "state": "CT",
+            "credential": "Real Estate Broker",
+        }
+
+        self.assertTrue(
+            set(dealdesk.subject_ids(first)).isdisjoint(
+                dealdesk.subject_ids(second)
+            )
+        )
+
+    def test_persisted_legacy_do_not_call_is_backfilled_and_enforced(self):
+        legacy = {
+            **self.record,
+            "last_disposition": "DO_NOT_CALL",
+            "stage": "BLOCKED",
+        }
+        state = {"opp_legacy": legacy}
+
+        self.assertTrue(dealdesk._backfill_legacy_suppressions(state))
+        self.assertFalse(dealdesk._backfill_legacy_suppressions(state))
+        self.assertTrue(legacy["suppression"]["active"])
+        self.assertEqual(
+            legacy["suppression"]["subject_ids"],
+            list(dealdesk.subject_ids(self.record)),
+        )
+
+        dealdesk._STATE.update(state)
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        self.assertIsNotNone(dealdesk._active_suppression(later))
+
+    def test_not_interested_revokes_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+
+        lost = dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="NOT_INTERESTED",
+            note="Declined",
+        )
+
+        self.assertEqual(lost["stage"], "LOST")
+        self.assertFalse(lost["call_ready"])
+        self.assertIsNotNone(
+            dealdesk._STATE[opportunity["opportunity_id"]]["clearance"]["revoked_at"]
+        )
+
+    def test_call_sheet_requires_phone_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = dealdesk.record_research(
+            opportunity["opportunity_id"],
+            actor="David",
+            channel_type="BUSINESS_EMAIL",
+            channel_value="sales@examplelogistics.com",
+            source_url="https://examplelogistics.com/contact",
+            publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+        )
+        cleared = self._clear(
+            opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        self.assertTrue(cleared["call_ready"])
+        with self.assertRaisesRegex(ValueError, "business phone"):
+            dealdesk.call_sheet(opportunity["opportunity_id"])
+
+
+class PersistenceContractSafety(unittest.TestCase):
+    def setUp(self):
+        self.original_database_url = dealdesk._DATABASE_URL
+        self.original_health = dealdesk._PERSISTENCE_HEALTH
+        self.original_probe = dealdesk._LAST_PROBE_AT
+        dealdesk.reset_for_tests()
+
+    def tearDown(self):
+        dealdesk._DATABASE_URL = self.original_database_url
+        dealdesk._PERSISTENCE_HEALTH = self.original_health
+        dealdesk._LAST_PROBE_AT = self.original_probe
+        dealdesk.reset_for_tests()
+
+    def test_checked_in_schema_migration_is_versioned_and_complete(self):
+        schema = (ROOT / "app" / "dealdesk_schema.sql").read_text(encoding="utf-8")
+        self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_schema", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_state", schema)
+        self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_events", schema)
+        self.assertIn("VALUES ('dealdesk', 1)", schema)
+        source = (ROOT / "app" / "dealdesk.py").read_text(encoding="utf-8")
+        self.assertNotIn("CREATE TABLE", source)
+        self.assertNotIn("CREATE INDEX", source)
+
+    @staticmethod
+    def _compatible_schema_results():
+        columns = [
+            (table, column, data_type, nullable)
+            for (table, column), (data_type, nullable) in sorted(
+                dealdesk._SCHEMA_COLUMNS.items()
+            )
+        ]
+        primary_keys = [
+            (table, column, position)
+            for table, keys in sorted(dealdesk._SCHEMA_PRIMARY_KEYS.items())
+            for position, column in enumerate(keys, start=1)
+        ]
+        return [columns, primary_keys, [dealdesk._SCHEMA_EVENTS_INDEX]]
+
+    def test_database_schema_validation_is_complete_and_fail_closed(self):
+        connection = mock.MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = (dealdesk._SCHEMA_VERSION,)
+        cursor.fetchall.side_effect = self._compatible_schema_results()
+
+        dealdesk._assert_schema_contract(cursor)
+
+        incomplete = self._compatible_schema_results()
+        incomplete[0] = [
+            row for row in incomplete[0]
+            if row[0] != "david_dealdesk_events"
+        ]
+        incomplete_cursor = mock.MagicMock()
+        incomplete_cursor.fetchone.return_value = (dealdesk._SCHEMA_VERSION,)
+        incomplete_cursor.fetchall.side_effect = incomplete
+        with self.assertRaises(dealdesk._DatabaseSchemaUnavailable):
+            dealdesk._assert_schema_contract(incomplete_cursor)
+
+        incompatible = self._compatible_schema_results()
+        incompatible[0] = [
+            (
+                table,
+                column,
+                "int4" if column == "version" else data_type,
+                nullable,
+            )
+            for table, column, data_type, nullable in incompatible[0]
+        ]
+        incompatible_cursor = mock.MagicMock()
+        incompatible_cursor.fetchone.return_value = (dealdesk._SCHEMA_VERSION,)
+        incompatible_cursor.fetchall.side_effect = incompatible
+        with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
+            dealdesk._assert_schema_contract(incompatible_cursor)
+
+    def test_database_load_persists_legacy_suppression_backfill(self):
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        legacy = {
+            "opp_legacy": {
+                "name": "Example Logistics LLC",
+                "state": "NY",
+                "last_disposition": "DO_NOT_CALL",
+                "stage": "BLOCKED",
+            }
+        }
+
+        with (
+            patch.object(dealdesk, "_database_snapshot", return_value=legacy),
+            patch.object(dealdesk, "_persist") as persist,
+        ):
+            dealdesk._load()
+
+        persist.assert_called_once_with(dealdesk._STATE)
+        self.assertTrue(
+            dealdesk._STATE["opp_legacy"]["suppression"]["active"]
+        )
+
+    def test_transient_startup_failure_recovers_and_reloads_state(self):
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        dealdesk._PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+        dealdesk._LAST_PROBE_AT = 0.0
+        recovered = {"opp_recovered": {"stage": "RESEARCH"}}
+
+        with patch.object(dealdesk, "_database_snapshot", return_value=recovered) as load:
+            observed = dealdesk.persistence_state()
+
+        self.assertEqual(observed, "POSTGRES_READY")
+        self.assertEqual(dealdesk._STATE, recovered)
+        load.assert_called_once_with()
+
+    def test_live_probe_downgrades_stale_ready_state(self):
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        dealdesk._PERSISTENCE_HEALTH = "POSTGRES_READY"
+        dealdesk._LAST_PROBE_AT = 0.0
+
+        with patch.object(
+            dealdesk,
+            "_db_connect",
+            side_effect=RuntimeError("private database endpoint"),
+        ):
+            observed = dealdesk.persistence_state()
+
+        self.assertEqual(observed, "POSTGRES_UNAVAILABLE")
+
+    def test_failed_transaction_is_sanitized_and_does_not_commit_memory(self):
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        dealdesk._PERSISTENCE_HEALTH = "POSTGRES_READY"
+        dealdesk._STATE["opp_existing"] = {"stage": "REVIEW"}
+
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        cursor = mock.MagicMock()
+        connection.cursor.return_value.__enter__.return_value = cursor
+
+        def fail_event(statement, *_args):
+            if "INSERT INTO david_dealdesk_events" in statement:
+                raise RuntimeError("private database endpoint")
+
+        cursor.execute.side_effect = fail_event
+        candidate = {"stage": "RESEARCH"}
+        event = {
+            "at": "2026-07-28T00:00:00+00:00",
+            "opportunity_id": "opp_new",
+            "type": "BUSINESS_CHANNEL_RECORDED",
+            "actor": "David",
+        }
+
+        with (
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_assert_schema_contract"),
+            self.assertRaisesRegex(
+                dealdesk.PersistenceUnavailable,
+                "^deal-desk persistence is unavailable$",
+            ),
+        ):
+            dealdesk._commit("opp_new", candidate, event)
+
+        self.assertEqual(dealdesk._STATE, {"opp_existing": {"stage": "REVIEW"}})
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
+        connection.__exit__.assert_called_once()
 
 
 class ReceiptTruthStates(unittest.TestCase):
@@ -633,7 +970,7 @@ class ApiSafety(unittest.TestCase):
         )
         self.assertIs(connection.sock, wrapped_socket)
 
-    def test_webhook_validation_deduplicates_and_pins_one_address(self):
+    def test_webhook_validation_deduplicates_validated_addresses(self):
         previous = os.environ.get("DAVID_CRM_WEBHOOK_ALLOWLIST")
         os.environ["DAVID_CRM_WEBHOOK_ALLOWLIST"] = "crm.example.com"
         answers = [
@@ -717,7 +1054,7 @@ class ApiSafety(unittest.TestCase):
         with (
             patch.object(self.server, "_CREDS_CONFIGURED", False),
             patch.object(self.server, "_CREDS_ROTATION_REQUIRED", True),
-            patch.object(self.server.dd, "persistence_state", return_value="FILE_BACKED"),
+            patch.object(self.server.dd, "persistence_state", return_value="FILE_READY"),
         ):
             health = self.client.get("/healthz")
         self.assertEqual(health.status_code, 503)

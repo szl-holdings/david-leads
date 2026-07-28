@@ -5,7 +5,7 @@ from __future__ import annotations
 import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
 import http.client, ipaddress, socket, ssl, time
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Request
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -110,6 +110,17 @@ _CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").sp
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 
+if dd is not None:
+    @app.exception_handler(dd.PersistenceUnavailable)
+    async def persistence_unavailable(
+        _request: Request,
+        _exc: dd.PersistenceUnavailable,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "deal desk persistence is unavailable"},
+        )
+
 # --- David-only credentials. MUST be provided via Space secrets — NO defaults (fail-closed). ---
 # In a PUBLIC repo, hardcoded defaults are an open gate whenever the Space secrets are unset,
 # so we read from env with no fallback and refuse logins when any credential is missing.
@@ -211,7 +222,7 @@ def healthz():
     }
     persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
     ready = body["authentication"] == "CONFIGURED" and persistence in {
-        "FILE_BACKED",
+        "FILE_READY",
         "POSTGRES_READY",
     }
     body["status"] = "ready" if ready else "blocked"
@@ -1717,7 +1728,6 @@ def _post_validated_webhook(
         path += ";" + parsed.params
     if parsed.query:
         path += "?" + parsed.query
-
     deadline = time.monotonic() + total_timeout
     connection = None
     last_connect_error: OSError | None = None
@@ -1743,7 +1753,6 @@ def _post_validated_webhook(
         raise last_connect_error or OSError(
             "approved CRM hostname has no reachable validated address"
         )
-
     try:
         remaining = deadline - time.monotonic()
         if remaining <= 0:

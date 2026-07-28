@@ -1,6 +1,6 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · OPERATIONAL WITH EXPLICIT RECEIPT EXCEPTION**
+> Status: **PUBLIC · 1e279 SOURCE ALIGNMENT MEASURED · SUCCESSOR NOT READY**
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
@@ -24,16 +24,25 @@ The credential-remediation and governed broker-desk release was observed on
   runtime bundle digest
   `a6de59cf79530ab693f71e13428df718ddf1687f27f2c304a50fe3db75e0ce62`,
   and 50 copied files.
-- Protected Neon preflight run `30388377093` verified the encrypted connection,
-  schema read, transactional writes, and rollback without recording the
-  database credential.
-- A non-displaying administrator-vault flow verified replacement production
-  login, protected Frontier Radar access, and logout. No factor was printed or
-  recorded.
+- Neon preflight run `30388377093` succeeded on earlier source
+  `b35bbfa7db2de64dd8307d86747bc5626f084547`; it is not exact-source proof for
+  `1e27921013f6f92419170b41cd4646aee38b64fc`. The repository had no GitHub
+  environments when audited, so this run was not protected-environment proof.
+- Replacement production login, protected Frontier Radar access, logout, and
+  administrator-vault custody are `UNVERIFIED` here because no exact
+  non-secret evidence record was available.
+- Repository secret metadata listed only `HF_TOKEN`, but the required protected
+  environment did not exist. Environment-bound migration, verification, and
+  rotation therefore remain unavailable until a repository administrator
+  creates and protects it.
 
 This readiness record is itself part of the Docker-copied governance bundle.
-Every later merge must complete a fresh exact-source deployment and live probe;
-the revision reported by `/api/build-info` is the current source identity.
+A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
+`PUBLICATION_READINESS.md`, `PUBLIC_DATA_OPERATING_MODEL.md`, or
+`SPACE_PROVENANCE.json`), the `Dockerfile`, or the deployment workflow must
+complete a fresh exact-source deployment and live probe. Other repository
+changes do not trigger this deployment and are not covered by its runtime
+source-identity evidence.
 
 ## Public boundary
 
@@ -61,19 +70,25 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Replacement application and database credentials are held only in the approved
-local administrator vault and as write-only Hugging Face Space secrets.
-GitHub repository secrets contain only the scoped Hugging Face deployment token;
-GitHub Actions cannot read or mutate the application or database credentials.
-Rotation is a local, non-displaying administrator operation documented in
-`ops/credential-rotation.md`.
+Repository secret metadata lists only the scoped Hugging Face deployment token.
+The proposed successor moves application, runtime-database, and migration-admin
+credentials into an owner-approved, protected-main-only GitHub environment so
+only the explicitly bound rotation, migration, and verification jobs can use
+them. That environment was absent at the audit snapshot, so its protection,
+secret placement, and local administrator-vault custody are not yet proved.
+The successor must remain draft until those controls exist.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,
 replacement login/logout, exact-source deployment, and drift, then revoke the
 administrator session used for rotation.
 
-## Durable broker workflow
+## Successor durable broker contract
+
+The following is the fail-closed source contract in this successor. It is not
+live production evidence until the protected migration, exact-source
+deployment, live probes, and independent drift check succeed for the exact
+merged revision.
 
 - Opportunity snapshots are persisted in `david_dealdesk_state`.
 - Immutable research, clearance, stage, and disposition events are persisted in

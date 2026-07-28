@@ -1,0 +1,176 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Verify David Neon persistence
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: david-neon-persistence-preflight
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: david-space-credential-rotation
+    steps:
+      - name: Require protected-main execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "::error::Persistence preflight may run only from protected main"
+            exit 1
+          }
+
+      - name: Require encrypted database URL
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DAVID_DATABASE_URL:-}" ]; then
+            echo "::error::Missing protected environment secret: DAVID_DATABASE_URL"
+            exit 1
+          fi
+          echo "::add-mask::$DAVID_DATABASE_URL"
+
+      - name: Install exact database client
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          "psycopg[binary]==3.2.9"
+
+      - name: Verify TLS connection and versioned schema contract
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import uuid
+
+          import psycopg
+          from psycopg.conninfo import conninfo_to_dict
+
+          def emit(state, failure_class=None):
+              payload = {
+                  "schema": "szl.david-neon-preflight/v2",
+                  "connection": state,
+                  "credential_values_recorded": False,
+              }
+              if failure_class:
+                  payload["failure_class"] = failure_class
+              print(json.dumps(payload, sort_keys=True))
+
+          dsn = os.environ["DAVID_DATABASE_URL"]
+          try:
+              fields = conninfo_to_dict(dsn)
+          except Exception:
+              emit("FAILED", "INVALID_CONNECTION_INFORMATION")
+              raise SystemExit("DAVID_DATABASE_URL is not valid PostgreSQL connection information")
+
+          if fields.get("hostaddr"):
+              raise SystemExit("DAVID_DATABASE_URL must not override its validated hostname")
+          hostnames = [
+              member.strip().lower().rstrip(".")
+              for member in str(fields.get("host") or "").split(",")
+          ]
+          database = str(fields.get("dbname") or "")
+          sslmode = str(fields.get("sslmode") or "")
+          if not hostnames or any(
+              not hostname or not hostname.endswith(".neon.tech")
+              for hostname in hostnames
+          ):
+              raise SystemExit("Every DAVID_DATABASE_URL host must be a Neon endpoint")
+          if database != "neondb":
+              raise SystemExit("DAVID_DATABASE_URL must select the neondb database")
+          if sslmode not in {"require", "verify-ca", "verify-full"}:
+              raise SystemExit("DAVID_DATABASE_URL must require TLS")
+
+          probe_id = "preflight_" + uuid.uuid4().hex
+          event_id = "preflight_event_" + uuid.uuid4().hex
+          connection = None
+          verification = None
+          try:
+              connection = psycopg.connect(dsn, connect_timeout=8)
+              with connection.cursor() as cursor:
+                  cursor.execute("SET LOCAL statement_timeout = '5000ms'")
+                  cursor.execute(
+                      "SELECT schema_version FROM david_dealdesk_schema "
+                      "WHERE schema_name = %s",
+                      ("dealdesk",),
+                  )
+                  if cursor.fetchone() != (1,):
+                      raise RuntimeError("unsupported schema version")
+                  cursor.execute(
+                      "SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1"
+                  )
+                  cursor.fetchall()
+                  cursor.execute(
+                      """
+                      INSERT INTO david_dealdesk_state
+                          (opportunity_id, payload, version, updated_at)
+                      VALUES (%s, %s::jsonb, 1, now())
+                      """,
+                      (probe_id, json.dumps({"preflight_probe": True})),
+                  )
+                  cursor.execute(
+                      """
+                      INSERT INTO david_dealdesk_events
+                          (event_id, opportunity_id, event_type, actor, payload, created_at)
+                      VALUES (%s, %s, %s, %s, %s::jsonb, now())
+                      """,
+                      (
+                          event_id,
+                          probe_id,
+                          "PERSISTENCE_PREFLIGHT",
+                          "github-actions",
+                          json.dumps({"preflight_probe": True}),
+                      ),
+                  )
+                  cursor.execute(
+                      "SELECT EXISTS (SELECT 1 FROM david_dealdesk_state "
+                      "WHERE opportunity_id = %s), "
+                      "EXISTS (SELECT 1 FROM david_dealdesk_events WHERE event_id = %s)",
+                      (probe_id, event_id),
+                  )
+                  state_written, event_written = cursor.fetchone()
+                  if not state_written or not event_written:
+                      raise RuntimeError("transactional write probe was not readable")
+              connection.rollback()
+              connection.close()
+              connection = None
+
+              verification = psycopg.connect(dsn, connect_timeout=8)
+              with verification.cursor() as cursor:
+                  cursor.execute("SET TRANSACTION READ ONLY")
+                  cursor.execute("SET LOCAL statement_timeout = '5000ms'")
+                  cursor.execute(
+                      "SELECT NOT EXISTS (SELECT 1 FROM david_dealdesk_state "
+                      "WHERE opportunity_id = %s), "
+                      "NOT EXISTS (SELECT 1 FROM david_dealdesk_events WHERE event_id = %s)",
+                      (probe_id, event_id),
+                  )
+                  state_absent, event_absent = cursor.fetchone()
+                  rollback_verified = bool(state_absent and event_absent)
+                  if not rollback_verified:
+                      raise RuntimeError("transactional probe was not rolled back")
+          except Exception:
+              emit("FAILED", "CONNECTION_OR_SCHEMA_UNAVAILABLE")
+              raise SystemExit("Neon connection or versioned schema verification failed")
+          finally:
+              if connection is not None:
+                  connection.rollback()
+                  connection.close()
+              if verification is not None:
+                  verification.close()
+
+          emit("VERIFIED")
+          PY
