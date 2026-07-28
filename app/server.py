@@ -1705,6 +1705,8 @@ def _post_validated_webhook(
     hostname: str,
     validated_addresses: tuple[str, ...],
     body: bytes,
+    *,
+    total_timeout: float = 8.0,
 ) -> int:
     port = parsed.port or 443
     path = parsed.path or "/"
@@ -1713,14 +1715,18 @@ def _post_validated_webhook(
     if parsed.query:
         path += "?" + parsed.query
 
+    deadline = time.monotonic() + total_timeout
     connection = None
     last_connect_error: OSError | None = None
     for validated_address in validated_addresses:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         candidate = _PinnedHTTPSConnection(
             hostname,
             validated_address,
             port=port,
-            timeout=8,
+            timeout=remaining,
         )
         try:
             candidate.connect()
@@ -1736,6 +1742,11 @@ def _post_validated_webhook(
         )
 
     try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("approved CRM webhook exceeded its total timeout")
+        if connection.sock is not None:
+            connection.sock.settimeout(remaining)
         connection.request(
             "POST",
             path,

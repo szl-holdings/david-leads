@@ -10,8 +10,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import pathlib
 import re
 import tempfile
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -79,10 +81,12 @@ _PATH = os.environ.get("DAVID_DEAL_DESK_PATH")
 _DATABASE_URL = os.environ.get("DAVID_DATABASE_URL")
 _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
+_PERSISTENCE_PROBE_LOCK = threading.Lock()
+_PERSISTENCE_READY_PATH: str | None = None
 _PERSISTENCE_HEALTH = (
     "POSTGRES_CONFIGURED"
     if _DATABASE_URL
-    else "FILE_BACKED"
+    else "FILE_CONFIGURED"
     if (_PATH and os.path.isabs(_PATH))
     else "NOT_CONFIGURED"
 )
@@ -97,47 +101,52 @@ def persistence_configured() -> bool:
 
 
 def persistence_state() -> str:
+    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     if _DATABASE_URL:
         return _PERSISTENCE_HEALTH
     if not _PATH or not os.path.isabs(_PATH):
         return "NOT_CONFIGURED"
 
-    path = os.path.abspath(_PATH)
-    directory = os.path.dirname(path)
-    temporary: str | None = None
-    promoted: str | None = None
-    try:
-        if not os.path.isdir(directory):
+    with _PERSISTENCE_PROBE_LOCK:
+        path = os.path.abspath(_PATH)
+        directory = os.path.dirname(path)
+        if not os.path.isdir(directory) or (
+            os.path.exists(path) and not os.path.isfile(path)
+        ):
+            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+            _PERSISTENCE_READY_PATH = None
             return "FILE_UNAVAILABLE"
-        if os.path.exists(path):
-            if not os.path.isfile(path):
-                return "FILE_UNAVAILABLE"
-            with open(path, "rb") as handle:
-                handle.read(1)
+        if _PERSISTENCE_HEALTH == "FILE_READY" and _PERSISTENCE_READY_PATH == path:
+            return "FILE_BACKED"
 
-        fd, temporary = tempfile.mkstemp(
-            prefix=".dealdesk-readiness-",
-            suffix=".tmp",
-            dir=directory,
-        )
-        promoted = temporary + ".committed"
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(b"{}")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, promoted)
-        temporary = None
-        with open(promoted, "rb") as handle:
-            if handle.read() != b"{}":
+        temporary: str | None = None
+        try:
+            original = pathlib.Path(path).read_bytes() if os.path.exists(path) else b"{}"
+            fd, temporary = tempfile.mkstemp(
+                prefix=".dealdesk-readiness-",
+                suffix=".tmp",
+                dir=directory,
+            )
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(original)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+            temporary = None
+            if pathlib.Path(path).read_bytes() != original:
+                _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
                 return "FILE_UNAVAILABLE"
-        return "FILE_BACKED"
-    except OSError:
-        return "FILE_UNAVAILABLE"
-    finally:
-        for candidate in (temporary, promoted):
-            if candidate and os.path.exists(candidate):
+            _PERSISTENCE_HEALTH = "FILE_READY"
+            _PERSISTENCE_READY_PATH = path
+            return "FILE_BACKED"
+        except OSError:
+            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+            _PERSISTENCE_READY_PATH = None
+            return "FILE_UNAVAILABLE"
+        finally:
+            if temporary and os.path.exists(temporary):
                 try:
-                    os.unlink(candidate)
+                    os.unlink(temporary)
                 except OSError:
                     pass
 
@@ -203,7 +212,9 @@ def _load() -> None:
             data = json.load(handle)
         if isinstance(data, dict):
             _STATE.update({str(k): v for k, v in data.items() if isinstance(v, dict)})
-        _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_HEALTH = "FILE_READABLE"
+        if persistence_state() != "FILE_BACKED":
+            _STATE.clear()
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
@@ -213,7 +224,7 @@ def _persist(
     state: dict[str, dict[str, Any]] | None = None,
     event: dict[str, Any] | None = None,
 ) -> None:
-    global _PERSISTENCE_HEALTH
+    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
         with _db_connect() as connection:
@@ -262,6 +273,7 @@ def _persist(
             os.fsync(handle.fileno())
         os.replace(temporary, _PATH)
         _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_READY_PATH = os.path.abspath(_PATH)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

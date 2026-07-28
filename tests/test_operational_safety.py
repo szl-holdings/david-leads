@@ -242,6 +242,23 @@ class OpportunityDeskSafety(unittest.TestCase):
                 self.assertTrue(dealdesk.persistence_configured())
                 self.assertFalse(dealdesk.persistence_ready())
 
+    def test_persistence_probe_replaces_the_configured_target_with_identical_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            original = b'{"existing":{"stage":"REVIEW"}}'
+            store.write_bytes(original)
+            real_replace = dealdesk.os.replace
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READABLE"),
+                patch.object(dealdesk.os, "replace", wraps=real_replace) as replace,
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+            replace.assert_called_once()
+            self.assertEqual(Path(replace.call_args.args[1]), store)
+            self.assertEqual(store.read_bytes(), original)
+
     def test_database_state_preserves_runtime_health(self):
         with (
             patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
@@ -588,6 +605,33 @@ class ApiSafety(unittest.TestCase):
             [call.args[1] for call in connection_type.call_args_list],
             ["2001:4860:4860::8888", "93.184.216.34"],
         )
+
+    def test_webhook_address_failover_shares_one_total_timeout(self):
+        parsed = self.server.urllib.parse.urlparse("https://crm.example.com/import")
+        failed = mock.Mock()
+        failed.connect.side_effect = TimeoutError("first address timed out")
+
+        with (
+            patch.object(
+                self.server,
+                "_PinnedHTTPSConnection",
+                return_value=failed,
+            ) as connection_type,
+            patch.object(
+                self.server.time,
+                "monotonic",
+                side_effect=[100.0, 100.0, 108.1],
+            ),
+        ):
+            with self.assertRaisesRegex(TimeoutError, "first address timed out"):
+                self.server._post_validated_webhook(
+                    parsed,
+                    "crm.example.com",
+                    ("2001:4860:4860::8888", "93.184.216.34"),
+                    b"{}",
+                )
+
+        connection_type.assert_called_once()
 
     def test_health_and_readiness_fail_closed_for_auth_and_persistence(self):
         with (
