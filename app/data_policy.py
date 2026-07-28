@@ -127,6 +127,53 @@ OFFICIAL_GUIDANCE = [
     },
 ]
 
+IMPLEMENTED_FRONTIERS = [
+    {
+        "id": "fmcsa-company-census",
+        "status": "LIVE_ENTITY_FIELDS_ONLY",
+        "purpose": "Recent carrier-entity additions for owner-continuity and workforce research.",
+        "excluded_fields": [
+            "phone",
+            "email",
+            "named officers",
+            "crash and safety fields",
+            "insurance and policy fields",
+        ],
+    },
+    {
+        "id": "usaspending-contract-activity",
+        "status": "LIVE_ENTITY_FIELDS_ONLY",
+        "purpose": "Recent federal contract activity for capacity and continuity research.",
+        "excluded_claims": [
+            "new award unless action history is verified",
+            "award amount as revenue or cash flow",
+            "award activity as proof of insurability or a coverage gap",
+        ],
+    },
+]
+
+DEFERRED_FRONTIERS = [
+    {
+        "id": "faa-aircraft-registry",
+        "status": "PRIVACY_REVIEW_REQUIRED",
+        "reason": (
+            "The daily bulk file mixes corporate and individual ownership and now supports "
+            "owner-information withholding. No ingestion until corporate-only minimization "
+            "and deletion handling are approved."
+        ),
+    },
+    {
+        "id": "sam-gov-entities-opportunities",
+        "status": "KEY_AND_TERMS_REVIEW_REQUIRED",
+        "reason": "Use only through the documented API with an approved key and field-purpose map.",
+    },
+    {
+        "id": "social-profiles",
+        "status": "PROHIBITED_BY_DEFAULT",
+        "reason": "Use approved lead forms, ads, APIs, or human research; do not scrape member profiles.",
+    },
+]
+
 
 def policy_document() -> dict:
     return {
@@ -135,6 +182,8 @@ def policy_document() -> dict:
         "purpose": "Entity-level B2B prospecting and first-party broker workflow; not underwriting or consumer profiling.",
         "source_classes": SOURCE_CLASSES,
         "outreach_gates": OUTREACH_GATES,
+        "implemented_frontiers": IMPLEMENTED_FRONTIERS,
+        "deferred_frontiers": DEFERRED_FRONTIERS,
         "official_guidance": OFFICIAL_GUIDANCE,
         "legal_status": "OPERATIONAL_GUARDRAIL_NOT_LEGAL_ADVICE",
         "counsel_review_required_for": [

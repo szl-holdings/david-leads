@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-# © 2026 SZL Holdings — David Leads · Real Callable Leads (compliant, public records)
+# © 2026 SZL Holdings — David Leads · Public B2B Research Records
 """
-real_leads.py — REAL, callable B2B prospects pulled LIVE from public state portals.
+real_leads.py — live B2B research records pulled from public state portals.
 
 HARD DOCTRINE (SZL governed-AI · honest by design):
   * PUBLIC data only. B2B public business/license records ONLY — new business owners and
     newly-licensed professionals from official state open-data portals.
   * NEVER private individuals' personal cell/home numbers. NEVER social-media scraping.
     NEVER fabricated names or numbers.
-  * Every real record carries its public source citation + a signed receipt (public signals,
-    fabricated=0). David does his own compliant outreach (no auto-dialing).
+  * Every real record carries its public source citation + an evidence receipt. The record
+    remains research-only until the separate execution-time contact gate is cleared.
   * If a portal is unreachable, that source degrades to a clearly-labelled [SAMPLE] — never faked.
 
 Sources (no API key required):

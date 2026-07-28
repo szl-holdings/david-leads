@@ -435,6 +435,14 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 /* Real Prospects panel — public B2B records (separate from illustrative leads) */
 #realCard{display:none;margin-bottom:22px}
 #realCard.show{display:block}
+#frontierCard{display:none;margin-bottom:22px}
+#frontierCard.show{display:block}
+.frontier-badge{display:inline-flex;align-items:center;width:max-content;border-radius:999px;padding:3px 8px;
+  font-size:9px;font-weight:900;letter-spacing:.06em;background:rgba(92,196,191,.12);color:#6fe6cf;
+  border:1px solid rgba(92,196,191,.28)}
+.frontier-signal{font-size:11px;line-height:1.45;color:var(--ink);padding:9px 10px;
+  border:1px solid rgba(92,196,191,.18);background:rgba(92,196,191,.05);border-radius:8px}
+.frontier-limit{font-size:10.5px;line-height:1.4;color:var(--muted);padding-top:8px;border-top:1px solid var(--line)}
 .real-banner{margin:0 18px 12px;padding:11px 14px;background:rgba(215,185,107,.12);border:1px solid rgba(215,185,107,.4);border-left:4px solid var(--gold);border-radius:10px;font-size:12px;color:#e7c987;line-height:1.5}
 .real-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 18px 12px}
 .real-states{font-size:12px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:6px}
@@ -578,6 +586,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Coverage Map</button>
       <button class="btn ghost" id="btnSurge" onclick="openSurge()">📈 Rising Areas</button>
       <button class="btn ghost" id="btnReal" onclick="openRealLeads()">Opportunity Desk</button>
+      <button class="btn ghost" id="btnFrontier" onclick="openFrontiers()">Frontier Radar</button>
       <details class="tool-menu">
         <summary>More tools ▾</summary>
         <div class="tool-menu-panel">
@@ -675,7 +684,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       <div id="taxBody"><div style="padding:20px;color:var(--muted)">Loading IRS tax-territory data…</div></div>
     </div>
 
-    <!-- Real Callable Leads — public B2B business & license records (SEPARATE from illustrative leads) -->
+    <!-- Public B2B research records (separate from illustrative modeled leads) -->
     <div class="card" id="realCard">
       <h3>Opportunity Desk — Public B2B Research Queue <span class="sec-title-meta" id="realMeta"></span></h3>
       <div class="real-banner" id="realBanner">
@@ -693,6 +702,26 @@ footer.legal a:hover{color:var(--ink, #ddd)}
       </div>
       <div class="desk-summary" id="deskSummary"></div>
       <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
+    </div>
+
+    <div class="card" id="frontierCard">
+      <h3>Frontier Radar — Official Growth &amp; Operations Signals <span class="sec-title-meta" id="frontierMeta"></span></h3>
+      <div class="real-banner">
+        FMCSA carrier additions and USAspending contract activity are converted into
+        <strong>entity-level research packets</strong>. David Leads does not request or retain
+        phone, email, named officer, crash, safety-rating, insurance, or policy fields. Contract
+        activity may be a modification to an existing award and is never labeled a new deal
+        without a verified action history.
+      </div>
+      <div class="real-tools">
+        <label class="real-states">States:
+          <input type="text" id="frontierStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
+        </label>
+        <button class="btn ghost" id="frontierReload" onclick="loadFrontiers()">↻ Refresh</button>
+        <span class="hint" id="frontierHint" style="margin-left:auto"></span>
+      </div>
+      <div class="desk-summary" id="frontierSummary"></div>
+      <div id="frontierBody"><div style="padding:20px;color:var(--muted)">Loading official frontier signals…</div></div>
     </div>
 
     <div class="card" id="policyCard" style="display:none;margin-bottom:22px">
