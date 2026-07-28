@@ -75,11 +75,15 @@ Do not commit credentials or paste them into issues, pull requests, chat, or mod
 
 ## Source and deployment
 
-- GitHub source of record: private repository `szl-holdings/david-leads`
+- GitHub source of record: public Apache-2.0 repository
+  [`szl-holdings/david-leads`](https://github.com/szl-holdings/david-leads)
 - Hugging Face runtime: [SZLHOLDINGS/david-leads](https://huggingface.co/spaces/SZLHOLDINGS/david-leads)
 - Estate command center: [a-11-oy.com](https://a-11-oy.com)
 - Hugging Face organization: [SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
 - GitHub organization: [szl-holdings](https://github.com/szl-holdings)
+
+The publication boundary and its verification record are documented in
+[`PUBLICATION_READINESS.md`](PUBLICATION_READINESS.md).
 
 The GitHub workflow derives the deployed file set from the Dockerfile and performs a post-build
 content comparison. A GitHub merge is not a live deployment until that deployment and verification

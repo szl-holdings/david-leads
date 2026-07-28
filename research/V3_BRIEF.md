@@ -3,7 +3,7 @@
 ## Context
 Live app for David Abraham (NYL financial professional). Already deployed:
 - HF Space: SZLHOLDINGS/david-leads (https://szlholdings-david-leads.hf.space)
-- GitHub: szl-holdings/david-leads (private)
+- GitHub: szl-holdings/david-leads (public, Apache-2.0)
 - Local source: /home/user/workspace/david-leads/app/  (server.py, signals.py, scoring.py, receipts.py, static/index.html, static/app.js)
 
 Current endpoints: /healthz, /api/login, /api/run, /api/territory, /api/leads, /api/receipt/{id}, /api/verify/{id}
