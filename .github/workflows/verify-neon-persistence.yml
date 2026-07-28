@@ -107,7 +107,7 @@ jobs:
                       "WHERE schema_name = %s",
                       ("dealdesk",),
                   )
-                  if cursor.fetchone() != (1,):
+                  if cursor.fetchone() != (2,):
                       raise RuntimeError("unsupported schema version")
                   cursor.execute(
                       "SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1"

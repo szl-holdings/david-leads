@@ -204,7 +204,7 @@ jobs:
                           "WHERE schema_name = %s",
                           ("dealdesk",),
                       )
-                      if cursor.fetchone() != (1,):
+                      if cursor.fetchone() != (2,):
                           raise RuntimeError("unsupported schema version")
           except Exception:
               raise SystemExit("versioned Neon schema migration failed")

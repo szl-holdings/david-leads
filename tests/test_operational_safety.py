@@ -78,7 +78,7 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("name: david-space-credential-rotation", workflow)
         self.assertIn("SET TRANSACTION READ ONLY", workflow)
         self.assertIn("david_dealdesk_schema", workflow)
-        self.assertIn("cursor.fetchone() != (1,)", workflow)
+        self.assertIn("cursor.fetchone() != (2,)", workflow)
         self.assertIn("credential_values_recorded", workflow)
         self.assertNotIn("type(exc).__name__", workflow)
 
@@ -574,7 +574,13 @@ class OpportunityDeskSafety(unittest.TestCase):
             dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
 
     def test_do_not_call_alias_survives_when_later_source_omits_official_id(self):
-        identified = {**self.record, "credential": "USDOT 1234567"}
+        identified = {
+            **self.record,
+            "credential": "USDOT 1234567",
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
         opportunity = dealdesk.board([identified])["opportunities"][0]
         researched = self._research(opportunity["opportunity_id"])
         self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
@@ -590,6 +596,32 @@ class OpportunityDeskSafety(unittest.TestCase):
             "citation": {"url": "https://another.gov/new-signal/99"},
         }
         observed = dealdesk.board([later])["opportunities"][0]
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertFalse(observed["call_ready"])
+
+    def test_authoritative_id_suppression_survives_a_legal_name_change(self):
+        identified = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        opportunity = dealdesk.board([identified])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        renamed = {
+            **identified,
+            "name": "Renamed Carrier Holdings LLC",
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        observed = dealdesk.board([renamed])["opportunities"][0]
         self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
         self.assertFalse(observed["call_ready"])
 
@@ -697,7 +729,26 @@ class PersistenceContractSafety(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_schema", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_state", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_events", schema)
-        self.assertIn("VALUES ('dealdesk', 1)", schema)
+        self.assertIn("VALUES ('dealdesk', 2)", schema)
+        self.assertIn("ADD CONSTRAINT david_dealdesk_state_version_check", schema)
+        self.assertIn("VALIDATE CONSTRAINT david_dealdesk_state_version_check", schema)
+        self.assertEqual(dealdesk._SCHEMA_VERSION, 2)
+        self.assertLess(
+            schema.index("DROP CONSTRAINT IF EXISTS david_dealdesk_state_version_check"),
+            schema.index("ADD CONSTRAINT david_dealdesk_state_version_check"),
+        )
+        self.assertLess(
+            schema.index("VALIDATE CONSTRAINT david_dealdesk_state_version_check"),
+            schema.index("VALUES ('dealdesk', 2)"),
+        )
+        migrate = (
+            ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        verify = (
+            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("cursor.fetchone() != (2,)", migrate)
+        self.assertIn("cursor.fetchone() != (2,)", verify)
         source = (ROOT / "app" / "dealdesk.py").read_text(encoding="utf-8")
         self.assertNotIn("CREATE TABLE", source)
         self.assertNotIn("CREATE INDEX", source)
@@ -772,6 +823,22 @@ class PersistenceContractSafety(unittest.TestCase):
         constraint_cursor.fetchall.side_effect = unexpected_constraint
         with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
             dealdesk._assert_schema_contract(constraint_cursor)
+
+        predecessor_contract = self._compatible_schema_results()
+        predecessor_contract[2] = [
+            constraint
+            for constraint in predecessor_contract[2]
+            if constraint != (
+                "david_dealdesk_state",
+                "c",
+                "CHECK (version > 0)",
+            )
+        ]
+        predecessor_cursor = mock.MagicMock()
+        predecessor_cursor.fetchone.return_value = (dealdesk._SCHEMA_VERSION,)
+        predecessor_cursor.fetchall.side_effect = predecessor_contract
+        with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
+            dealdesk._assert_schema_contract(predecessor_cursor)
 
     def test_ready_probe_periodically_revalidates_schema_drift(self):
         dealdesk._DATABASE_URL = "postgresql://configured"

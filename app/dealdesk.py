@@ -87,14 +87,25 @@ _PATH = os.environ.get("DAVID_DEAL_DESK_PATH")
 _DATABASE_URL = os.environ.get("DAVID_DATABASE_URL")
 _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
-_SCHEMA_VERSION = 1
-_SUBJECT_IDENTIFIER_KEYS = (
-    "license_number",
-    "usdot_number",
-    "uei",
-    "cage_code",
-    "entity_number",
-)
+_SCHEMA_VERSION = 2
+_SUBJECT_IDENTIFIER_KEYS = {
+    "license_number": "license_number",
+    "usdot_number": "usdot",
+    "uei": "uei",
+    "cage_code": "cage",
+    "entity_number": "entity_number",
+}
+_AUTHORITATIVE_IDENTIFIER_SYSTEMS = {
+    "cage": "cage",
+    "cage code": "cage",
+    "epa frs": "epa_frs",
+    "epa_frs": "epa_frs",
+    "entity_number": "entity_number",
+    "frs": "epa_frs",
+    "license_number": "license_number",
+    "uei": "uei",
+    "usdot": "usdot",
+}
 _SCHEMA_COLUMNS = {
     ("david_dealdesk_schema", "schema_name"): ("text", "NO"),
     ("david_dealdesk_schema", "schema_version"): ("int4", "NO"),
@@ -221,12 +232,42 @@ def opportunity_id(record: dict[str, Any]) -> str:
     return "opp_" + hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    identifiers = [
+        (system, _clean(record.get(key), 160))
+        for key, system in _SUBJECT_IDENTIFIER_KEYS.items()
+        if _clean(record.get(key), 160)
+    ]
+    emitted = record.get("authoritative_entity_ids")
+    if isinstance(emitted, list):
+        for item in emitted:
+            if not isinstance(item, dict):
+                continue
+            system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS.get(
+                _clean(item.get("system"), 80).lower()
+            )
+            value = _clean(item.get("value"), 160)
+            if system and value:
+                identifiers.append((system, value))
+    credential = _clean(record.get("credential"), 200)
+    match = re.fullmatch(r"(USDOT|UEI|CAGE|FRS)\s+(.+)", credential, re.IGNORECASE)
+    if match:
+        system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS[match.group(1).lower()]
+        identifiers.append((system, _clean(match.group(2), 160)))
+    return tuple(
+        dict.fromkeys(
+            (system, value.lower())
+            for system, value in identifiers
+            if value
+        )
+    )
+
+
 def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     """Stable business aliases used for irreversible contact suppression."""
     identities = [
-        {"official": f"{key}:{_clean(record.get(key), 160).lower()}"}
-        for key in _SUBJECT_IDENTIFIER_KEYS
-        if _clean(record.get(key), 160)
+        {"official": f"{system}:{value}"}
+        for system, value in _official_identifiers(record)
     ]
     name = _clean(record.get("name"), 240).lower()
     state = _clean(record.get("state"), 16).upper()
@@ -244,12 +285,14 @@ def subject_id(record: dict[str, Any]) -> str:
     return subject_ids(record)[0]
 
 
-def _subject_identity(record: dict[str, Any]) -> dict[str, str] | None:
-    identity = {
-        key: _clean(record.get(key), 160)
-        for key in _SUBJECT_IDENTIFIER_KEYS
-        if _clean(record.get(key), 160)
-    }
+def _subject_identity(record: dict[str, Any]) -> dict[str, Any] | None:
+    identity: dict[str, Any] = {}
+    official = _official_identifiers(record)
+    if official:
+        identity["authoritative_entity_ids"] = [
+            {"system": system, "value": value}
+            for system, value in official
+        ]
     name = _clean(record.get("name"), 240)
     if name:
         identity["name"] = name
