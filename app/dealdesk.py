@@ -225,9 +225,32 @@ def subject_id(record: dict[str, Any]) -> str:
     return subject_ids(record)[0]
 
 
+def _legacy_unnamed_subject_id(record: dict[str, Any]) -> str | None:
+    """Return the pre-scoping alias only for records that lacked an identity."""
+    official_keys = (
+        "license_number",
+        "usdot_number",
+        "uei",
+        "cage_code",
+        "entity_number",
+    )
+    if _clean(record.get("name"), 240) or any(
+        _clean(record.get(key), 160) for key in official_keys
+    ):
+        return None
+    identity = {
+        "name": "",
+        "state": _clean(record.get("state"), 16).upper(),
+    }
+    raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
+
+
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
-    for saved in _STATE.values():
+    current_opportunity_id = opportunity_id(record)
+    legacy_id = _legacy_unnamed_subject_id(record)
+    for saved_opportunity_id, saved in _STATE.items():
         suppression = saved.get("suppression")
         if not isinstance(suppression, dict) or suppression.get("active") is not True:
             continue
@@ -235,6 +258,12 @@ def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
         if suppression.get("subject_id"):
             suppressed_ids.add(str(suppression["subject_id"]))
         if stable_ids.intersection(suppressed_ids):
+            return suppression
+        if (
+            legacy_id
+            and saved_opportunity_id == current_opportunity_id
+            and legacy_id in suppressed_ids
+        ):
             return suppression
     return None
 
