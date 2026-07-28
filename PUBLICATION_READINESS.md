@@ -27,9 +27,11 @@ The credential-remediation and governed broker-desk release was observed on
 - Protected Neon preflight run `30388377093` verified the encrypted connection,
   schema read, transactional writes, and rollback without recording the
   database credential.
-- A non-displaying administrator-vault flow verified replacement production
-  login, protected Frontier Radar access, and logout. No factor was printed or
-  recorded.
+- A non-displaying administrator-vault flow was reported to have verified
+  replacement production login, protected Frontier Radar access, and logout.
+  No secret-free immutable receipt is referenced by this record, so that
+  administrator-login evidence remains `UNVERIFIED`; no credential factor is
+  included here.
 
 This readiness record is itself part of the Docker-copied governance bundle.
 Every later merge must complete a fresh exact-source deployment and live probe;
@@ -61,10 +63,17 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Replacement application and database credentials are held only in the approved
-local administrator vault and as write-only Hugging Face Space secrets.
-GitHub repository secrets contain only the scoped Hugging Face deployment token;
-GitHub Actions cannot read or mutate the application or database credentials.
+Production application and database values are governed through the approved
+local administrator vault and write-only Hugging Face Space secret interfaces.
+Historical Neon preflight run `30388377093` read `DAVID_DATABASE_URL` from a
+scoped GitHub Actions repository secret to verify schema reads, transactional
+writes, and rollback; the credential value was not included in its evidence.
+The current deployment workflow receives only the scoped Hugging Face token, and
+the former GitHub workflow that rotated application and database values has been
+removed. The current GitHub repository-secret inventory was not inspected for
+this record and remains `UNVERIFIED`; this record does not claim that every
+present or future Actions workflow can never read a separately scoped
+credential.
 Rotation is a local, non-displaying administrator operation documented in
 `ops/credential-rotation.md`.
 
