@@ -133,6 +133,23 @@ class PublicCredentialSafety(unittest.TestCase):
                 hits.add(str(path.relative_to(ROOT)))
         self.assertEqual(sorted(hits), [])
 
+    def test_frontend_exposes_call_sheet_only_for_phone_ready_records(self):
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertEqual(
+            javascript.count(
+                '${l.phone_call_ready ? `<button class="real-verify workflow ready" '
+                'onclick="openCallSheet'
+            ),
+            2,
+        )
+        self.assertEqual(
+            javascript.count(
+                '${l.call_ready ? `<button class="real-verify workflow" '
+                'onclick="openDispositionModal'
+            ),
+            2,
+        )
+
 
 class ContactPermissionTruth(unittest.TestCase):
     def test_public_record_defaults_to_not_evaluated(self):
@@ -366,6 +383,7 @@ class OpportunityDeskSafety(unittest.TestCase):
             researched["channels"][0]["channel_id"],
         )
         self.assertTrue(updated["call_ready"])
+        self.assertTrue(updated["phone_call_ready"])
         self.assertEqual(updated["contact_gate"], "TIME_LIMITED_CLEARANCE")
         self.assertRegex(updated["clearance"]["clearance_receipt"], r"^clr_[0-9a-f]{24}$")
 
@@ -427,6 +445,91 @@ class OpportunityDeskSafety(unittest.TestCase):
         diagnostic = dealdesk._classify_database_error(error)
         self.assertEqual(diagnostic, "CONNECTION_TIMEOUT")
         self.assertNotIn(secret_host, diagnostic)
+
+    def test_postgres_write_failure_downgrades_health_and_sanitizes_error(self):
+        private_detail = "timeout while connecting to private-db.example.invalid"
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_READY"),
+            patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+            patch.object(dealdesk, "_db_connect", side_effect=RuntimeError(private_detail)),
+        ):
+            with self.assertRaisesRegex(
+                dealdesk.PersistenceUnavailable,
+                "^deal-desk persistence is unavailable$",
+            ) as raised:
+                dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+            self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
+            self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "CONNECTION_TIMEOUT")
+        self.assertNotIn("private-db", str(raised.exception))
+
+    def test_file_write_failure_downgrades_health_and_sanitizes_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk.os, "replace", side_effect=OSError("private path")),
+            ):
+                with self.assertRaisesRegex(
+                    dealdesk.PersistenceUnavailable,
+                    "^deal-desk persistence is unavailable$",
+                ) as raised:
+                    dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "FILE_UNAVAILABLE")
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+                self.assertIsNone(dealdesk._PERSISTENCE_READY_PATH)
+            self.assertNotIn("private path", str(raised.exception))
+
+    def test_file_temp_creation_failure_is_sanitized_and_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk, "_PERSISTENCE_READY_PATH", str(store)),
+                patch.object(
+                    dealdesk.tempfile,
+                    "mkstemp",
+                    side_effect=OSError(f"cannot create {store}"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    dealdesk.PersistenceUnavailable,
+                    "^deal-desk persistence is unavailable$",
+                ) as raised:
+                    dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "FILE_UNAVAILABLE")
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+                self.assertIsNone(dealdesk._PERSISTENCE_READY_PATH)
+            self.assertNotIn(str(store), str(raised.exception))
+
+    def test_file_persistence_recovers_to_ready_with_ok_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk, "_PERSISTENCE_READY_PATH", str(store)),
+            ):
+                with patch.object(
+                    dealdesk.os,
+                    "replace",
+                    side_effect=OSError("temporary write failure"),
+                ):
+                    with self.assertRaises(dealdesk.PersistenceUnavailable):
+                        dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+
+                dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+                self.assertEqual(dealdesk.persistence_diagnostic(), "OK")
 
     def test_current_default_block_revokes_stale_prior_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
@@ -701,10 +804,19 @@ class OpportunityDeskSafety(unittest.TestCase):
             source_url="https://examplelogistics.com/contact",
             publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
         )
-        self._clear(
+        cleared = self._clear(
             opportunity["opportunity_id"],
             researched["channels"][0]["channel_id"],
         )
+        self.assertTrue(cleared["call_ready"])
+        self.assertFalse(cleared["phone_call_ready"])
+        self.assertIn("phone call sheet remains locked", cleared["next_action"])
+        exported = {
+            row["opportunity_id"]: row
+            for row in dealdesk.export_rows()
+        }[opportunity["opportunity_id"]]
+        self.assertTrue(exported["call_ready"])
+        self.assertFalse(exported["phone_call_ready"])
         with self.assertRaisesRegex(ValueError, "business phone"):
             dealdesk.call_sheet(opportunity["opportunity_id"])
 
@@ -963,6 +1075,28 @@ class ApiSafety(unittest.TestCase):
             response = self.client.get("/api/deal-desk", headers=self.headers)
         self.assertEqual(response.status_code, 503)
         self.assertIn("DAVID_DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_write_failure_returns_sanitized_service_unavailable(self):
+        with (
+            patch.object(self.server.dd, "persistence_ready", return_value=True),
+            patch.object(
+                self.server.dd,
+                "update",
+                side_effect=self.server.dd.PersistenceUnavailable(
+                    "deal-desk persistence is unavailable"
+                ),
+            ),
+        ):
+            response = self.client.post(
+                "/api/deal-desk/opp_example",
+                headers=self.headers,
+                json={"stage": "RESEARCH", "actor": "David"},
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            "deal-desk persistence is unavailable",
+        )
 
     def test_build_info_is_explicitly_unverified_until_external_compare(self):
         response = self.client.get("/api/build-info")

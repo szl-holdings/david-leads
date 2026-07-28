@@ -937,8 +937,8 @@ async function loadRealLeads() {
       const workflowButtons = `
         <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','real')">Research channel</button>
         ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','real')">Clear 24h</button>` : ""}
-        ${l.call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>
-          <button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','real')">Outcome</button>` : ""}`;
+        ${l.phone_call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>` : ""}
+        ${l.call_ready ? `<button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','real')">Outcome</button>` : ""}`;
       return `<article class="opp-card">
         <div class="opp-head">
           <div><div class="real-name">${escHtml(l.name)}</div>
@@ -1033,8 +1033,8 @@ async function loadFrontiers() {
       const workflowButtons = `
         <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','frontier')">Research channel</button>
         ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','frontier')">Clear 24h</button>` : ""}
-        ${l.call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>
-          <button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','frontier')">Outcome</button>` : ""}`;
+        ${l.phone_call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>` : ""}
+        ${l.call_ready ? `<button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','frontier')">Outcome</button>` : ""}`;
       return `<article class="opp-card">
         <span class="frontier-badge">${escHtml(l.source_frontier || "OFFICIAL FRONTIER")}</span>
         <div class="opp-head">

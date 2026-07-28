@@ -1239,7 +1239,10 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
             _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
         lead.pop("_account_id", None)
         clean.append(lead)
-    board = dd.board(clean)
+    try:
+        board = dd.board(clean)
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
     _STATE["deal_desk"] = board
@@ -1275,7 +1278,10 @@ def frontier_desk(
         if isinstance(receipt, dict) and receipt.get("id"):
             _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
         clean.append(lead)
-    board = dd.board(clean)
+    try:
+        board = dd.board(clean)
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
     board["states"] = source.get("states", state_list)
@@ -1311,6 +1317,8 @@ def update_deal_desk(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     return {"ok": True, "opportunity": opportunity}
 
 
@@ -1339,6 +1347,8 @@ def record_deal_desk_research(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     return {"ok": True, "opportunity": opportunity}
 
 
@@ -1372,6 +1382,8 @@ def record_deal_desk_clearance(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     return {"ok": True, "opportunity": opportunity}
 
 
@@ -1391,6 +1403,8 @@ def get_deal_desk_call_sheet(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(423, str(exc)) from exc
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
 
 
 @app.post("/api/deal-desk/{opportunity_id}/disposition")
@@ -1416,6 +1430,8 @@ def record_deal_desk_disposition(
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     return {"ok": True, "opportunity": opportunity}
 
 
@@ -1431,10 +1447,14 @@ def export_deal_desk(authorization: str | None = Header(default=None)):
         raise HTTPException(503, "opportunity desk unavailable")
     if not dd.persistence_ready():
         raise HTTPException(503, "deal desk persistence is unavailable")
-    rows = dd.export_rows()
+    try:
+        rows = dd.export_rows()
+    except dd.PersistenceUnavailable as exc:
+        raise HTTPException(503, str(exc)) from None
     fields = list(rows[0]) if rows else [
         "opportunity_id", "business_name", "state", "source_frontier", "observed_trigger",
-        "trigger_date", "stage", "priority", "contact_gate", "call_ready", "next_action",
+        "trigger_date", "stage", "priority", "contact_gate", "call_ready",
+        "phone_call_ready", "next_action",
         "source_url", "business_channel_type", "business_channel", "clearance_expires_at",
         "not_for_underwriting",
     ]
