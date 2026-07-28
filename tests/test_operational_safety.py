@@ -849,6 +849,10 @@ class PersistenceContractSafety(unittest.TestCase):
         cursor.fetchall.side_effect = self._compatible_schema_results()
 
         dealdesk._assert_schema_contract(cursor)
+        primary_key_query = cursor.execute.call_args_list[2].args[0]
+        self.assertIn("pg_catalog.pg_index", primary_key_query)
+        self.assertIn("index_meta.indisprimary", primary_key_query)
+        self.assertNotIn("information_schema.table_constraints", primary_key_query)
 
         incomplete = self._compatible_schema_results()
         incomplete[0] = [

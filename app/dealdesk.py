@@ -458,16 +458,25 @@ def _assert_schema_contract(cursor: Any) -> None:
 
     cursor.execute(
         """
-        SELECT constraints.table_name, columns.column_name, columns.ordinal_position
-        FROM information_schema.table_constraints AS constraints
-        JOIN information_schema.key_column_usage AS columns
-          ON columns.constraint_schema = constraints.constraint_schema
-         AND columns.constraint_name = constraints.constraint_name
-         AND columns.table_name = constraints.table_name
-        WHERE constraints.table_schema = current_schema()
-          AND constraints.constraint_type = 'PRIMARY KEY'
-          AND constraints.table_name IN (%s, %s, %s)
-        ORDER BY constraints.table_name, columns.ordinal_position
+        SELECT
+            table_relation.relname,
+            table_attribute.attname,
+            key_column.ordinality
+        FROM pg_catalog.pg_index AS index_meta
+        JOIN pg_catalog.pg_class AS table_relation
+          ON table_relation.oid = index_meta.indrelid
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = table_relation.relnamespace
+        JOIN LATERAL unnest(index_meta.indkey)
+          WITH ORDINALITY AS key_column(attribute_number, ordinality)
+          ON true
+        JOIN pg_catalog.pg_attribute AS table_attribute
+          ON table_attribute.attrelid = table_relation.oid
+         AND table_attribute.attnum = key_column.attribute_number
+        WHERE namespace.nspname = current_schema()
+          AND index_meta.indisprimary
+          AND table_relation.relname IN (%s, %s, %s)
+        ORDER BY table_relation.relname, key_column.ordinality
         """,
         tuple(sorted(_SCHEMA_PRIMARY_KEYS)),
     )
