@@ -88,8 +88,13 @@ _PERSISTENCE_RETRY_SECONDS = max(
     5,
     int(os.environ.get("DAVID_DATABASE_RETRY_SECONDS", "15")),
 )
+_SCHEMA_VALIDATION_INTERVAL_SECONDS = max(
+    5,
+    int(os.environ.get("DAVID_DATABASE_SCHEMA_VALIDATION_SECONDS", "30")),
+)
 _PERSISTENCE_LOCK = threading.Lock()
 _LAST_PERSISTENCE_ATTEMPT = 0.0
+_LAST_SCHEMA_VALIDATION = 0.0
 _PERSISTENCE_DIAGNOSTIC = "NOT_CONFIGURED"
 _PERSISTENCE_HEALTH = (
     "POSTGRES_CONFIGURED"
@@ -258,10 +263,12 @@ def _validate_database_schema(connection: Any) -> None:
         ("david_dealdesk_events", "payload"): ("jsonb", "NO"),
         ("david_dealdesk_events", "created_at"): ("timestamptz", "NO"),
     }
-    expected_primary_keys = {
-        "david_dealdesk_state": ("opportunity_id",),
-        "david_dealdesk_events": ("event_id",),
-    }
+    expected_constraints = sorted(
+        [
+            ("david_dealdesk_events", "PRIMARY KEY", ("event_id",)),
+            ("david_dealdesk_state", "PRIMARY KEY", ("opportunity_id",)),
+        ]
+    )
     expected_index = (
         True,
         True,
@@ -274,7 +281,7 @@ def _validate_database_schema(connection: Any) -> None:
         "opportunity_id",
         "created_at",
     )
-    required_tables = set(expected_primary_keys)
+    required_tables = {table for table, _ in expected_columns}
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -290,20 +297,27 @@ def _validate_database_schema(connection: Any) -> None:
         column_rows = list(cursor.fetchall())
         cursor.execute(
             """
-            SELECT constraints.table_name, columns.column_name, columns.ordinal_position
+            SELECT
+                constraints.table_name,
+                constraints.constraint_name,
+                constraints.constraint_type,
+                columns.column_name,
+                columns.ordinal_position
             FROM information_schema.table_constraints AS constraints
-            JOIN information_schema.key_column_usage AS columns
+            LEFT JOIN information_schema.key_column_usage AS columns
               ON columns.constraint_schema = constraints.constraint_schema
              AND columns.constraint_name = constraints.constraint_name
              AND columns.table_name = constraints.table_name
             WHERE constraints.table_schema = current_schema()
-              AND constraints.constraint_type = 'PRIMARY KEY'
               AND constraints.table_name IN (%s, %s)
-            ORDER BY constraints.table_name, columns.ordinal_position
+            ORDER BY
+                constraints.table_name,
+                constraints.constraint_name,
+                columns.ordinal_position
             """,
             tuple(sorted(required_tables)),
         )
-        primary_key_rows = list(cursor.fetchall())
+        constraint_rows = list(cursor.fetchall())
         cursor.execute(
             """
             SELECT
@@ -353,18 +367,25 @@ def _validate_database_schema(connection: Any) -> None:
             "database schema columns are incompatible with this service"
         )
 
-    observed_primary_keys: dict[str, list[tuple[int, str]]] = {}
-    for table, column, position in primary_key_rows:
-        observed_primary_keys.setdefault(str(table), []).append(
-            (int(position), str(column))
+    observed_constraints: dict[
+        tuple[str, str, str], list[tuple[int, str]]
+    ] = {}
+    for table, name, constraint_type, column, position in constraint_rows:
+        key = (str(table), str(name), str(constraint_type))
+        observed_constraints.setdefault(key, [])
+        if column is not None and position is not None:
+            observed_constraints[key].append((int(position), str(column)))
+    normalized_constraints = sorted(
+        (
+            table,
+            constraint_type,
+            tuple(column for _, column in sorted(columns)),
         )
-    normalized_primary_keys = {
-        table: tuple(column for _, column in sorted(columns))
-        for table, columns in observed_primary_keys.items()
-    }
-    if normalized_primary_keys != expected_primary_keys:
+        for (table, _name, constraint_type), columns in observed_constraints.items()
+    )
+    if normalized_constraints != expected_constraints:
         raise _DatabaseSchemaIncompatible(
-            "database schema primary keys are incompatible with this service"
+            "database schema constraints are incompatible with this service"
         )
 
     if not index_rows:
@@ -411,6 +432,7 @@ def _read_database_rows(connection: Any) -> list[tuple[Any, Any]]:
 
 def _load() -> None:
     global _LAST_PERSISTENCE_ATTEMPT
+    global _LAST_SCHEMA_VALIDATION
     global _PERSISTENCE_DIAGNOSTIC
     global _PERSISTENCE_HEALTH
     if _DATABASE_URL:
@@ -432,6 +454,7 @@ def _load() -> None:
                         payload = json.loads(payload)
                     if isinstance(payload, dict):
                         _STATE[str(oid)] = payload
+            _LAST_SCHEMA_VALIDATION = time.monotonic()
             _PERSISTENCE_HEALTH = "POSTGRES_READY"
             _PERSISTENCE_DIAGNOSTIC = "OK"
         except Exception as exc:
@@ -455,18 +478,42 @@ def _load() -> None:
 
 
 def _recover_postgres_if_due() -> None:
-    if not _DATABASE_URL or _PERSISTENCE_HEALTH == "POSTGRES_READY":
+    global _LAST_PERSISTENCE_ATTEMPT
+    global _LAST_SCHEMA_VALIDATION
+    global _PERSISTENCE_DIAGNOSTIC
+    global _PERSISTENCE_HEALTH
+    if not _DATABASE_URL:
         return
-    if time.monotonic() - _LAST_PERSISTENCE_ATTEMPT < _PERSISTENCE_RETRY_SECONDS:
+    now = time.monotonic()
+    if _PERSISTENCE_HEALTH == "POSTGRES_READY":
+        if (
+            now - _LAST_SCHEMA_VALIDATION
+            < _SCHEMA_VALIDATION_INTERVAL_SECONDS
+        ):
+            return
+    elif now - _LAST_PERSISTENCE_ATTEMPT < _PERSISTENCE_RETRY_SECONDS:
         return
     if not _PERSISTENCE_LOCK.acquire(blocking=False):
         return
     try:
-        if (
-            _PERSISTENCE_HEALTH != "POSTGRES_READY"
-            and time.monotonic() - _LAST_PERSISTENCE_ATTEMPT
-            >= _PERSISTENCE_RETRY_SECONDS
-        ):
+        now = time.monotonic()
+        if _PERSISTENCE_HEALTH == "POSTGRES_READY":
+            if (
+                now - _LAST_SCHEMA_VALIDATION
+                < _SCHEMA_VALIDATION_INTERVAL_SECONDS
+            ):
+                return
+            _LAST_PERSISTENCE_ATTEMPT = now
+            try:
+                with _db_connect() as connection:
+                    _validate_database_schema(connection)
+            except Exception as exc:
+                _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+                _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+                return
+            _LAST_SCHEMA_VALIDATION = time.monotonic()
+            _PERSISTENCE_DIAGNOSTIC = "OK"
+        elif now - _LAST_PERSISTENCE_ATTEMPT >= _PERSISTENCE_RETRY_SECONDS:
             _load()
     finally:
         _PERSISTENCE_LOCK.release()
@@ -477,6 +524,7 @@ def _persist(
     event: dict[str, Any] | None = None,
 ) -> None:
     global _LAST_PERSISTENCE_ATTEMPT
+    global _LAST_SCHEMA_VALIDATION
     global _PERSISTENCE_DIAGNOSTIC
     global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     snapshot = _STATE if state is None else state
@@ -484,6 +532,8 @@ def _persist(
         _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
         try:
             with _db_connect() as connection:
+                _validate_database_schema(connection)
+                _LAST_SCHEMA_VALIDATION = time.monotonic()
                 with connection.cursor() as cursor:
                     for oid, payload in snapshot.items():
                         cursor.execute(

@@ -272,8 +272,20 @@ class OpportunityDeskSafety(unittest.TestCase):
                 ("david_dealdesk_state", "updated_at", "timestamptz", "NO"),
             ],
             [
-                ("david_dealdesk_events", "event_id", 1),
-                ("david_dealdesk_state", "opportunity_id", 1),
+                (
+                    "david_dealdesk_events",
+                    "david_dealdesk_events_pkey",
+                    "PRIMARY KEY",
+                    "event_id",
+                    1,
+                ),
+                (
+                    "david_dealdesk_state",
+                    "david_dealdesk_state_pkey",
+                    "PRIMARY KEY",
+                    "opportunity_id",
+                    1,
+                ),
             ],
             [
                 (
@@ -355,6 +367,24 @@ class OpportunityDeskSafety(unittest.TestCase):
         incompatible_cursor.fetchall.side_effect = incompatible
         with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
             dealdesk._validate_database_schema(incompatible_connection)
+
+        constrained = self._compatible_database_schema_results()
+        constrained[1].append(
+            (
+                "david_dealdesk_state",
+                "david_dealdesk_state_payload_check",
+                "CHECK",
+                None,
+                None,
+            )
+        )
+        constrained_connection = mock.MagicMock()
+        constrained_cursor = (
+            constrained_connection.cursor.return_value.__enter__.return_value
+        )
+        constrained_cursor.fetchall.side_effect = constrained
+        with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
+            dealdesk._validate_database_schema(constrained_connection)
 
     def test_database_load_requires_compatible_schema_without_ddl(self):
         connection = mock.MagicMock()
@@ -443,6 +473,49 @@ class OpportunityDeskSafety(unittest.TestCase):
         ensure.assert_not_called()
         self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
         self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "SCHEMA_INCOMPATIBLE")
+
+    def test_ready_postgres_periodically_revalidates_schema(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        incompatible = dealdesk._DatabaseSchemaIncompatible(
+            "unexpected database constraint"
+        )
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_READY"),
+            patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+            patch.object(dealdesk, "_LAST_SCHEMA_VALIDATION", 0.0),
+            patch.object(dealdesk, "_SCHEMA_VALIDATION_INTERVAL_SECONDS", 5),
+            patch.object(dealdesk.time, "monotonic", return_value=10.0),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(
+                dealdesk,
+                "_validate_database_schema",
+                side_effect=incompatible,
+            ) as validate,
+        ):
+            self.assertEqual(
+                dealdesk.persistence_state(),
+                "POSTGRES_UNAVAILABLE",
+            )
+            self.assertEqual(
+                dealdesk.persistence_diagnostic(),
+                "SCHEMA_INCOMPATIBLE",
+            )
+
+        validate.assert_called_once_with(connection)
+
+    def test_database_write_revalidates_schema_before_mutation(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_validate_database_schema") as validate,
+        ):
+            dealdesk._persist({})
+
+        validate.assert_called_once_with(connection)
 
     def test_database_write_failure_revokes_readiness_before_reraising(self):
         connection = mock.MagicMock()
