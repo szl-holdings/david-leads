@@ -299,6 +299,41 @@ class OpportunityDeskSafety(unittest.TestCase):
             self.assertEqual(dealdesk.persistence_state(), "POSTGRES_UNAVAILABLE")
             self.assertFalse(dealdesk.persistence_ready())
 
+    @staticmethod
+    def _compatible_database_schema_results():
+        return [
+            [
+                ("david_dealdesk_events", "event_id", "text", "NO"),
+                ("david_dealdesk_events", "opportunity_id", "text", "NO"),
+                ("david_dealdesk_events", "event_type", "text", "NO"),
+                ("david_dealdesk_events", "actor", "text", "NO"),
+                ("david_dealdesk_events", "payload", "jsonb", "NO"),
+                ("david_dealdesk_events", "created_at", "timestamptz", "NO"),
+                ("david_dealdesk_state", "opportunity_id", "text", "NO"),
+                ("david_dealdesk_state", "payload", "jsonb", "NO"),
+                ("david_dealdesk_state", "version", "int8", "NO"),
+                ("david_dealdesk_state", "updated_at", "timestamptz", "NO"),
+            ],
+            [
+                ("david_dealdesk_events", "event_id", 1),
+                ("david_dealdesk_state", "opportunity_id", 1),
+            ],
+            [
+                (
+                    True,
+                    True,
+                    False,
+                    True,
+                    True,
+                    2,
+                    2,
+                    "btree",
+                    "opportunity_id",
+                    "created_at",
+                )
+            ],
+        ]
+
     def test_database_schema_bootstrap_is_fixed_and_idempotent(self):
         connection = mock.MagicMock()
         cursor = connection.cursor.return_value.__enter__.return_value
@@ -325,13 +360,53 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertNotIn("DROP ", " ".join(statements).upper())
         self.assertNotIn("ALTER ", " ".join(statements).upper())
 
-    def test_database_load_does_not_run_ddl_when_schema_exists(self):
+    def test_database_schema_validation_requires_complete_compatible_schema(self):
+        connection = mock.MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.side_effect = self._compatible_database_schema_results()
+
+        dealdesk._validate_database_schema(connection)
+
+        self.assertEqual(cursor.execute.call_count, 3)
+
+        incomplete = self._compatible_database_schema_results()
+        incomplete[0] = [
+            row for row in incomplete[0] if row[0] != "david_dealdesk_events"
+        ]
+        incomplete_connection = mock.MagicMock()
+        incomplete_cursor = (
+            incomplete_connection.cursor.return_value.__enter__.return_value
+        )
+        incomplete_cursor.fetchall.side_effect = incomplete
+        with self.assertRaises(dealdesk._DatabaseSchemaUnavailable):
+            dealdesk._validate_database_schema(incomplete_connection)
+
+        incompatible = self._compatible_database_schema_results()
+        incompatible[0] = [
+            (
+                table,
+                column,
+                "int4" if column == "version" else data_type,
+                nullable,
+            )
+            for table, column, data_type, nullable in incompatible[0]
+        ]
+        incompatible_connection = mock.MagicMock()
+        incompatible_cursor = (
+            incompatible_connection.cursor.return_value.__enter__.return_value
+        )
+        incompatible_cursor.fetchall.side_effect = incompatible
+        with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
+            dealdesk._validate_database_schema(incompatible_connection)
+
+    def test_database_load_requires_compatible_schema_without_ddl(self):
         connection = mock.MagicMock()
         connection.__enter__.return_value = connection
         with (
             patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
             patch.object(dealdesk, "_db_connect", return_value=connection),
             patch.object(dealdesk, "_read_database_rows", return_value=[]),
+            patch.object(dealdesk, "_validate_database_schema") as validate,
             patch.object(
                 dealdesk,
                 "_ensure_database_schema",
@@ -340,6 +415,7 @@ class OpportunityDeskSafety(unittest.TestCase):
             dealdesk._load()
 
         ensure.assert_not_called()
+        validate.assert_called_once_with(connection)
         self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
 
     def test_database_load_bootstraps_only_after_undefined_table(self):
@@ -356,14 +432,87 @@ class OpportunityDeskSafety(unittest.TestCase):
                     [],
                 ],
             ) as read,
+            patch.object(dealdesk, "_validate_database_schema") as validate,
             patch.object(dealdesk, "_ensure_database_schema") as ensure,
         ):
             dealdesk._load()
 
         connection.rollback.assert_called_once()
         ensure.assert_called_once_with(connection)
+        validate.assert_called_once_with(connection)
         self.assertEqual(read.call_count, 2)
         self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
+
+    def test_database_load_bootstraps_a_missing_governed_schema_object(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        unavailable = dealdesk._DatabaseSchemaUnavailable("events table missing")
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_read_database_rows", return_value=[]) as read,
+            patch.object(
+                dealdesk,
+                "_validate_database_schema",
+                side_effect=[unavailable, None],
+            ) as validate,
+            patch.object(dealdesk, "_ensure_database_schema") as ensure,
+        ):
+            dealdesk._load()
+
+        connection.rollback.assert_called_once()
+        ensure.assert_called_once_with(connection)
+        self.assertEqual(validate.call_count, 2)
+        self.assertEqual(read.call_count, 2)
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
+
+    def test_database_load_rejects_an_incompatible_existing_schema(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        incompatible = dealdesk._DatabaseSchemaIncompatible("wrong column type")
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_read_database_rows", return_value=[]),
+            patch.object(
+                dealdesk,
+                "_validate_database_schema",
+                side_effect=incompatible,
+            ),
+            patch.object(dealdesk, "_ensure_database_schema") as ensure,
+        ):
+            dealdesk._load()
+
+        ensure.assert_not_called()
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
+        self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "SCHEMA_INCOMPATIBLE")
+
+    def test_database_write_failure_revokes_readiness_before_reraising(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        connection.__exit__.return_value = False
+        cursor = connection.cursor.return_value.__enter__.return_value
+        failure = RuntimeError("durable write failed")
+        cursor.execute.side_effect = failure
+
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_READY"),
+            patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+        ):
+            with self.assertRaises(RuntimeError) as raised:
+                dealdesk._persist({"opp_example": {"stage": "REVIEW"}})
+
+            self.assertIs(raised.exception, failure)
+            self.assertEqual(
+                dealdesk._PERSISTENCE_HEALTH,
+                "POSTGRES_UNAVAILABLE",
+            )
+            self.assertEqual(
+                dealdesk._PERSISTENCE_DIAGNOSTIC,
+                "CONNECTION_UNAVAILABLE",
+            )
 
     def _research(self, oid):
         return dealdesk.record_research(

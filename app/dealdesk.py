@@ -203,6 +203,14 @@ def _db_connect():
     return psycopg.connect(_DATABASE_URL, connect_timeout=8)
 
 
+class _DatabaseSchemaUnavailable(RuntimeError):
+    pass
+
+
+class _DatabaseSchemaIncompatible(RuntimeError):
+    pass
+
+
 def _ensure_database_schema(connection: Any) -> None:
     """Create only the fixed, idempotent tables this service owns."""
     with connection.cursor() as cursor:
@@ -236,13 +244,156 @@ def _ensure_database_schema(connection: Any) -> None:
         )
 
 
+def _validate_database_schema(connection: Any) -> None:
+    """Require the complete fixed schema before advertising Postgres readiness."""
+    expected_columns = {
+        ("david_dealdesk_state", "opportunity_id"): ("text", "NO"),
+        ("david_dealdesk_state", "payload"): ("jsonb", "NO"),
+        ("david_dealdesk_state", "version"): ("int8", "NO"),
+        ("david_dealdesk_state", "updated_at"): ("timestamptz", "NO"),
+        ("david_dealdesk_events", "event_id"): ("text", "NO"),
+        ("david_dealdesk_events", "opportunity_id"): ("text", "NO"),
+        ("david_dealdesk_events", "event_type"): ("text", "NO"),
+        ("david_dealdesk_events", "actor"): ("text", "NO"),
+        ("david_dealdesk_events", "payload"): ("jsonb", "NO"),
+        ("david_dealdesk_events", "created_at"): ("timestamptz", "NO"),
+    }
+    expected_primary_keys = {
+        "david_dealdesk_state": ("opportunity_id",),
+        "david_dealdesk_events": ("event_id",),
+    }
+    expected_index = (
+        True,
+        True,
+        False,
+        True,
+        True,
+        2,
+        2,
+        "btree",
+        "opportunity_id",
+        "created_at",
+    )
+    required_tables = set(expected_primary_keys)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT table_name, column_name, udt_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name IN (%s, %s)
+            ORDER BY table_name, ordinal_position
+            """,
+            tuple(sorted(required_tables)),
+        )
+        column_rows = list(cursor.fetchall())
+        cursor.execute(
+            """
+            SELECT constraints.table_name, columns.column_name, columns.ordinal_position
+            FROM information_schema.table_constraints AS constraints
+            JOIN information_schema.key_column_usage AS columns
+              ON columns.constraint_schema = constraints.constraint_schema
+             AND columns.constraint_name = constraints.constraint_name
+             AND columns.table_name = constraints.table_name
+            WHERE constraints.table_schema = current_schema()
+              AND constraints.constraint_type = 'PRIMARY KEY'
+              AND constraints.table_name IN (%s, %s)
+            ORDER BY constraints.table_name, columns.ordinal_position
+            """,
+            tuple(sorted(required_tables)),
+        )
+        primary_key_rows = list(cursor.fetchall())
+        cursor.execute(
+            """
+            SELECT
+                index_meta.indisvalid,
+                index_meta.indisready,
+                index_meta.indisunique,
+                index_meta.indpred IS NULL,
+                index_meta.indexprs IS NULL,
+                index_meta.indnkeyatts,
+                index_meta.indnatts,
+                access_method.amname,
+                pg_get_indexdef(index_meta.indexrelid, 1, true),
+                pg_get_indexdef(index_meta.indexrelid, 2, true)
+            FROM pg_catalog.pg_index AS index_meta
+            JOIN pg_catalog.pg_class AS index_relation
+              ON index_relation.oid = index_meta.indexrelid
+            JOIN pg_catalog.pg_class AS table_relation
+              ON table_relation.oid = index_meta.indrelid
+            JOIN pg_catalog.pg_namespace AS namespace
+              ON namespace.oid = table_relation.relnamespace
+            JOIN pg_catalog.pg_am AS access_method
+              ON access_method.oid = index_relation.relam
+            WHERE namespace.nspname = current_schema()
+              AND table_relation.relname = %s
+              AND index_relation.relname = %s
+            """,
+            (
+                "david_dealdesk_events",
+                "david_dealdesk_events_opportunity_created_idx",
+            ),
+        )
+        index_rows = list(cursor.fetchall())
+
+    observed_tables = {str(row[0]) for row in column_rows}
+    missing_tables = required_tables - observed_tables
+    if missing_tables:
+        raise _DatabaseSchemaUnavailable(
+            "database schema is missing required service tables"
+        )
+
+    observed_columns = {
+        (str(table), str(column)): (str(data_type), str(nullable))
+        for table, column, data_type, nullable in column_rows
+    }
+    if observed_columns != expected_columns:
+        raise _DatabaseSchemaIncompatible(
+            "database schema columns are incompatible with this service"
+        )
+
+    observed_primary_keys: dict[str, list[tuple[int, str]]] = {}
+    for table, column, position in primary_key_rows:
+        observed_primary_keys.setdefault(str(table), []).append(
+            (int(position), str(column))
+        )
+    normalized_primary_keys = {
+        table: tuple(column for _, column in sorted(columns))
+        for table, columns in observed_primary_keys.items()
+    }
+    if normalized_primary_keys != expected_primary_keys:
+        raise _DatabaseSchemaIncompatible(
+            "database schema primary keys are incompatible with this service"
+        )
+
+    if not index_rows:
+        raise _DatabaseSchemaUnavailable(
+            "database schema is missing the required events index"
+        )
+    if len(index_rows) != 1 or tuple(index_rows[0]) != expected_index:
+        raise _DatabaseSchemaIncompatible(
+            "database events index is incompatible with this service"
+        )
+
+
 def _classify_database_error(exc: Exception) -> str:
     name = type(exc).__name__.lower()
     message = str(exc).lower()
-    if psycopg is None or "psycopg is required" in message:
+    if isinstance(exc, _DatabaseSchemaUnavailable):
+        return "SCHEMA_UNAVAILABLE"
+    if isinstance(exc, _DatabaseSchemaIncompatible):
+        return "SCHEMA_INCOMPATIBLE"
+    if "psycopg is required" in message:
         return "DRIVER_UNAVAILABLE"
     if "does not exist" in message or "undefinedtable" in name:
         return "SCHEMA_UNAVAILABLE"
+    if (
+        "undefinedcolumn" in name
+        or "datatypemismatch" in name
+        or "no unique or exclusion constraint" in message
+    ):
+        return "SCHEMA_INCOMPATIBLE"
     if "password authentication failed" in message or "invalidpassword" in name:
         return "AUTHENTICATION_FAILED"
     if "name or service not known" in message or "could not translate host" in message:
@@ -268,11 +419,13 @@ def _load() -> None:
             with _db_connect() as connection:
                 try:
                     rows = _read_database_rows(connection)
+                    _validate_database_schema(connection)
                 except Exception as exc:
                     if _classify_database_error(exc) != "SCHEMA_UNAVAILABLE":
                         raise
                     connection.rollback()
                     _ensure_database_schema(connection)
+                    _validate_database_schema(connection)
                     rows = _read_database_rows(connection)
                 for oid, payload in rows:
                     if isinstance(payload, str):
@@ -323,42 +476,51 @@ def _persist(
     state: dict[str, dict[str, Any]] | None = None,
     event: dict[str, Any] | None = None,
 ) -> None:
+    global _LAST_PERSISTENCE_ATTEMPT
+    global _PERSISTENCE_DIAGNOSTIC
     global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
-        with _db_connect() as connection:
-            with connection.cursor() as cursor:
-                for oid, payload in snapshot.items():
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_state
-                            (opportunity_id, payload, version, updated_at)
-                        VALUES (%s, %s::jsonb, 1, now())
-                        ON CONFLICT (opportunity_id) DO UPDATE SET
-                            payload = EXCLUDED.payload,
-                            version = david_dealdesk_state.version + 1,
-                            updated_at = now()
-                        """,
-                        (oid, json.dumps(payload, sort_keys=True)),
-                    )
-                if event:
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_events
-                            (event_id, opportunity_id, event_type, actor, payload, created_at)
-                        VALUES (%s, %s, %s, %s, %s::jsonb, %s)
-                        ON CONFLICT (event_id) DO NOTHING
-                        """,
-                        (
-                            event["event_id"],
-                            event["opportunity_id"],
-                            event["type"],
-                            event.get("actor") or "unknown",
-                            json.dumps(event, sort_keys=True),
-                            event["at"],
-                        ),
-                    )
+        _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
+        try:
+            with _db_connect() as connection:
+                with connection.cursor() as cursor:
+                    for oid, payload in snapshot.items():
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_state
+                                (opportunity_id, payload, version, updated_at)
+                            VALUES (%s, %s::jsonb, 1, now())
+                            ON CONFLICT (opportunity_id) DO UPDATE SET
+                                payload = EXCLUDED.payload,
+                                version = david_dealdesk_state.version + 1,
+                                updated_at = now()
+                            """,
+                            (oid, json.dumps(payload, sort_keys=True)),
+                        )
+                    if event:
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_events
+                                (event_id, opportunity_id, event_type, actor, payload, created_at)
+                            VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+                            ON CONFLICT (event_id) DO NOTHING
+                            """,
+                            (
+                                event["event_id"],
+                                event["opportunity_id"],
+                                event["type"],
+                                event.get("actor") or "unknown",
+                                json.dumps(event, sort_keys=True),
+                                event["at"],
+                            ),
+                        )
+        except Exception as exc:
+            _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+            raise
         _PERSISTENCE_HEALTH = "POSTGRES_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
         return
     if not _PATH:
         return
