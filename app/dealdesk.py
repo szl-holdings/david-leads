@@ -203,6 +203,39 @@ def _db_connect():
     return psycopg.connect(_DATABASE_URL, connect_timeout=8)
 
 
+def _ensure_database_schema(connection: Any) -> None:
+    """Create only the fixed, idempotent tables this service owns."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS david_dealdesk_state (
+                opportunity_id text PRIMARY KEY,
+                payload jsonb NOT NULL,
+                version bigint NOT NULL DEFAULT 1,
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS david_dealdesk_events (
+                event_id text PRIMARY KEY,
+                opportunity_id text NOT NULL,
+                event_type text NOT NULL,
+                actor text NOT NULL,
+                payload jsonb NOT NULL,
+                created_at timestamptz NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx
+            ON david_dealdesk_events (opportunity_id, created_at)
+            """
+        )
+
+
 def _classify_database_error(exc: Exception) -> str:
     name = type(exc).__name__.lower()
     message = str(exc).lower()
@@ -219,6 +252,12 @@ def _classify_database_error(exc: Exception) -> str:
     return "CONNECTION_UNAVAILABLE"
 
 
+def _read_database_rows(connection: Any) -> list[tuple[Any, Any]]:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
+        return list(cursor.fetchall())
+
+
 def _load() -> None:
     global _LAST_PERSISTENCE_ATTEMPT
     global _PERSISTENCE_DIAGNOSTIC
@@ -227,13 +266,19 @@ def _load() -> None:
         _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
         try:
             with _db_connect() as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
-                    for oid, payload in cursor.fetchall():
-                        if isinstance(payload, str):
-                            payload = json.loads(payload)
-                        if isinstance(payload, dict):
-                            _STATE[str(oid)] = payload
+                try:
+                    rows = _read_database_rows(connection)
+                except Exception as exc:
+                    if _classify_database_error(exc) != "SCHEMA_UNAVAILABLE":
+                        raise
+                    connection.rollback()
+                    _ensure_database_schema(connection)
+                    rows = _read_database_rows(connection)
+                for oid, payload in rows:
+                    if isinstance(payload, str):
+                        payload = json.loads(payload)
+                    if isinstance(payload, dict):
+                        _STATE[str(oid)] = payload
             _PERSISTENCE_HEALTH = "POSTGRES_READY"
             _PERSISTENCE_DIAGNOSTIC = "OK"
         except Exception as exc:
