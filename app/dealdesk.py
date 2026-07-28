@@ -233,6 +233,7 @@ def opportunity_id(record: dict[str, Any]) -> str:
 
 
 def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Normalize only identifier systems emitted by governed source producers."""
     identifiers = [
         (system, _clean(record.get(key), 160))
         for key, system in _SUBJECT_IDENTIFIER_KEYS.items()
@@ -263,6 +264,11 @@ def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]
     )
 
 
+def _subject_alias(identity: dict[str, str]) -> str:
+    raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
+
+
 def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     """Stable business aliases used for irreversible contact suppression."""
     identities = [
@@ -273,11 +279,11 @@ def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     state = _clean(record.get("state"), 16).upper()
     if name:
         identities.append({"name": name, "state": state})
-    aliases = []
-    for identity in identities or [{"name": "", "state": state}]:
-        raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
-    return tuple(dict.fromkeys(aliases))
+    # Public source records must not be able to select another opportunity's
+    # suppression alias by supplying an `opportunity_id` field. Always derive
+    # the fallback scope from the governed opportunity contract.
+    identities = identities or [{"opportunity": opportunity_id(record)}]
+    return tuple(dict.fromkeys(_subject_alias(identity) for identity in identities))
 
 
 def subject_id(record: dict[str, Any]) -> str:
@@ -286,6 +292,7 @@ def subject_id(record: dict[str, Any]) -> str:
 
 
 def _subject_identity(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the bounded identity fields required for durable suppression."""
     identity: dict[str, Any] = {}
     official = _official_identifiers(record)
     if official:
@@ -297,6 +304,9 @@ def _subject_identity(record: dict[str, Any]) -> dict[str, Any] | None:
     if name:
         identity["name"] = name
         identity["state"] = _clean(record.get("state"), 16).upper()
+    scoped_opportunity = _clean(record.get("opportunity_id"), 160)
+    if not identity and scoped_opportunity:
+        identity["opportunity_id"] = scoped_opportunity
     return identity or None
 
 
@@ -321,7 +331,14 @@ def _backfill_legacy_suppressions(
             # one empty alias shared by every legacy DNC row; backfill when the
             # exact source opportunity is observed again.
             continue
-        aliases = subject_ids(identity)
+        if identity.get("opportunity_id"):
+            aliases = (
+                _subject_alias(
+                    {"opportunity": _clean(identity["opportunity_id"], 160)}
+                ),
+            )
+        else:
+            aliases = subject_ids(identity)
         if isinstance(suppression, dict) and suppression.get("active") is True:
             normalized = {
                 **suppression,
@@ -359,19 +376,120 @@ def _backfill_legacy_suppressions(
     return changed
 
 
+def _legacy_unnamed_subject_id(record: dict[str, Any]) -> str | None:
+    """Return the pre-scoping alias only for an exact unnamed opportunity."""
+    if _clean(record.get("name"), 240) or _official_identifiers(record):
+        return None
+    identity = {
+        "name": "",
+        "state": _clean(record.get("state"), 16).upper(),
+    }
+    raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
+
+
+def _backfill_legacy_suppression(record: dict[str, Any]) -> bool:
+    """Persist an idempotent, auditable suppression for an observed legacy row."""
+    oid = opportunity_id(record)
+    saved = _STATE.get(oid)
+    if not isinstance(saved, dict):
+        return False
+    suppression = saved.get("suppression")
+    is_active = (
+        isinstance(suppression, dict)
+        and suppression.get("active") is True
+    )
+    if saved.get("last_disposition") != "DO_NOT_CALL" and not is_active:
+        return False
+
+    existing_ids: list[str] = []
+    if isinstance(suppression, dict):
+        existing_ids.extend(
+            str(item)
+            for item in suppression.get("subject_ids") or ()
+            if item
+        )
+        if suppression.get("subject_id"):
+            existing_ids.append(str(suppression["subject_id"]))
+    aliases = tuple(dict.fromkeys((*existing_ids, *subject_ids(record))))
+    identity = _subject_identity(record)
+    clearance = saved.get("clearance")
+    if isinstance(clearance, dict) and not clearance.get("revoked_at"):
+        clearance = {**clearance, "revoked_at": _now()}
+
+    normalized_suppression = {
+        **(suppression if isinstance(suppression, dict) else {}),
+        "subject_id": aliases[0],
+        "subject_ids": list(aliases),
+        "type": "DO_NOT_CALL",
+        "active": True,
+        "recorded_at": (
+            suppression.get("recorded_at")
+            if isinstance(suppression, dict) and suppression.get("recorded_at")
+            else saved.get("updated_at") or "UNAVAILABLE"
+        ),
+        "actor": (
+            suppression.get("actor")
+            if isinstance(suppression, dict) and suppression.get("actor")
+            else "legacy-persistence-backfill"
+        ),
+    }
+    candidate = {
+        **saved,
+        "stage": "BLOCKED",
+        "next_action": "Suppressed: do not contact",
+        "suppression": normalized_suppression,
+    }
+    if identity:
+        candidate["subject_identity"] = identity
+    if isinstance(clearance, dict):
+        candidate["clearance"] = clearance
+    if candidate == saved:
+        return False
+
+    _commit(
+        oid,
+        candidate,
+        {
+            "at": _now(),
+            "opportunity_id": oid,
+            "type": "LEGACY_DO_NOT_CALL_BACKFILLED",
+            "actor": "system",
+        },
+    )
+    return True
+
+
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
-    for saved in _STATE.values():
+    current_opportunity_id = opportunity_id(record)
+    legacy_id = _legacy_unnamed_subject_id(record)
+    for saved_opportunity_id, saved in _STATE.items():
         suppression = saved.get("suppression")
-        suppressed_ids = set(suppression.get("subject_ids") or ()) if isinstance(
-            suppression, dict
-        ) else set()
-        if isinstance(suppression, dict) and suppression.get("subject_id"):
+        if not isinstance(suppression, dict) or suppression.get("active") is not True:
+            if (
+                saved_opportunity_id == current_opportunity_id
+                and saved.get("last_disposition") == "DO_NOT_CALL"
+            ):
+                aliases = subject_ids(record)
+                return {
+                    "subject_id": aliases[0],
+                    "subject_ids": list(aliases),
+                    "type": "DO_NOT_CALL",
+                    "active": True,
+                    "recorded_at": saved.get("updated_at") or "UNAVAILABLE",
+                    "actor": "legacy-persistence-backfill",
+                }
+            continue
+        suppressed_ids = set(suppression.get("subject_ids") or ())
+        if suppression.get("subject_id"):
             suppressed_ids.add(str(suppression["subject_id"]))
+        if stable_ids.intersection(suppressed_ids):
+            return suppression
         if (
-            isinstance(suppression, dict)
-            and stable_ids.intersection(suppressed_ids)
-            and suppression.get("active") is True
+            legacy_id
+            and saved_opportunity_id == current_opportunity_id
+            and legacy_id in suppressed_ids
         ):
             return suppression
     return None
@@ -960,8 +1078,11 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
-    _KNOWN[oid] = dict(record)
-    if _backfill_legacy_suppressions(_STATE, {oid: record}):
+    _KNOWN[oid] = {**record, "opportunity_id": oid}
+    if (
+        not _backfill_legacy_suppression(record)
+        and _backfill_legacy_suppressions(_STATE, {oid: record})
+    ):
         _persist(_STATE)
     gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
