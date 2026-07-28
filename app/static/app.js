@@ -956,7 +956,88 @@ async function loadRealLeads() {
   }
 }
 
-async function updateOpportunity(opportunityId, select) {
+function openFrontiers() {
+  const card = $("frontierCard"); if (!card) return;
+  card.classList.add("show");
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadFrontiers();
+}
+
+async function loadFrontiers() {
+  const body = $("frontierBody"); if (!body) return;
+  const states = ($("frontierStates") && $("frontierStates").value || "NY,NJ,PA,MD,DE,CT").trim() || "NY,NJ,PA,MD,DE,CT";
+  body.innerHTML = `<div style="padding:20px;color:var(--muted)">Querying official entity-level frontiers…</div>`;
+  try {
+    const d = await api("/api/frontier-desk?states=" + encodeURIComponent(states));
+    const leads = d.opportunities || [];
+    const s = d.summary || {};
+    const sources = d.sources || [];
+    const liveSources = sources.filter(src => src.mode === "LIVE").length;
+    $("frontierSummary").innerHTML = [
+      ["Official signals", s.live || 0],
+      ["Live sources", liveSources],
+      ["Ready after clearance", s.call_ready || 0],
+      ["Needs research", s.needs_research || 0],
+    ].map(([label, value]) => `<div class="desk-stat"><b>${escHtml(value)}</b><span>${escHtml(label)}</span></div>`).join("");
+    $("frontierMeta").textContent = `${s.live||0} signals · ${s.call_ready||0} cleared · ${d.persistence||"IN_MEMORY"}`;
+    $("frontierHint").innerHTML = sources.map(src => {
+      const unavailable = src.mode !== "LIVE";
+      const suffix = unavailable ? ` · ${escHtml(src.reason || "unavailable")}` : ` · ${escHtml(src.count || 0)} records`;
+      return `<a class="real-mode ${unavailable?"sample":"live"}" href="${escHtml((src.citation||{}).url||"#")}" target="_blank" rel="noopener">${escHtml(src.source||src.source_id||"official source")} · ${escHtml(src.mode)}${suffix} ↗</a>`;
+    }).join(" ");
+    if (!leads.length) {
+      body.innerHTML = `<div style="padding:20px;color:var(--muted)">No qualifying entity-level signals were returned. Source availability is shown above; no sample records were substituted.</div>`;
+      return;
+    }
+    const stages = ["REVIEW","RESEARCH","READY","CONTACTED","MEETING","PROPOSAL","WON","LOST","BLOCKED"];
+    body.innerHTML = `<div class="opp-grid">${leads.map(l => {
+      const addr = [l.address, l.city, l.state, l.zip].filter(Boolean).map(escHtml).join(", ");
+      const cite = (l.citation && l.citation.url)
+        ? `<a class="real-cite" href="${escHtml(l.citation.url)}" target="_blank" rel="noopener">${escHtml(l.citation.label || "official record")} ↗</a>`
+        : "";
+      const sourceRecord = (l.source_record && l.source_record.url)
+        ? `<a class="real-cite" href="${escHtml(l.source_record.url)}" target="_blank" rel="noopener">${escHtml(l.source_record.label || "dataset")} ↗</a>`
+        : "";
+      const fleet = l.operational_snapshot
+        ? `${escHtml(l.operational_snapshot.power_units||0)} power units · ${escHtml(l.operational_snapshot.drivers||0)} drivers`
+        : "";
+      const award = l.award
+        ? `$${Number(l.award.amount||0).toLocaleString()} · ${escHtml(l.award.agency||"Federal agency")}`
+        : "";
+      const options = stages.map(stage =>
+        `<option value="${stage}"${stage===l.stage?" selected":""}>${stage.replace("_"," ")}</option>`).join("");
+      const gateClass = l.call_ready ? "ready" : "review";
+      const verifyBtn = l.receipt_id
+        ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">Proof</button>`
+        : "";
+      return `<article class="opp-card">
+        <span class="frontier-badge">${escHtml(l.source_frontier || "OFFICIAL FRONTIER")}</span>
+        <div class="opp-head">
+          <div><div class="real-name">${escHtml(l.name)}</div>
+            <div class="opp-meta">${escHtml(l.credential || l.category || "Official entity")} · ${escHtml(l.state || "")} · observed ${escHtml(l.trigger_date || "date unavailable")}</div></div>
+          <div class="opp-priority" title="Evidence-completeness priority">${escHtml(l.priority)}</div>
+        </div>
+        <div class="opp-source">${addr || escHtml(l.contact_quality || "No business address")}<br>${cite}${cite&&sourceRecord?" · ":""}${sourceRecord}</div>
+        <div class="frontier-signal"><strong>${escHtml(l.observed_trigger || "Official observation")}</strong><br>${escHtml(l.signal_summary || "")}${fleet?`<br>${fleet}`:""}${award?`<br>${award}`:""}</div>
+        <div class="opp-angle"><strong>${escHtml(l.product_angle || "Licensed business review")}</strong><br>${escHtml(l.why || "")}</div>
+        <div class="opp-next"><strong>Next action</strong><br>${escHtml(l.next_action || "")}</div>
+        <div class="frontier-limit"><strong>Limit:</strong> ${escHtml((l.limitations||[]).join(" "))}</div>
+        <div class="opp-actions">
+          <span class="gate ${gateClass}">${escHtml(l.contact_gate || "NOT_EVALUATED")}</span>
+          <label class="real-sub" for="frontier-stage-${escHtml(l.opportunity_id)}">Stage</label>
+          <select class="opp-stage" id="frontier-stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this,'frontier')">
+            ${options}
+          </select>
+          ${verifyBtn}
+        </div>
+      </article>`;
+    }).join("")}</div>`;
+  } catch (e) {
+    body.innerHTML = `<div style="padding:20px;color:var(--hot)">× ${escHtml(e.message)}</div>`;
+  }
+}
+
+async function updateOpportunity(opportunityId, select, view) {
   const stage = select.value;
   const prior = select.dataset.prior || "REVIEW";
   const requiresClearance = ["READY","CONTACTED","MEETING","PROPOSAL","WON"].includes(stage);
@@ -982,7 +1063,8 @@ async function updateOpportunity(opportunityId, select) {
       }),
     });
     select.dataset.prior = stage;
-    await loadRealLeads();
+    if (view === "frontier") await loadFrontiers();
+    else await loadRealLeads();
   } catch (e) {
     select.value = prior;
     window.alert(e.message);
@@ -1008,6 +1090,18 @@ async function loadDataPolicy() {
         <h4>${escHtml(item.label)} · ${escHtml(item.ingestion)}</h4>
         <p>${escHtml((item.controls||[]).join(" "))}</p>
       </div>`).join("")}</div>
+      <div class="tax-sub-h">Implemented frontiers</div>
+      <div class="policy-grid">${(policy.implemented_frontiers||[]).map(item => `
+        <div class="policy-item">
+          <h4>${escHtml(item.id)} · ${escHtml(item.status)}</h4>
+          <p>${escHtml(item.purpose || "")}</p>
+        </div>`).join("")}</div>
+      <div class="tax-sub-h">Deferred or blocked</div>
+      <div class="policy-grid">${(policy.deferred_frontiers||[]).map(item => `
+        <div class="policy-item">
+          <h4>${escHtml(item.id)} · ${escHtml(item.status)}</h4>
+          <p>${escHtml(item.reason || "")}</p>
+        </div>`).join("")}</div>
       <div class="real-banner">Purpose: ${escHtml(policy.purpose)} Counsel review is required before automated outreach, social ingestion, purchased personal data, consumer profiling, or cross-state campaigns.</div>`;
   } catch (e) {
     body.innerHTML = `<div style="padding:20px;color:var(--hot)">✗ ${escHtml(e.message)}</div>`;

@@ -8,6 +8,7 @@ import time
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -161,6 +162,10 @@ class DataPolicySafety(unittest.TestCase):
         by_id = {item["id"]: item for item in policy["source_classes"]}
         self.assertEqual(by_id["social-platform"]["ingestion"], "NO_UNAPPROVED_SCRAPING")
         self.assertEqual(by_id["consumer-report"]["ingestion"], "PROHIBITED_BY_DEFAULT")
+        live = {item["id"]: item for item in policy["implemented_frontiers"]}
+        self.assertEqual(live["fmcsa-company-census"]["status"], "LIVE_ENTITY_FIELDS_ONLY")
+        deferred = {item["id"]: item for item in policy["deferred_frontiers"]}
+        self.assertEqual(deferred["faa-aircraft-registry"]["status"], "PRIVACY_REVIEW_REQUIRED")
         self.assertEqual(policy["legal_status"], "OPERATIONAL_GUARDRAIL_NOT_LEGAL_ADVICE")
 
 
@@ -213,6 +218,54 @@ class ApiSafety(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["github_huggingface_alignment"], "UNVERIFIED")
         self.assertRegex(body["bundle_sha256"], r"^[0-9a-f]{64}$")
+
+    def test_frontier_desk_requires_research_before_contact(self):
+        record = {
+            "name": "Example Carrier LLC",
+            "type": "carrier",
+            "category": "Motor carrier",
+            "credential": "USDOT 1234567",
+            "address": "10 Business Road",
+            "city": "Albany",
+            "state": "NY",
+            "zip": "12207",
+            "license_or_issue_date": "2026-07-27",
+            "contact_quality": "business address (public)",
+            "citation": {"label": "FMCSA", "url": "https://example.gov/fmcsa/1234567"},
+            "source_frontier": "FMCSA",
+            "purpose": "PROSPECTING_ONLY",
+            "not_for_underwriting": True,
+        }
+        payload = {
+            "leads": [record],
+            "sources": [{
+                "source": "FMCSA",
+                "source_id": "fmcsa-company-census",
+                "mode": "LIVE",
+                "count": 1,
+            }],
+            "generated_at": "2026-07-28T00:00:00+00:00",
+            "states": ["NY"],
+            "doctrine": "entity fields only",
+        }
+        self.server.dd.reset_for_tests()
+        try:
+            with mock.patch.object(
+                self.server.frontier_data,
+                "frontier_opportunities",
+                return_value=payload,
+            ):
+                response = self.client.get(
+                    "/api/frontier-desk?states=NY",
+                    headers=self.headers,
+                )
+        finally:
+            self.server.dd.reset_for_tests()
+        self.assertEqual(response.status_code, 200)
+        opportunity = response.json()["opportunities"][0]
+        self.assertEqual(opportunity["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertFalse(opportunity["call_ready"])
+        self.assertTrue(opportunity["not_for_underwriting"])
 
 
 if __name__ == "__main__":

@@ -97,7 +97,7 @@ def _priority(record: dict[str, Any]) -> int:
         score += 20
     if record.get("receipt_id"):
         score += 15
-    if record.get("type") in {"business", "licensee"}:
+    if record.get("type") in {"business", "licensee", "carrier", "federal_award"}:
         score += 5
     if record.get("contact_quality") != "[SAMPLE]":
         score += 10
@@ -129,7 +129,7 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
         gate = "MANUAL_CLEARANCE_RECORDED"
         call_ready = True
     stage = saved.get("stage") or ("BLOCKED" if gate.startswith("DO_NOT_CONTACT") else "REVIEW")
-    next_action = saved.get("next_action") or (
+    next_action = saved.get("next_action") or record.get("recommended_next_action") or (
         "Use for demonstration only"
         if gate.startswith("DO_NOT_CONTACT")
         else "Verify the source and find the official business contact channel"

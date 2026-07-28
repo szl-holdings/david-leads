@@ -74,7 +74,7 @@ try:
     from . import routing as rt
 except Exception:  # pragma: no cover
     rt = None
-# Real Callable Leads — public B2B business/license records. Defensive import so boot never breaks.
+# Public B2B research records. Defensive import so boot never breaks.
 try:
     from . import real_leads as rl
 except Exception:  # pragma: no cover
@@ -97,6 +97,10 @@ try:
     from . import data_policy as dp
 except Exception:  # pragma: no cover
     dp = None
+try:
+    from . import frontier_sources as frontier_data
+except Exception:  # pragma: no cover
+    frontier_data = None
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
@@ -1124,11 +1128,12 @@ def routing(authorization: str | None = Header(default=None)):
 
 @app.get("/api/real-leads")
 def real_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
-    """Real, currently-filed public B2B prospects (new business owners + newly-licensed
-    professionals) from official state open-data portals. Public business addresses only —
-    NO private personal data, NO fabricated names/numbers. Each record carries a public source
-    citation + a signed receipt (public signals, fabricated=0). Defensive: a down portal
-    degrades that source to an honest [SAMPLE]; the endpoint never 500s."""
+    """Currently filed public B2B research records from official state open-data portals.
+
+    Public business addresses only; no permission to contact is inferred. Every
+    record carries a citation and an evidence receipt. A down legacy source
+    degrades to a visible sample rather than being presented as live.
+    """
     _auth(authorization)
     if rl is None:
         raise HTTPException(503, "real-leads source unavailable")
@@ -1187,6 +1192,39 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
     _STATE["deal_desk"] = board
+    return board
+
+
+@app.get("/api/frontier-desk")
+def frontier_desk(
+    states: str = "NY,NJ,PA,MD,DE,CT",
+    authorization: str | None = Header(default=None),
+):
+    """Entity-level FMCSA and federal-contract activity for broker research.
+
+    Source adapters select only operational entity fields. They intentionally
+    exclude person-level contact, officer, safety, crash, insurance, and policy
+    data and never infer permission to contact or an underwriting fact.
+    """
+    _auth(authorization)
+    if frontier_data is None or dd is None:
+        raise HTTPException(503, "frontier radar unavailable")
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
+        "NY", "NJ", "PA", "MD", "DE", "CT"
+    ]
+    source = frontier_data.frontier_opportunities(state_list, limit_per_source=18)
+    clean: list[dict] = []
+    for lead in source.get("leads", []):
+        receipt = lead.pop("_receipt", None)
+        if isinstance(receipt, dict) and receipt.get("id"):
+            _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+        clean.append(lead)
+    board = dd.board(clean)
+    board["sources"] = source.get("sources", [])
+    board["generated_at"] = source.get("generated_at")
+    board["states"] = source.get("states", state_list)
+    board["frontier_doctrine"] = source.get("doctrine")
+    _STATE["frontier_desk"] = board
     return board
 
 

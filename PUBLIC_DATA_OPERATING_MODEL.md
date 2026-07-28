@@ -42,6 +42,22 @@ High-value official datasets:
 - [Insurance filing history](https://data.transportation.gov/Trucking-and-Motorcoaches/Motus-Insur-All-With-History/c5y8-a4uz)
 - [Vehicle inspections](https://data.transportation.gov/Trucking-and-Motorcoaches/Vehicle-Inspection-File/fx4q-ay7w)
 
+### Implemented now
+
+`Frontier Radar` queries the FMCSA Company Census for recent active entity
+additions and selects only legal/DBA name, USDOT identifier, addition date,
+carrier class, equipment/driver counts, and physical business location. It does
+not request phone, email, named officer, crash, safety-rating, insurance, or
+policy fields. Every row is `PROSPECTING_ONLY`, `not_for_underwriting=true`, and
+requires a current SAFER check before a broker can record contact clearance.
+
+The second implemented lane queries [USAspending](https://api.usaspending.gov/docs/intro-tutorial)
+for recent federal contract activity between $25,000 and $10 million. It retains
+the recipient entity name, UEI, business location, agency, award identifier,
+amount, dates, and description. The interface explicitly warns that the search
+window may reflect a modification to an older award; award amount is never
+presented as revenue, cash flow, insurance need, or a newly signed contract.
+
 Guardrails:
 
 - Hide full policy identifiers from the broker UI.
@@ -57,7 +73,7 @@ Guardrails:
 |---|---|---|---|
 | 1 | FMCSA | fleet growth, authority and filing events, operating status | Business entity only; suppress full policy numbers |
 | 1 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) and [Opportunities API](https://open.gsa.gov/api/get-opportunities-public-api/) | registrations, awards, solicitations, operating locations | Exclude restricted contacts and non-public records |
-| 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | new awards and award periods | Contract event, not financial-health truth |
+| 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | award activity and award periods | Activity may be a modification; not financial-health truth |
 | 1 | state Secretary of State open data | formations, status changes, mergers | Registered-agent/service address may not be an operating contact |
 | 1 | [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | 8-K events, financing, acquisitions, disclosed changes | Follow SEC fair-access guidance and declared User-Agent |
 | 2 | [OSHA data](https://www.osha.gov/foia/) and [EPA ECHO](https://echo.epa.gov/tools/web-services) | facility, inspection, permit, enforcement events | Reported event, not a conclusive risk judgment |
@@ -66,6 +82,20 @@ Guardrails:
 | 2 | [IRS tax-exempt bulk data](https://www.irs.gov/charities-non-profits/tax-exempt-organization-search-bulk-data-downloads) and [Form 990 XML](https://www.irs.gov/charities-non-profits/form-990-series-downloads) | nonprofit scale and organizational changes | Do not use home addresses or personal compensation as sales hooks |
 | 3 | [Census business APIs](https://www.census.gov/topics/business-economy/small-business/data/api.html) and [BLS QCEW](https://www.bls.gov/cew/downloadable-data-files.htm) | market sizing, industry and employment concentration | Territory context only |
 | Verify | [NIPR license verification](https://nipr.com/licensing/verify-existing-licenses) and [NAIC DOI directory](https://content.naic.org/state-insurance-departments) | broker license, line and jurisdiction verification | Verification, not prospect harvesting; contractual access may apply |
+
+## Evaluated next frontiers
+
+| Frontier | Potential signal | Decision |
+|---|---|---|
+| [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active registration, NAICS/PSC scope, address/name changes | `KEY_AND_TERMS_REVIEW_REQUIRED`; public-sensitivity responses only, no FOUO/CUI fields |
+| [EPA ECHO web services](https://echo.epa.gov/tools/web-services) | facility openings, permits, program enrollment | `FACILITY_CONTEXT_ONLY`; no compliance-event sales claims or underwriting use |
+| [FCC ULS public data](https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4/data) | new entity radio licenses and infrastructure operations | `SCHEMA_AND_REFRESH_REVIEW_REQUIRED`; entity licensees only |
+| [FAA releasable aircraft database](https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download) | corporate aircraft registration/transfer | `PRIVACY_REVIEW_REQUIRED`; the bulk file mixes company and individual owners and supports owner-information withholding |
+| Company RSS/newsroom/job feeds | expansion, executive, location and hiring events | `ALLOWLIST_REVIEW_REQUIRED`; terms/robots check, low-rate retrieval, normalized fact only |
+
+This backlog is intentionally not a license to ingest everything public. A
+frontier moves to `LIVE` only when its fields, allowed purpose, retention,
+deletion path, refresh interval, and broker action are documented and tested.
 
 Company websites, government notices, press releases, RSS, and job pages are
 allowlisted research sources only after terms and robots review. Store the
