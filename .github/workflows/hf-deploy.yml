@@ -10,8 +10,8 @@ name: Deploy to HuggingFace Space
 # resolves once that PR merges to .github main. TODO: nothing to flip; @main is
 # the steady state.
 #
-# Requires org/repo secret HF_TOKEN (HF write token, org write to SZLHOLDINGS),
-# passed via `secrets: inherit`. The deployer FAILS LOUDLY if it is absent.
+# Requires org/repo secret HF_TOKEN (HF write token, org write to SZLHOLDINGS).
+# No application or database credential is available to this workflow.
 
 on:
   push:
@@ -25,8 +25,6 @@ on:
       - "PUBLIC_DATA_OPERATING_MODEL.md"
       - "SPACE_PROVENANCE.json"
       - ".github/workflows/hf-deploy.yml"
-  workflow_dispatch: {}
-
 permissions:
   contents: read
 
@@ -35,56 +33,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  rotate-app-secrets:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Validate required deployment secrets
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          DAVID_USER: ${{ secrets.DAVID_USER }}
-          DAVID_PASS: ${{ secrets.DAVID_PASS }}
-          DAVID_ACCESS_KEY: ${{ secrets.DAVID_ACCESS_KEY }}
-          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
-        run: |
-          set -euo pipefail
-          for name in HF_TOKEN DAVID_USER DAVID_PASS DAVID_ACCESS_KEY DAVID_DATABASE_URL; do
-            if [ -z "${!name:-}" ]; then
-              echo "::error title=Missing secret::$name is required"
-              exit 1
-            fi
-          done
-
-      - name: Rotate write-only Hugging Face Space secrets
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          DAVID_USER: ${{ secrets.DAVID_USER }}
-          DAVID_PASS: ${{ secrets.DAVID_PASS }}
-          DAVID_ACCESS_KEY: ${{ secrets.DAVID_ACCESS_KEY }}
-          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
-        run: |
-          python -m pip install --disable-pip-version-check --quiet "huggingface_hub==1.19.0"
-          python - <<'PY'
-          import os
-          from huggingface_hub import HfApi
-
-          api = HfApi(token=os.environ["HF_TOKEN"])
-          api.whoami(token=os.environ["HF_TOKEN"])
-          repo_id = "SZLHOLDINGS/david-leads"
-          for key in ("DAVID_ACCESS_KEY", "DAVID_PASS", "DAVID_USER", "DAVID_DATABASE_URL"):
-              api.add_space_secret(
-                  repo_id=repo_id,
-                  key=key,
-                  value=os.environ[key],
-                  description="Injected by protected exact-source deploy",
-              )
-          print("Rotated four write-only Space secrets; values were not displayed.")
-          PY
-
   deploy:
-    needs: rotate-app-secrets
     uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
-    secrets: inherit
+    secrets:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
     with:
       include-readme: true
       source-revision-variable: SOURCE_GITHUB_SHA
