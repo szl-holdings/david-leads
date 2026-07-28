@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import re
+import hashlib
+import socket
 import sys
 import time
 import unittest
@@ -20,6 +22,18 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
+    _REVOKED_VALUE_SHA256 = {
+        "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
+        "9c33ff3e69a11bed324b9aebd2b7d526293c55981f6eb5ae1e493422ef355820",
+        "3b438c1eaf81e68459eb33b9c3da897352af93a63fb646dec92dc2a512b91e1d",
+    }
+    _TOKEN_CANDIDATE = re.compile(r"[A-Za-z0-9][A-Za-z0-9!@#$%^&*_.\-]{7,127}")
+    _HTML_SENSITIVE_VALUE = re.compile(
+        r"""<input\b(?=[^>]*(?:type=["']password["']|name=["'][^"']*(?:pass|access.?key|token)[^"']*["']))"""
+        r"""[^>]*\bvalue=["']([^"']+)["']""",
+        re.IGNORECASE,
+    )
+
     def test_no_hardcoded_auth_defaults_in_current_tree(self):
         forbidden_patterns = [
             re.compile(r"""os\.environ\.get\(\s*["']DAVID_(?:USER|PASS|ACCESS_KEY)["']\s*,"""),
@@ -55,6 +69,41 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertTrue(
             all(re.fullmatch(r"[0-9a-f]{64}", item) for item in server._REVOKED_CREDENTIAL_FINGERPRINTS)
         )
+
+    def test_revoked_credentials_are_absent_from_public_document_surfaces(self):
+        hits: set[str] = set()
+        allowed_suffixes = {".md", ".markdown", ".html", ".htm", ".txt", ".docx"}
+        for path in ROOT.rglob("*"):
+            if (
+                not path.is_file()
+                or ".git" in path.parts
+                or "__pycache__" in path.parts
+                or path.suffix.lower() not in allowed_suffixes
+            ):
+                continue
+            try:
+                if path.suffix.lower() == ".docx":
+                    with zipfile.ZipFile(path) as archive:
+                        text = "\n".join(
+                            archive.read(name).decode("utf-8", "ignore")
+                            for name in archive.namelist()
+                            if name.lower().endswith((".xml", ".rels", ".txt"))
+                        )
+                    text = re.sub(r"<[^>]+>", " ", text)
+                else:
+                    text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
+                continue
+            candidates = self._TOKEN_CANDIDATE.findall(text)
+            if path.suffix.lower() in {".html", ".htm"}:
+                candidates.extend(self._HTML_SENSITIVE_VALUE.findall(text))
+            if any(
+                hashlib.sha256(candidate.encode("utf-8")).hexdigest()
+                in self._REVOKED_VALUE_SHA256
+                for candidate in candidates
+            ):
+                hits.add(str(path.relative_to(ROOT)))
+        self.assertEqual(sorted(hits), [])
 
 
 class ContactPermissionTruth(unittest.TestCase):
@@ -156,6 +205,22 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertFalse(observed["call_ready"])
         self.assertEqual(observed["contact_gate"], "RESEARCH_REQUIRED")
 
+    def test_current_default_block_revokes_stale_prior_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        dealdesk.update(
+            opportunity["opportunity_id"],
+            stage="READY",
+            clearance_confirmed=True,
+        )
+        currently_blocked = dict(self.record, contact_quality="[SAMPLE]")
+
+        observed = dealdesk.enrich(currently_blocked)
+
+        self.assertFalse(observed["call_ready"])
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SAMPLE")
+        with self.assertRaises(ValueError):
+            dealdesk.update(observed["opportunity_id"], stage="READY")
+
     def test_sample_can_never_be_cleared(self):
         sample = dict(self.record, name="[SAMPLE] Example", contact_quality="[SAMPLE]")
         opportunity = dealdesk.board([sample])["opportunities"][0]
@@ -188,6 +253,42 @@ class ReceiptTruthStates(unittest.TestCase):
         self.assertEqual(verdict["source_classes"], ["FIRST_PARTY_CONSENT"])
         self.assertEqual(verdict["verdict"], "HASH_INTEGRITY_VERIFIED")
         self.assertEqual(verdict["signature_state"], "UNSIGNED")
+
+    def test_missing_source_classification_defaults_non_public_and_fails_closed(self):
+        receipt = receipts.make_receipt(
+            {"id": "unknown-1", "name": "Unknown", "bucket": "REVIEW", "product": "UNKNOWN"},
+            [{"source": "unspecified", "signal": "unclassified evidence"}],
+            0,
+            witness=False,
+        )
+
+        verdict = receipts.verify_receipt(receipt)
+
+        self.assertFalse(receipt["payload"]["signals_used"][0]["public"])
+        self.assertEqual(receipt["payload"]["source_classes"], ["UNCLASSIFIED"])
+        self.assertFalse(receipt["payload"]["all_sources_permitted"])
+        self.assertEqual(verdict["verdict"], "FAILED")
+
+    def test_permission_is_recomputed_from_bound_source_classes(self):
+        receipt = receipts.make_receipt(
+            {"id": "unknown-2", "name": "Unknown", "bucket": "REVIEW", "product": "UNKNOWN"},
+            [{"source": "official", "signal": "observed", "public": True}],
+            10,
+            witness=False,
+        )
+        receipt["payload"]["signals_used"][0]["source_class"] = "UNCLASSIFIED"
+        receipt["payload"]["source_classes"] = ["UNCLASSIFIED"]
+        receipt["payload"]["all_sources_permitted"] = True
+        receipt["payload_sha256"] = hashlib.sha256(
+            receipts._canon(receipt["payload"])
+        ).hexdigest()
+
+        verdict = receipts.verify_receipt(receipt)
+        checks = {item["check"]: item["pass"] for item in verdict["checks"]}
+
+        self.assertFalse(checks["Evidence source classes are permitted"])
+        self.assertFalse(checks["Permission summary matches source classes"])
+        self.assertEqual(verdict["verdict"], "FAILED")
 
 
 class DataPolicySafety(unittest.TestCase):
@@ -246,6 +347,53 @@ class ApiSafety(unittest.TestCase):
         self.assertFalse(body["sent"])
         self.assertIn("disabled", body["reason"])
 
+    def test_webhook_connects_to_validated_address_with_tls_hostname(self):
+        context = mock.Mock()
+        raw_socket = mock.Mock()
+        wrapped_socket = mock.Mock()
+        context.wrap_socket.return_value = wrapped_socket
+        connection = self.server._PinnedHTTPSConnection(
+            "crm.example.com",
+            "93.184.216.34",
+            context=context,
+        )
+
+        with patch.object(socket, "create_connection", return_value=raw_socket) as connect:
+            connection.connect()
+
+        connect.assert_called_once_with(("93.184.216.34", 443), 8, None)
+        context.wrap_socket.assert_called_once_with(
+            raw_socket,
+            server_hostname="crm.example.com",
+        )
+        self.assertIs(connection.sock, wrapped_socket)
+
+    def test_health_and_readiness_fail_closed_for_auth_and_persistence(self):
+        with (
+            patch.object(self.server, "_CREDS_CONFIGURED", False),
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", True),
+            patch.object(self.server.dd, "persistence_state", return_value="FILE_BACKED"),
+        ):
+            health = self.client.get("/healthz")
+        self.assertEqual(health.status_code, 503)
+        self.assertEqual(health.json()["status"], "blocked")
+        self.assertEqual(health.json()["authentication"], "ROTATION_REQUIRED")
+
+        with (
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server.dd, "persistence_state", return_value="NOT_CONFIGURED"),
+        ):
+            readiness = self.client.get("/readyz")
+        self.assertEqual(readiness.status_code, 503)
+        self.assertEqual(readiness.json()["deal_desk_persistence"], "NOT_CONFIGURED")
+
+    def test_deal_desk_fails_closed_without_durable_persistence(self):
+        with patch.object(self.server.dd, "persistence_configured", return_value=False):
+            response = self.client.get("/api/deal-desk", headers=self.headers)
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("DAVID_DEAL_DESK_PATH", response.json()["detail"])
+
     def test_build_info_is_explicitly_unverified_until_external_compare(self):
         response = self.client.get("/api/build-info")
         self.assertEqual(response.status_code, 200)
@@ -284,10 +432,13 @@ class ApiSafety(unittest.TestCase):
         }
         self.server.dd.reset_for_tests()
         try:
-            with mock.patch.object(
-                self.server.frontier_data,
-                "frontier_opportunities",
-                return_value=payload,
+            with (
+                mock.patch.object(self.server.dd, "persistence_configured", return_value=True),
+                mock.patch.object(
+                    self.server.frontier_data,
+                    "frontier_opportunities",
+                    return_value=payload,
+                ),
             ):
                 response = self.client.get(
                     "/api/frontier-desk?states=NY",
