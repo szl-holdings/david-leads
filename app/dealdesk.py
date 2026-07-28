@@ -1193,6 +1193,8 @@ def record_clearance(
     channel = next((item for item in channels if item.get("channel_id") == channel_id), None)
     if not channel:
         raise ValueError("clearance must reference a recorded business-published channel")
+    if channel.get("type") != "BUSINESS_PHONE":
+        raise ValueError("call clearance requires a recorded business phone")
     if not all((actor, business_purpose, talk_track_version, jurisdiction, license_scope)):
         raise ValueError("actor, business purpose, talk track, jurisdiction, and license scope are required")
     checks = (federal_dnc_checked, state_dnc_checked, opt_out_checked, rules_reviewed)

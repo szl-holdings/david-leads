@@ -707,7 +707,7 @@ class OpportunityDeskSafety(unittest.TestCase):
             dealdesk._STATE[opportunity["opportunity_id"]]["clearance"]["revoked_at"]
         )
 
-    def test_call_sheet_requires_phone_clearance(self):
+    def test_call_clearance_requires_a_business_phone(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
         researched = dealdesk.record_research(
             opportunity["opportunity_id"],
@@ -717,13 +717,15 @@ class OpportunityDeskSafety(unittest.TestCase):
             source_url="https://examplelogistics.com/contact",
             publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
         )
-        cleared = self._clear(
-            opportunity["opportunity_id"],
-            researched["channels"][0]["channel_id"],
-        )
-        self.assertTrue(cleared["call_ready"])
         with self.assertRaisesRegex(ValueError, "business phone"):
-            dealdesk.call_sheet(opportunity["opportunity_id"])
+            self._clear(
+                opportunity["opportunity_id"],
+                researched["channels"][0]["channel_id"],
+            )
+        observed = dealdesk.enrich(self.record)
+        self.assertEqual(observed["stage"], "RESEARCH")
+        self.assertFalse(observed["call_ready"])
+        self.assertIsNone(observed["clearance"])
 
 
 class PersistenceContractSafety(unittest.TestCase):
