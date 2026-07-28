@@ -110,10 +110,16 @@ regress.
 
 The current Space is source-bound and reports healthy Postgres readiness, but
 that is not complete production proof. Protected rotation run `30399789320`
-has not yet produced a secret-free replacement login/logout receipt, and this
-successor has not been merged or deployed. Application-credential replacement,
-effective Hugging Face token scope, and local administrator-vault custody
-remain `UNVERIFIED`.
+submitted updates for the four named Space secrets without API error but timed
+out without a replacement login/logout receipt. The live Space subsequently
+reported `RUNNING`, exact
+source `593a90b9b3621b6d31c4078d5e09dc566b21fc32`, authentication
+`CONFIGURED`, and `POSTGRES_READY`; those observations do not prove that the
+replacement triplet authenticates. This successor adds a non-causal,
+secret-free failure receipt for the required rerun and has not been merged or
+deployed.
+Application-credential replacement, effective Hugging Face token scope, and
+local administrator-vault custody remain `UNVERIFIED`.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,

@@ -1,13 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import io
+import json
 import os
 import re
-import hashlib
-import json
 import socket
 import sys
 import tempfile
+import types
 import time
 import unittest
 import zipfile
@@ -204,6 +207,258 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertNotIn("api.restart_space(", workflow)
         self.assertIn("deadline = time.monotonic() + 900", workflow)
         self.assertIn("timeout-minutes: 25", workflow)
+
+    def test_rotation_failure_receipt_is_secret_free_and_actionable(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        failure = workflow.split("          if health is None:", 1)[1].split(
+            "          logout = requests.post(", 1
+        )[0]
+        self.assertIn(
+            '"failure_class": "REPLACEMENT_LOGIN_NOT_VERIFIED"',
+            failure,
+        )
+        self.assertIn('"health_http_status"', workflow)
+        self.assertIn('"login_http_status"', workflow)
+        self.assertIn('"runtime_lookup_failed": runtime_lookup_failed', failure)
+        self.assertIn('"space_stage": runtime_stage', failure)
+        self.assertIn('"replacement_login_verified": False', failure)
+        self.assertIn('"replacement_logout_verified": False', failure)
+        self.assertIn('"credential_values_recorded": False', failure)
+        self.assertNotIn("credentials[", failure)
+        self.assertNotIn("space_secrets[", failure)
+
+    def test_rotation_failure_receipt_executes_without_leaking_sentinel_secrets(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        source = workflow.split("          python3 - <<'PY'\n", 1)[1].split(
+            "\n          PY", 1
+        )[0]
+        source = "\n".join(
+            line[10:] if line.startswith("          ") else line
+            for line in source.splitlines()
+        )
+        source = source.replace(
+            "deadline = time.monotonic() + 900\n"
+            "while time.monotonic() < deadline:",
+            "for _ in range(requests.test_poll_count):",
+        ).replace("time.sleep(10)", "None")
+
+        class FakeResponse:
+            def __init__(self, status_code, body):
+                self.status_code = status_code
+                self.body = body
+
+            def json(self):
+                if isinstance(self.body, BaseException):
+                    raise self.body
+                return self.body
+
+        sentinel_environment = {
+            "SPACE_ID": "SZLHOLDINGS/david-leads",
+            "SPACE_BASE_URL": "https://example.invalid",
+            "HF_TOKEN": "sentinel-hf-token-91",
+            "DAVID_USER": "sentinel-user-92",
+            "DAVID_PASS": "sentinel-pass-93",
+            "DAVID_ACCESS_KEY": "sentinel-access-key-94",
+            "DAVID_DATABASE_URL": "sentinel-database-url-95",
+        }
+        combined_fingerprint = hashlib.sha256(
+            "\0".join(
+                sentinel_environment[name]
+                for name in ("DAVID_USER", "DAVID_PASS", "DAVID_ACCESS_KEY")
+            ).encode("utf-8")
+        ).hexdigest()
+
+        scenarios = (
+            {
+                "name": "stale rejection followed by request error",
+                "health": [
+                    FakeResponse(
+                        200,
+                        {
+                            "authentication": "CONFIGURED",
+                            "deal_desk_persistence": "POSTGRES_READY",
+                        },
+                    ),
+                    "request-error",
+                ],
+                "login": [FakeResponse(401, {"detail": "invalid"})],
+                "runtime_error": False,
+                "expected": {
+                    "login_http_status": None,
+                    "request_error_count": 1,
+                    "runtime_lookup_failed": False,
+                },
+            },
+            {
+                "name": "unsupported proxy rejection",
+                "health": [
+                    FakeResponse(
+                        200,
+                        {
+                            "authentication": "CONFIGURED",
+                            "deal_desk_persistence": "POSTGRES_READY",
+                        },
+                    )
+                ],
+                "login": [FakeResponse(403, {"detail": "policy"})],
+                "runtime_error": False,
+                "expected": {
+                    "login_http_status": 403,
+                    "request_error_count": 0,
+                    "runtime_lookup_failed": False,
+                },
+            },
+            {
+                "name": "malformed health body",
+                "health": [FakeResponse(200, ["not", "an", "object"])],
+                "login": [],
+                "runtime_error": False,
+                "expected": {
+                    "protocol_error_count": 1,
+                    "authentication": "UNAVAILABLE",
+                    "runtime_lookup_failed": False,
+                },
+            },
+            {
+                "name": "malformed successful login body",
+                "health": [
+                    FakeResponse(
+                        200,
+                        {
+                            "authentication": "CONFIGURED",
+                            "deal_desk_persistence": "POSTGRES_READY",
+                        },
+                    )
+                ],
+                "login": [FakeResponse(200, ["missing", "token", "object"])],
+                "runtime_error": False,
+                "expected": {
+                    "protocol_error_count": 1,
+                    "login_http_status": 200,
+                    "runtime_lookup_failed": False,
+                },
+            },
+            {
+                "name": "runtime lookup unavailable",
+                "health": [FakeResponse(502, {"detail": "starting"})],
+                "login": [],
+                "runtime_error": True,
+                "expected": {
+                    "health_http_status": 502,
+                    "space_stage": "UNAVAILABLE",
+                    "runtime_lookup_failed": True,
+                },
+            },
+        )
+
+        for scenario in scenarios:
+            with self.subTest(scenario["name"]):
+                requests_module = types.ModuleType("requests")
+
+                class RequestException(Exception):
+                    pass
+
+                health_events = list(scenario["health"])
+                login_events = list(scenario["login"])
+
+                def fake_get(_url, timeout):
+                    self.assertEqual(timeout, 15)
+                    event = health_events.pop(0)
+                    if event == "request-error":
+                        raise RequestException("sentinel-free transport failure")
+                    return event
+
+                def fake_post(_url, json, timeout):
+                    self.assertEqual(timeout, 20)
+                    self.assertEqual(
+                        json,
+                        {
+                            "username": sentinel_environment["DAVID_USER"],
+                            "password": sentinel_environment["DAVID_PASS"],
+                            "access_key": sentinel_environment["DAVID_ACCESS_KEY"],
+                        },
+                    )
+                    return login_events.pop(0)
+
+                requests_module.RequestException = RequestException
+                requests_module.get = fake_get
+                requests_module.post = fake_post
+                requests_module.test_poll_count = len(health_events)
+
+                huggingface_module = types.ModuleType("huggingface_hub")
+
+                class FakeHfApi:
+                    def __init__(self, token):
+                        self.assert_token = token
+
+                    def whoami(self, token):
+                        if token != sentinel_environment["HF_TOKEN"]:
+                            raise AssertionError("wrong token")
+
+                    def add_space_secret(
+                        self,
+                        _repo_id,
+                        *,
+                        key,
+                        value,
+                        description,
+                        token,
+                    ):
+                        if not key or not value or not description or not token:
+                            raise AssertionError("missing rotation input")
+
+                    def get_space_runtime(self, _repo_id, *, token):
+                        if token != sentinel_environment["HF_TOKEN"]:
+                            raise AssertionError("wrong token")
+                        if scenario["runtime_error"]:
+                            raise RuntimeError("runtime metadata unavailable")
+                        return types.SimpleNamespace(stage="RUNNING")
+
+                huggingface_module.HfApi = FakeHfApi
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with (
+                    patch.dict(os.environ, sentinel_environment, clear=False),
+                    patch.dict(
+                        sys.modules,
+                        {
+                            "requests": requests_module,
+                            "huggingface_hub": huggingface_module,
+                        },
+                    ),
+                    contextlib.redirect_stdout(stdout),
+                    contextlib.redirect_stderr(stderr),
+                ):
+                    with self.assertRaisesRegex(
+                        SystemExit,
+                        "Space did not accept replacement credentials before timeout",
+                    ):
+                        exec(compile(source, "<rotation-workflow>", "exec"), {})
+
+                output = stdout.getvalue() + stderr.getvalue()
+                for name in (
+                    "HF_TOKEN",
+                    "DAVID_USER",
+                    "DAVID_PASS",
+                    "DAVID_ACCESS_KEY",
+                    "DAVID_DATABASE_URL",
+                ):
+                    self.assertNotIn(sentinel_environment[name], output)
+                self.assertNotIn(combined_fingerprint, output)
+                receipt = json.loads(stdout.getvalue().strip().splitlines()[-1])
+                self.assertEqual(
+                    receipt["failure_class"],
+                    "REPLACEMENT_LOGIN_NOT_VERIFIED",
+                )
+                self.assertFalse(receipt["replacement_login_verified"])
+                self.assertFalse(receipt["replacement_logout_verified"])
+                self.assertFalse(receipt["credential_values_recorded"])
+                for key, expected in scenario["expected"].items():
+                    self.assertEqual(receipt[key], expected)
 
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",

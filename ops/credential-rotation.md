@@ -34,6 +34,14 @@ names and boolean verification results. Database readiness is reported separatel
 outage cannot invalidate a successful authentication rotation, and successful rotation does not
 prove persistence readiness.
 
+If verification times out, the workflow emits the non-causal,
+secret-free `REPLACEMENT_LOGIN_NOT_VERIFIED` result plus coherent last-sample health,
+authentication, persistence, and login HTTP states; status counts; protocol/request error counts;
+and a best-effort Space runtime stage. These observations narrow diagnosis but do not identify
+which credential, store, proxy, or runtime transition caused the failure. Inspect the runtime
+evidence and re-enter all three application factors together from the approved vault before
+rerunning; do not splice factors from different stores or reveal values or hashes for diagnosis.
+
 Production remediation requires all of the following:
 
 1. the rotation workflow succeeds;
