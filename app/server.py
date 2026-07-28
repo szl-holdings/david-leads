@@ -138,6 +138,15 @@ def _credential_fingerprint(username: str | None, password: str | None, access_k
     return hashlib.sha256(material).hexdigest()
 
 
+def _constant_time_text_equal(supplied: str, expected: str | None) -> bool:
+    if expected is None:
+        return False
+    return secrets.compare_digest(
+        supplied.encode("utf-8"),
+        expected.encode("utf-8"),
+    )
+
+
 _CREDS_PRESENT = bool(DAVID_USER and DAVID_PASS and ACCESS_KEY)
 _CREDS_ROTATION_REQUIRED = (
     _CREDS_PRESENT
@@ -322,8 +331,8 @@ def login(req: LoginReq):
             "credentials not configured — set DAVID_USER / DAVID_PASS / DAVID_ACCESS_KEY in Space settings",
         )
     expected = USERS.get(req.username)
-    pass_ok = expected is not None and secrets.compare_digest(req.password, expected)
-    key_ok = secrets.compare_digest(req.access_key, ACCESS_KEY)
+    pass_ok = _constant_time_text_equal(req.password, expected)
+    key_ok = _constant_time_text_equal(req.access_key, ACCESS_KEY)
     if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
