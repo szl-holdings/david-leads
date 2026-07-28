@@ -1,20 +1,24 @@
 {
   "schema": "szl.david-production-verification/v1",
   "service": "david-leads",
-  "observed_at": "2026-07-28T22:11:33Z",
+  "observed_at": "2026-07-28T22:20:50Z",
   "truth_state": "READY_WITH_EXPLICIT_EXCEPTION",
-  "source_revision": "41b322c9070886836e7dbdf0a1c371798851a641",
+  "source_revision": "6a1f879f3c0083612869942fe93342a366994411",
+  "readiness_publication_pr": 65,
   "protected_runs": {
     "migration": {
-      "run_id": 30403410802,
+      "run_id": 30404033142,
+      "source_revision": "6a1f879f3c0083612869942fe93342a366994411",
       "conclusion": "success"
     },
     "deployment": {
-      "run_id": 30403452519,
+      "run_id": 30404070214,
+      "source_revision": "6a1f879f3c0083612869942fe93342a366994411",
       "conclusion": "success"
     },
     "credential_rotation": {
       "run_id": 30403607270,
+      "source_revision": "41b322c9070886836e7dbdf0a1c371798851a641",
       "conclusion": "success",
       "schema": "szl.david-space-credential-rotation/v2",
       "replacement_login_verified": true,
@@ -30,7 +34,7 @@
     "persistence_diagnostic": "OK",
     "build_info_http": 200,
     "github_huggingface_alignment": "UNVERIFIED",
-    "bundle_sha256": "38cf3d53e219fd7cf35a9b24f0f4fab74330f3ba16c0d0fd05165ba9b7cf86c8",
+    "bundle_sha256": "e84cde6edcd355544842590b6e5a7e07e5ba19502eb34751e7e1447d0efb522e",
     "file_count": 51
   },
   "environment_boundary": {
