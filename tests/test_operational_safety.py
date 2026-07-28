@@ -94,6 +94,10 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("sql.Identifier(runtime_role)", workflow)
         self.assertIn('("david_dealdesk_state", "SELECT, INSERT, UPDATE")', workflow)
         self.assertIn('sql.SQL("GRANT {} ON TABLE {}.{} TO {}")', workflow)
+        self.assertIn("runtime_role in {admin_role, database_owner}", workflow)
+        self.assertIn("runtime_attributes[0] is not True", workflow)
+        self.assertIn("pg_has_role(", workflow)
+        self.assertIn("runtime database role inherits privileged membership", workflow)
         self.assertIn("schema_sha256", workflow)
         self.assertIn("least-privilege runtime secret", guide)
         self.assertIn("never attempts `CREATE TABLE`", guide)
@@ -611,21 +615,26 @@ class OpportunityDeskSafety(unittest.TestCase):
 
     def test_persisted_legacy_do_not_call_is_backfilled_and_enforced(self):
         legacy = {
-            **self.record,
             "last_disposition": "DO_NOT_CALL",
             "stage": "BLOCKED",
         }
-        state = {"opp_legacy": legacy}
+        legacy_oid = dealdesk.opportunity_id(self.record)
+        dealdesk._STATE[legacy_oid] = legacy
+        self.assertFalse(dealdesk._backfill_legacy_suppressions(dealdesk._STATE))
+        self.assertNotIn("suppression", legacy)
 
-        self.assertTrue(dealdesk._backfill_legacy_suppressions(state))
-        self.assertFalse(dealdesk._backfill_legacy_suppressions(state))
+        with patch.object(dealdesk, "_persist") as persist:
+            current = dealdesk.enrich(self.record)
+
         self.assertTrue(legacy["suppression"]["active"])
         self.assertEqual(
             legacy["suppression"]["subject_ids"],
             list(dealdesk.subject_ids(self.record)),
         )
+        self.assertEqual(legacy["subject_identity"]["name"], self.record["name"])
+        self.assertEqual(current["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        persist.assert_called_once_with(dealdesk._STATE)
 
-        dealdesk._STATE.update(state)
         later = {
             **self.record,
             "license_or_issue_date": "2026-08-25",
@@ -796,8 +805,10 @@ class PersistenceContractSafety(unittest.TestCase):
         dealdesk._DATABASE_URL = "postgresql://configured"
         legacy = {
             "opp_legacy": {
-                "name": "Example Logistics LLC",
-                "state": "NY",
+                "subject_identity": {
+                    "name": "Example Logistics LLC",
+                    "state": "NY",
+                },
                 "last_disposition": "DO_NOT_CALL",
                 "stage": "BLOCKED",
             }
