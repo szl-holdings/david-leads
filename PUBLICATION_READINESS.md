@@ -109,14 +109,18 @@ migration implementation into one checked-in script and removes the unused
 regress.
 
 The current Space is source-bound and reports healthy Postgres readiness, but
-that is not complete production proof. Protected rotation run `30399789320`
-submitted updates for the four named Space secrets without API error but timed
-out without a replacement login/logout receipt. The live Space subsequently
-reported `RUNNING`, exact
-source `593a90b9b3621b6d31c4078d5e09dc566b21fc32`, authentication
-`CONFIGURED`, and `POSTGRES_READY`; those observations do not prove that the
-replacement triplet authenticates. This successor adds a non-causal,
-secret-free failure receipt for the required rerun and has not been merged or
+that is not complete production proof. Protected rotation runs `30399789320`
+and `30402216427` submitted updates for the four named Space secrets without
+API error but timed out without a replacement login/logout receipt. The second
+run normalized only trailing CR/LF and observed a healthy configured runtime
+whose login endpoint returned HTTP 500. That status narrows the failure to the
+login path but does not prove a single cause. The live Space subsequently
+reported `RUNNING`, source
+`593a90b9b3621b6d31c4078d5e09dc566b21fc32`, authentication `CONFIGURED`,
+and `POSTGRES_READY`; those observations do not prove that the replacement
+triplet authenticates or that the runtime is bound to current protected main.
+This successor compares vault factors as UTF-8 bytes, adds a non-causal,
+secret-free failure receipt for the required rerun, and has not been merged or
 deployed.
 Application-credential replacement, effective Hugging Face token scope, and
 local administrator-vault custody remain `UNVERIFIED`.

@@ -1804,6 +1804,61 @@ class ApiSafety(unittest.TestCase):
         self.assertEqual(readiness.status_code, 200)
         self.assertEqual(readiness.json()["status"], "ready")
 
+    def test_login_compares_unicode_vault_values_without_server_error(self):
+        username = "opérateur"
+        password = "påssword-🔐"
+        access_key = "clé-d’accès-🔑"
+        with (
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server, "USERS", {username: password}),
+            patch.object(self.server, "ACCESS_KEY", access_key),
+        ):
+            accepted = self.client.post(
+                "/api/login",
+                json={
+                    "username": username,
+                    "password": password,
+                    "access_key": access_key,
+                },
+            )
+            rejected = self.client.post(
+                "/api/login",
+                json={
+                    "username": username,
+                    "password": password + "-wrong",
+                    "access_key": access_key,
+                },
+            )
+
+        self.assertEqual(accepted.status_code, 200)
+        self.assertIsInstance(accepted.json().get("token"), str)
+        self.assertEqual(rejected.status_code, 401)
+        self.server._TOKENS.pop(accepted.json()["token"], None)
+
+    def test_login_rejects_unpaired_surrogates_without_server_error(self):
+        username = "operator"
+        password = "vault-password"
+        access_key = "vault-access-key"
+        payloads = (
+            '{"username":"operator","password":"\\ud800","access_key":"vault-access-key"}',
+            '{"username":"operator","password":"vault-password","access_key":"\\udfff"}',
+        )
+        with (
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server, "USERS", {username: password}),
+            patch.object(self.server, "ACCESS_KEY", access_key),
+        ):
+            for payload in payloads:
+                with self.subTest(payload=payload):
+                    response = self.client.post(
+                        "/api/login",
+                        content=payload,
+                        headers={"Content-Type": "application/json"},
+                    )
+                    self.assertEqual(response.status_code, 401)
+
     def test_deal_desk_fails_closed_without_durable_persistence(self):
         with patch.object(self.server.dd, "persistence_ready", return_value=False):
             response = self.client.get("/api/deal-desk", headers=self.headers)

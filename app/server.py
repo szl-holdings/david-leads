@@ -194,6 +194,18 @@ class RunReq(BaseModel):
     age_min: float = 0.0  # V8: demonstrate Λ time-decay live (minutes since trigger observed)
 
 
+def _secret_equal(presented: str, configured: str | None) -> bool:
+    if configured is None:
+        return False
+    try:
+        return secrets.compare_digest(
+            presented.encode("utf-8"),
+            configured.encode("utf-8"),
+        )
+    except UnicodeEncodeError:
+        return False
+
+
 def _auth(authorization: str | None):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
@@ -322,8 +334,8 @@ def login(req: LoginReq):
             "credentials not configured — set DAVID_USER / DAVID_PASS / DAVID_ACCESS_KEY in Space settings",
         )
     expected = USERS.get(req.username)
-    pass_ok = expected is not None and secrets.compare_digest(req.password, expected)
-    key_ok = secrets.compare_digest(req.access_key, ACCESS_KEY)
+    pass_ok = _secret_equal(req.password, expected)
+    key_ok = _secret_equal(req.access_key, ACCESS_KEY)
     if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
