@@ -311,8 +311,6 @@ def _backfill_legacy_suppressions(
         if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
             continue
         suppression = saved.get("suppression")
-        if isinstance(suppression, dict) and suppression.get("active") is True:
-            continue
         identity = saved.get("subject_identity")
         if not isinstance(identity, dict):
             identity = _subject_identity(known_records.get(oid) or saved)
@@ -324,6 +322,22 @@ def _backfill_legacy_suppressions(
             # exact source opportunity is observed again.
             continue
         aliases = subject_ids(identity)
+        if isinstance(suppression, dict) and suppression.get("active") is True:
+            normalized = {
+                **suppression,
+                "subject_id": aliases[0],
+                "subject_ids": list(aliases),
+            }
+            if (
+                normalized != suppression
+                or saved.get("subject_identity") != identity
+            ):
+                saved["stage"] = "BLOCKED"
+                saved["next_action"] = "Suppressed: do not contact"
+                saved["subject_identity"] = identity
+                saved["suppression"] = normalized
+                changed = True
+            continue
         clearance = saved.get("clearance")
         revoked_at = (
             clearance.get("revoked_at")
@@ -347,9 +361,7 @@ def _backfill_legacy_suppressions(
 
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
-    current_opportunity_id = opportunity_id(record)
-    legacy_id = _legacy_unnamed_subject_id(record)
-    for saved_opportunity_id, saved in _STATE.items():
+    for saved in _STATE.values():
         suppression = saved.get("suppression")
         suppressed_ids = set(suppression.get("subject_ids") or ()) if isinstance(
             suppression, dict
@@ -360,12 +372,6 @@ def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
             isinstance(suppression, dict)
             and stable_ids.intersection(suppressed_ids)
             and suppression.get("active") is True
-        ):
-            return suppression
-        if (
-            legacy_id
-            and saved_opportunity_id == current_opportunity_id
-            and legacy_id in suppressed_ids
         ):
             return suppression
     return None
@@ -402,7 +408,13 @@ def _assert_no_unresolved_legacy_suppressions(
         if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
             continue
         suppression = saved.get("suppression")
-        if isinstance(suppression, dict) and suppression.get("active") is True:
+        identity = saved.get("subject_identity")
+        if (
+            isinstance(suppression, dict)
+            and suppression.get("active") is True
+            and isinstance(identity, dict)
+            and _subject_identity(identity)
+        ):
             continue
         raise _LegacySuppressionIdentityRequired(
             "legacy do-not-call identity requires governed backfill"

@@ -206,10 +206,6 @@ jobs:
                               SELECT 1
                               FROM david_dealdesk_state
                               WHERE payload ->> 'last_disposition' = 'DO_NOT_CALL'
-                                AND NOT (
-                                    jsonb_typeof(payload -> 'suppression') = 'object'
-                                    AND payload #>> '{suppression,active}' = 'true'
-                                )
                                 AND NULLIF(
                                     btrim(payload #>> '{subject_identity,name}'),
                                     ''

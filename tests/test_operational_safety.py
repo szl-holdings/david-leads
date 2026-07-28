@@ -744,6 +744,11 @@ class PersistenceContractSafety(unittest.TestCase):
             "opp_legacy": {
                 "last_disposition": "DO_NOT_CALL",
                 "stage": "BLOCKED",
+                "suppression": {
+                    "subject_id": "subj_legacy_unscoped",
+                    "subject_ids": ["subj_legacy_unscoped"],
+                    "active": True,
+                },
             },
         }
         with self.assertRaises(dealdesk._LegacySuppressionIdentityRequired):
