@@ -28,11 +28,51 @@ _KNOWN: dict[str, dict[str, Any]] = {}
 
 
 def persistence_configured() -> bool:
-    return bool(_PATH and os.path.isabs(_PATH))
+    return persistence_state() == "FILE_BACKED"
 
 
 def persistence_state() -> str:
-    return "FILE_BACKED" if persistence_configured() else "NOT_CONFIGURED"
+    if not _PATH or not os.path.isabs(_PATH):
+        return "NOT_CONFIGURED"
+
+    path = os.path.abspath(_PATH)
+    directory = os.path.dirname(path)
+    temporary: str | None = None
+    promoted: str | None = None
+    try:
+        if not os.path.isdir(directory):
+            return "UNAVAILABLE"
+        if os.path.exists(path):
+            if not os.path.isfile(path):
+                return "UNAVAILABLE"
+            with open(path, "rb") as handle:
+                handle.read(1)
+
+        fd, temporary = tempfile.mkstemp(
+            prefix=".dealdesk-readiness-",
+            suffix=".tmp",
+            dir=directory,
+        )
+        promoted = temporary + ".committed"
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(b"{}")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, promoted)
+        temporary = None
+        with open(promoted, "rb") as handle:
+            if handle.read() != b"{}":
+                return "UNAVAILABLE"
+        return "FILE_BACKED"
+    except OSError:
+        return "UNAVAILABLE"
+    finally:
+        for candidate in (temporary, promoted):
+            if candidate and os.path.exists(candidate):
+                try:
+                    os.unlink(candidate)
+                except OSError:
+                    pass
 
 
 def _now() -> str:
