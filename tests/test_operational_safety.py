@@ -38,8 +38,8 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("deployment branches restricted to the protected `main` branch", guide)
         self.assertIn("a required owner approval", guide)
         self.assertIn("stored as\n  environment secrets", guide)
-        self.assertIn("Delete repository-scoped copies of the four `DAVID_*`", guide)
-        self.assertIn("Keep this pull request in draft", guide)
+        self.assertIn("No `DAVID_*` value is stored at\nrepository scope", guide)
+        self.assertIn("Protected run `30403607270` completed", guide)
 
     def test_deploy_follows_successful_exact_main_migration(self):
         deploy_workflow = (

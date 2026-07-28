@@ -1,0 +1,55 @@
+{
+  "schema": "szl.david-production-verification/v1",
+  "service": "david-leads",
+  "observed_at": "2026-07-28T22:11:33Z",
+  "truth_state": "READY_WITH_EXPLICIT_EXCEPTION",
+  "source_revision": "41b322c9070886836e7dbdf0a1c371798851a641",
+  "protected_runs": {
+    "migration": {
+      "run_id": 30403410802,
+      "conclusion": "success"
+    },
+    "deployment": {
+      "run_id": 30403452519,
+      "conclusion": "success"
+    },
+    "credential_rotation": {
+      "run_id": 30403607270,
+      "conclusion": "success",
+      "schema": "szl.david-space-credential-rotation/v2",
+      "replacement_login_verified": true,
+      "replacement_logout_verified": true,
+      "credential_values_recorded": false
+    }
+  },
+  "live_probes": {
+    "healthz_http": 200,
+    "readyz_http": 200,
+    "authentication": "CONFIGURED",
+    "deal_desk_persistence": "POSTGRES_READY",
+    "persistence_diagnostic": "OK",
+    "build_info_http": 200,
+    "github_huggingface_alignment": "UNVERIFIED",
+    "bundle_sha256": "38cf3d53e219fd7cf35a9b24f0f4fab74330f3ba16c0d0fd05165ba9b7cf86c8",
+    "file_count": 51
+  },
+  "environment_boundary": {
+    "name": "david-space-credential-rotation",
+    "deployment_branch": "main",
+    "owner_approval_observed": true,
+    "environment_secret_names": [
+      "DAVID_ACCESS_KEY",
+      "DAVID_DATABASE_ADMIN_URL",
+      "DAVID_DATABASE_URL",
+      "DAVID_PASS",
+      "DAVID_USER"
+    ],
+    "repository_secret_names": [
+      "HF_TOKEN"
+    ]
+  },
+  "explicit_exceptions": [
+    "receipt_minted=false",
+    "Local administrator-vault custody is an operator responsibility and is not asserted by repository evidence."
+  ]
+}

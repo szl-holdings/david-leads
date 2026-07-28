@@ -1,44 +1,41 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · cf596 SOURCE ALIGNMENT MEASURED · SUCCESSOR NOT READY**
+> Status: **PUBLIC · PRODUCTION PATH OPERATIONAL · READY WITH EXPLICIT EXCEPTION**
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
 
 ## Operational evidence
 
-The credential-remediation and governed broker-desk release was observed on
-2026-07-28. The evidence below is specific; it is not an estate-wide claim.
+The credential remediation, governed broker desk, and durable persistence path
+were observed on 2026-07-28. This evidence is specific to `david-leads`; it is
+not an estate-wide claim.
 
-- Protected deployment run `30389823219` completed successfully for source
-  `cf59692307de7747cfa2c32401b5dda7ff21d0dd`.
-- Independent drift-check run `30389999202` succeeded for that exact revision.
-- The unauthenticated `/healthz` and `/readyz` probes returned HTTP 200 with
+- Protected migration run `30403410802` succeeded for exact protected source
+  `41b322c9070886836e7dbdf0a1c371798851a641`.
+- Exact-source Hugging Face deployment run `30403452519` succeeded for that
+  revision. Its deployment job published the Docker-derived file set, bound the
+  protected source revision, attested the running bytes and smoke routes, and
+  verified the live source identity.
+- The live `/healthz` and `/readyz` probes returned HTTP 200 with
   `authentication=CONFIGURED`, `deal_desk_persistence=POSTGRES_READY`, and
   `persistence_diagnostic=OK`.
-- The live `/api/build-info` probe reported the exact protected revision,
-  runtime bundle digest
-  `ec6f20d49e4b7c9c15befb1bb0128e5d2cdd9e51ab7ebf4628950fe540f4932b`,
-  and 50 copied files. The endpoint still reports
-  `github_huggingface_alignment=UNVERIFIED`; the independent drift run is the
-  separate measured alignment evidence.
-- Earlier source `1e27921013f6f92419170b41cd4646aee38b64fc` passed CI in run
-  `30388869705`, deployed in run `30388870254`, and passed drift run
-  `30389219959`. Those runs are historical evidence, not proof for the current
-  revision.
-- Neon preflight run `30388377093` succeeded on earlier source
-  `b35bbfa7db2de64dd8307d86747bc5626f084547`; it is not exact-source proof for
-  `1e27921013f6f92419170b41cd4646aee38b64fc`. That historical workflow read
-  `DAVID_DATABASE_URL` from a repository-scoped Actions secret; the credential
-  value was not included in its evidence. The repository had no GitHub
-  environments when audited, so the run was not protected-environment proof.
-- Replacement production login, protected Frontier Radar access, logout, and
-  administrator-vault custody are `UNVERIFIED` here because no exact
-  non-secret evidence record was available.
-- Repository secret metadata listed only `HF_TOKEN`, but the required protected
-  environment did not exist. Environment-bound migration, verification, and
-  rotation therefore remain unavailable until a repository administrator
-  creates and protects it.
+- The live `/api/build-info` probe reported the same protected revision, runtime
+  bundle digest
+  `38cf3d53e219fd7cf35a9b24f0f4fab74330f3ba16c0d0fd05165ba9b7cf86c8`,
+  and 51 copied files. The endpoint itself remains
+  `github_huggingface_alignment=UNVERIFIED`; the successful exact-source deploy
+  attestation is the separate alignment evidence.
+- Owner-approved protected rotation run `30403607270` succeeded for the same
+  exact protected source. Its secret-free schema-v2 result reported replacement
+  login and logout verified, PostgreSQL persistence ready, and
+  `credential_values_recorded=false`.
+- The repository environment `david-space-credential-rotation` is restricted
+  to `main`, has an owner-approval rule, and stores the application,
+  runtime-database, and migration-admin credentials as environment secrets.
+  Repository secret metadata contains only the scoped Hugging Face publisher.
+- The machine-readable evidence record is
+  `ops/evidence/david-production-verification-2026-07-28.json`.
 
 This readiness record is itself part of the Docker-copied governance bundle.
 A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
@@ -46,7 +43,9 @@ A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
 `SPACE_PROVENANCE.json`), the `Dockerfile`, or the deployment workflow must
 complete a fresh exact-source deployment and live probe. Other repository
 changes do not trigger this deployment and are not covered by its runtime
-source-identity evidence.
+source-identity evidence. The machine-readable evidence record is deliberately
+outside that COPY set so the final exact deployed revision can be recorded
+without creating a self-referential deployment loop.
 
 ## Public boundary
 
@@ -74,28 +73,24 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Current repository secret metadata was inspected and lists only the scoped
-Hugging Face deployment token. Historical run `30388377093` did access
-`DAVID_DATABASE_URL` through a repository-scoped Actions secret; current
-inventory does not make that historical access environment-protected. The
-proposed successor moves application, runtime-database, and migration-admin
-credentials into an owner-approved, protected-main-only GitHub environment so
-only the explicitly bound rotation, migration, and verification jobs can use
-them. That environment was absent at the audit snapshot, so its protection,
-secret placement, and local administrator-vault custody are not yet proved.
-The successor must remain draft until those controls exist.
+Current repository secret metadata lists only the scoped Hugging Face
+deployment token. Application, runtime-database, and migration-admin
+credentials are stored in the owner-approved, `main`-only
+`david-space-credential-rotation` environment. The protected migration and
+rotation workflows have both completed successfully with owner approval.
+Credential values were not emitted into committed evidence or workflow result
+records. Local administrator-vault custody remains an operator responsibility
+and is not asserted by this repository.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,
 replacement login/logout, exact-source deployment, and drift, then revoke the
 administrator session used for rotation.
 
-## Successor durable broker contract
+## Durable broker contract
 
-The following is the fail-closed source contract in this successor. It is not
-live production evidence until the protected migration, exact-source
-deployment, live probes, and independent drift check succeed for the exact
-merged revision.
+The following fail-closed contract is deployed and backed by the measured
+PostgreSQL-ready runtime above:
 
 - Opportunity snapshots are persisted in `david_dealdesk_state`.
 - Immutable research, clearance, stage, and disposition events are persisted in
