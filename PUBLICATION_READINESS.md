@@ -1,18 +1,22 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · OPERATIONAL WITH EXPLICIT EVIDENCE EXCEPTIONS**
+> Status: **PUBLIC · PRODUCTION READINESS WITHHELD**
 >
-> Exceptions: `receipt_minted=false`; administrator-login evidence remains
-> `UNVERIFIED`; current vault/Hugging Face credential-policy conformance and the
-> current GitHub Actions secret inventory remain `UNVERIFIED`.
+> Readiness gate: **WITHHELD**. Administrator-login evidence, current
+> vault/Hugging Face credential-policy conformance, and the current GitHub
+> Actions secret inventory remain `UNVERIFIED`. These are blocking evidence
+> gaps, not operational exceptions. `receipt_minted=false` is an additional
+> explicit release-receipt exception.
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
 
-## Operational evidence
+## Historical runtime evidence
 
-The credential-remediation and governed broker-desk release was observed on
-2026-07-28. The evidence below is specific; it is not an estate-wide claim.
+Runtime and governed broker-desk behavior was observed on 2026-07-28. The
+evidence below is specific, historical runtime evidence; it is not an
+estate-wide claim and does not establish current production remediation while
+the readiness gate above is withheld.
 
 - Protected source revision
   `1e27921013f6f92419170b41cd4646aee38b64fc` passed CI in run
@@ -101,7 +105,14 @@ administrator session used for rotation.
 - CRM webhooks require an explicit HTTPS hostname allowlist and pin connections
   to validated public addresses.
 
-## Explicit exception
+## Blocking evidence gaps and explicit exception
+
+Production remediation remains `UNVERIFIED` until a non-displaying
+administrator-vault flow has produced reviewable, secret-free evidence of
+replacement login/logout and current credential-policy conformance, including
+proof that no GitHub workflow can read or mutate the application or database
+credentials. Observed HTTP health, exact source alignment, and Neon
+read/write/rollback verification do not waive these credential gates.
 
 `receipt_minted=false` remains the truthful release-receipt state. Exact GitHub
 revision, runtime byte manifest, protected deployment, live probes, and
