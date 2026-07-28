@@ -1,44 +1,48 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · cf596 SOURCE ALIGNMENT MEASURED · SUCCESSOR NOT READY**
+> Status: **PUBLIC · CURRENT LIVE SOURCE OBSERVED · c28fe DEPLOYMENT WITHHELD**
+>
+> Readiness gate: **WITHHELD**. Protected source
+> `c28fe240dba336eb4d0279a9d2d70f668472ac4a` has local and migration
+> evidence, but it is not the live Hugging Face revision. Current
+> administrator-login, credential-custody, and exact-source deployment evidence
+> remain `UNVERIFIED`. These are blocking evidence gaps, not operational
+> exceptions.
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
 
-## Operational evidence
+## Current and historical evidence
 
-The credential-remediation and governed broker-desk release was observed on
-2026-07-28. The evidence below is specific; it is not an estate-wide claim.
+The evidence below was observed on 2026-07-28. It is source-specific and is not
+an estate-wide claim.
 
-- Protected deployment run `30389823219` completed successfully for source
-  `cf59692307de7747cfa2c32401b5dda7ff21d0dd`.
-- Independent drift-check run `30389999202` succeeded for that exact revision.
+- Protected main `c28fe240dba336eb4d0279a9d2d70f668472ac4a`
+  completed the operational-safety workflow in run `30398321189`.
+- Protected standalone migration run `30398626193` completed successfully for
+  that exact source. It applied and verified schema version 2, the separate
+  least-privilege runtime role, service-table ownership, schema/table
+  privileges, and the governed legacy-suppression boundary without recording
+  credential values.
+- Push deployment run `30398321778` failed twice before deployment. Its
+  reusable migration job did not receive the environment-scoped database
+  secrets, even though the standalone protected-environment migration
+  succeeded. The live Space was not changed by those failed attempts.
+- Unauthenticated `/api/build-info` currently reports live revision
+  `0b4eab46ce524501d92e3def5ddc47bcfbe541da`, bundle digest
+  `7adfe53b91461fd16454c439e135ce398278432a633dc4b9c35fea60b7fbbaea`,
+  50 copied files, and `receipt_minted=false`. It does not report `c28fe`.
 - The unauthenticated `/healthz` and `/readyz` probes returned HTTP 200 with
   `authentication=CONFIGURED`, `deal_desk_persistence=POSTGRES_READY`, and
-  `persistence_diagnostic=OK`.
-- The live `/api/build-info` probe reported the exact protected revision,
-  runtime bundle digest
-  `ec6f20d49e4b7c9c15befb1bb0128e5d2cdd9e51ab7ebf4628950fe540f4932b`,
-  and 50 copied files. The endpoint still reports
-  `github_huggingface_alignment=UNVERIFIED`; the independent drift run is the
-  separate measured alignment evidence.
-- Earlier source `1e27921013f6f92419170b41cd4646aee38b64fc` passed CI in run
-  `30388869705`, deployed in run `30388870254`, and passed drift run
-  `30389219959`. Those runs are historical evidence, not proof for the current
-  revision.
-- Neon preflight run `30388377093` succeeded on earlier source
-  `b35bbfa7db2de64dd8307d86747bc5626f084547`; it is not exact-source proof for
-  `1e27921013f6f92419170b41cd4646aee38b64fc`. That historical workflow read
-  `DAVID_DATABASE_URL` from a repository-scoped Actions secret; the credential
-  value was not included in its evidence. The repository had no GitHub
-  environments when audited, so the run was not protected-environment proof.
+  `persistence_diagnostic=OK` for the older live source. HTTP health is not
+  exact-source proof for `c28fe`.
+- Earlier protected deployment run `30389823219` and drift-check run
+  `30389999202` succeeded for source
+  `cf59692307de7747cfa2c32401b5dda7ff21d0dd`. Those runs are historical
+  evidence, not proof for current main or the current live revision.
 - Replacement production login, protected Frontier Radar access, logout, and
   administrator-vault custody are `UNVERIFIED` here because no exact
   non-secret evidence record was available.
-- Repository secret metadata listed only `HF_TOKEN`, but the required protected
-  environment did not exist. Environment-bound migration, verification, and
-  rotation therefore remain unavailable until a repository administrator
-  creates and protects it.
 
 This readiness record is itself part of the Docker-copied governance bundle.
 A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
@@ -74,16 +78,23 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Current repository secret metadata was inspected and lists only the scoped
-Hugging Face deployment token. Historical run `30388377093` did access
-`DAVID_DATABASE_URL` through a repository-scoped Actions secret; current
-inventory does not make that historical access environment-protected. The
-proposed successor moves application, runtime-database, and migration-admin
-credentials into an owner-approved, protected-main-only GitHub environment so
-only the explicitly bound rotation, migration, and verification jobs can use
-them. That environment was absent at the audit snapshot, so its protection,
-secret placement, and local administrator-vault custody are not yet proved.
-The successor must remain draft until those controls exist.
+Repository secret metadata was inspected and lists only `HF_TOKEN`.
+Environment-secret metadata for the protected
+`david-space-credential-rotation` environment lists `DAVID_USER`,
+`DAVID_PASS`, `DAVID_ACCESS_KEY`, `DAVID_DATABASE_URL`, and
+`DAVID_DATABASE_ADMIN_URL`. No value was read or recorded. The environment has
+an owner-review rule and a protected-main branch policy, and exact-source
+migration run `30398626193` proved that the two database credentials were
+available to a directly dispatched protected-environment job.
+
+The failed push deployment proves that the former reusable-workflow call did
+not receive those environment secrets. This successor therefore runs the
+shared checked-in migration script from a normal protected-environment job
+before invoking the pinned deployer. This source correction is not production
+proof until it is reviewed, merged normally, and completes an exact-source
+migration, deployment, live probe, and independent drift check. Current
+application-credential scope, effective Hugging Face token scope, and local
+administrator-vault custody remain `UNVERIFIED`.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,

@@ -46,22 +46,35 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "hf-deploy.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("branches: [main]", workflow)
+        self.assertIn(
+            '- ".github/scripts/migrate_neon_persistence.py"',
+            workflow,
+        )
         self.assertNotIn("workflow_dispatch", workflow)
         self.assertNotIn("rotate-app-secrets", workflow)
         self.assertNotIn("secrets: inherit", workflow)
         self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", workflow)
         self.assertIn(
-            "migrate:\n    uses: ./.github/workflows/migrate-neon-persistence.yml",
+            "migrate:\n    if: github.ref == 'refs/heads/main'",
+            workflow,
+        )
+        self.assertIn("name: david-space-credential-rotation", workflow)
+        self.assertEqual(
+            workflow.count("group: david-neon-persistence-migration"),
+            1,
+        )
+        self.assertIn(
+            "run: python3 .github/scripts/migrate_neon_persistence.py",
             workflow,
         )
         self.assertIn("deploy:\n    needs: migrate", workflow)
-        for name in (
-            "DAVID_USER",
-            "DAVID_PASS",
-            "DAVID_ACCESS_KEY",
-            "DAVID_DATABASE_URL",
-        ):
+        for name in ("DAVID_USER", "DAVID_PASS", "DAVID_ACCESS_KEY"):
             self.assertNotIn(f"secrets.{name}", workflow)
+        self.assertEqual(
+            workflow.count("secrets.DAVID_DATABASE_ADMIN_URL"),
+            2,
+        )
+        self.assertEqual(workflow.count("secrets.DAVID_DATABASE_URL"), 2)
 
     def test_repository_has_no_credential_stdout_reader(self):
         self.assertFalse((ROOT / "ops" / "get_david_credentials.ps1").exists())
@@ -87,31 +100,39 @@ class PublicCredentialSafety(unittest.TestCase):
         workflow = (
             ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
         ).read_text(encoding="utf-8")
+        migration = (
+            ROOT / ".github" / "scripts" / "migrate_neon_persistence.py"
+        ).read_text(encoding="utf-8")
         guide = (ROOT / "ops" / "neon-persistence.md").read_text(encoding="utf-8")
         self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
         self.assertIn("name: david-space-credential-rotation", workflow)
+        self.assertNotIn("workflow_call", workflow)
         self.assertIn("secrets.DAVID_DATABASE_ADMIN_URL", workflow)
         self.assertIn("secrets.DAVID_DATABASE_URL", workflow)
-        self.assertIn("sql.Identifier(runtime_role)", workflow)
+        self.assertIn(
+            "run: python3 .github/scripts/migrate_neon_persistence.py",
+            workflow,
+        )
+        self.assertIn("sql.Identifier(runtime_role)", migration)
         self.assertIn(
             '"david_dealdesk_state": {"SELECT", "INSERT", "UPDATE"}',
-            workflow,
+            migration,
         )
-        self.assertIn('sql.SQL("GRANT {} ON TABLE {}.{} TO {}")', workflow)
-        self.assertIn("runtime_role in {admin_role, database_owner}", workflow)
-        self.assertIn("runtime_attributes[0] is not True", workflow)
-        self.assertIn("pg_has_role(", workflow)
-        self.assertIn("runtime database role inherits privileged membership", workflow)
-        self.assertIn('sql.SQL("ALTER TABLE {}.{} OWNER TO {}")', workflow)
-        self.assertIn("REVOKE CREATE ON SCHEMA {} FROM PUBLIC", workflow)
-        self.assertIn("REVOKE ALL PRIVILEGES ON TABLE {}.{} FROM {}", workflow)
-        self.assertIn("has_schema_privilege(", workflow)
-        self.assertIn("has_table_privilege(", workflow)
+        self.assertIn('sql.SQL("GRANT {} ON TABLE {}.{} TO {}")', migration)
+        self.assertIn("runtime_role in {admin_role, database_owner}", migration)
+        self.assertIn("runtime_attributes[0] is not True", migration)
+        self.assertIn("pg_has_role(", migration)
+        self.assertIn("runtime database role inherits privileged membership", migration)
+        self.assertIn('sql.SQL("ALTER TABLE {}.{} OWNER TO {}")', migration)
+        self.assertIn("REVOKE CREATE ON SCHEMA {} FROM PUBLIC", migration)
+        self.assertIn("REVOKE ALL PRIVILEGES ON TABLE {}.{} FROM {}", migration)
+        self.assertIn("has_schema_privilege(", migration)
+        self.assertIn("has_table_privilege(", migration)
         self.assertIn(
             "legacy do-not-call identity requires governed backfill",
-            workflow,
+            migration,
         )
-        self.assertIn("schema_sha256", workflow)
+        self.assertIn("schema_sha256", migration)
         self.assertIn("least-privilege runtime secret", guide)
         self.assertIn("transfers service-table ownership", guide)
         self.assertIn("governed identity backfill", guide)
@@ -741,9 +762,25 @@ class PersistenceContractSafety(unittest.TestCase):
         dealdesk._LAST_PROBE_AT = self.original_probe
         dealdesk.reset_for_tests()
 
-    def test_unidentified_legacy_do_not_call_blocks_persistence_readiness(self):
+    def test_unidentified_legacy_do_not_call_blocks_changed_signal_recovery(self):
+        original = {
+            "name": "Example Logistics LLC",
+            "state": "CT",
+            "zip": "06103",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/original"},
+        }
+        changed = {
+            **original,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        original_oid = dealdesk.opportunity_id(original)
+        changed_oid = dealdesk.opportunity_id(changed)
+        self.assertNotEqual(changed_oid, original_oid)
+
         unresolved = {
-            "opp_legacy": {
+            original_oid: {
                 "last_disposition": "DO_NOT_CALL",
                 "stage": "BLOCKED",
                 "suppression": {
@@ -753,6 +790,12 @@ class PersistenceContractSafety(unittest.TestCase):
                 },
             },
         }
+        self.assertFalse(
+            dealdesk._backfill_legacy_suppressions(
+                unresolved,
+                {changed_oid: changed},
+            )
+        )
         with self.assertRaises(dealdesk._LegacySuppressionIdentityRequired):
             dealdesk._assert_no_unresolved_legacy_suppressions(unresolved)
 
@@ -788,7 +831,7 @@ class PersistenceContractSafety(unittest.TestCase):
             schema.index("VALUES ('dealdesk', 2)"),
         )
         migrate = (
-            ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+            ROOT / ".github" / "scripts" / "migrate_neon_persistence.py"
         ).read_text(encoding="utf-8")
         verify = (
             ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
