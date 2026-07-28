@@ -109,7 +109,7 @@ def persistence_configured() -> bool:
 
 
 def persistence_state() -> str:
-    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     if _DATABASE_URL:
         _recover_postgres_if_due()
         return _PERSISTENCE_HEALTH
@@ -123,6 +123,7 @@ def persistence_state() -> str:
             os.path.exists(path) and not os.path.isfile(path)
         ):
             _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+            _PERSISTENCE_DIAGNOSTIC = "FILE_PATH_UNAVAILABLE"
             _PERSISTENCE_READY_PATH = None
             return "FILE_UNAVAILABLE"
         if _PERSISTENCE_HEALTH == "FILE_READY" and _PERSISTENCE_READY_PATH == path:
@@ -144,12 +145,15 @@ def persistence_state() -> str:
             temporary = None
             if pathlib.Path(path).read_bytes() != original:
                 _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+                _PERSISTENCE_DIAGNOSTIC = "FILE_PROBE_MISMATCH"
                 return "FILE_UNAVAILABLE"
             _PERSISTENCE_HEALTH = "FILE_READY"
+            _PERSISTENCE_DIAGNOSTIC = "OK"
             _PERSISTENCE_READY_PATH = path
             return "FILE_BACKED"
         except OSError:
             _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+            _PERSISTENCE_DIAGNOSTIC = "FILE_PROBE_FAILED"
             _PERSISTENCE_READY_PATH = None
             return "FILE_UNAVAILABLE"
         finally:
@@ -245,6 +249,10 @@ def _db_connect():
     if psycopg is None:
         raise RuntimeError("psycopg is required when DAVID_DATABASE_URL is configured")
     return psycopg.connect(_DATABASE_URL, connect_timeout=8)
+
+
+class PersistenceUnavailable(RuntimeError):
+    """Sanitized persistence failure safe to expose as a service-unavailable error."""
 
 
 def _ensure_database_schema(connection: Any) -> None:
@@ -343,6 +351,7 @@ def _load() -> None:
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "FILE_LOAD_FAILED"
 
 
 def _recover_postgres_if_due() -> None:
@@ -367,59 +376,79 @@ def _persist(
     state: dict[str, dict[str, Any]] | None = None,
     event: dict[str, Any] | None = None,
 ) -> None:
-    global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
-        with _db_connect() as connection:
-            with connection.cursor() as cursor:
-                for oid, payload in snapshot.items():
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_state
-                            (opportunity_id, payload, version, updated_at)
-                        VALUES (%s, %s::jsonb, 1, now())
-                        ON CONFLICT (opportunity_id) DO UPDATE SET
-                            payload = EXCLUDED.payload,
-                            version = david_dealdesk_state.version + 1,
-                            updated_at = now()
-                        """,
-                        (oid, json.dumps(payload, sort_keys=True)),
-                    )
-                if event:
-                    cursor.execute(
-                        """
-                        INSERT INTO david_dealdesk_events
-                            (event_id, opportunity_id, event_type, actor, payload, created_at)
-                        VALUES (%s, %s, %s, %s, %s::jsonb, %s)
-                        ON CONFLICT (event_id) DO NOTHING
-                        """,
-                        (
-                            event["event_id"],
-                            event["opportunity_id"],
-                            event["type"],
-                            event.get("actor") or "unknown",
-                            json.dumps(event, sort_keys=True),
-                            event["at"],
-                        ),
-                    )
+        try:
+            with _db_connect() as connection:
+                with connection.cursor() as cursor:
+                    for oid, payload in snapshot.items():
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_state
+                                (opportunity_id, payload, version, updated_at)
+                            VALUES (%s, %s::jsonb, 1, now())
+                            ON CONFLICT (opportunity_id) DO UPDATE SET
+                                payload = EXCLUDED.payload,
+                                version = david_dealdesk_state.version + 1,
+                                updated_at = now()
+                            """,
+                            (oid, json.dumps(payload, sort_keys=True)),
+                        )
+                    if event:
+                        cursor.execute(
+                            """
+                            INSERT INTO david_dealdesk_events
+                                (event_id, opportunity_id, event_type, actor, payload, created_at)
+                            VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+                            ON CONFLICT (event_id) DO NOTHING
+                            """,
+                            (
+                                event["event_id"],
+                                event["opportunity_id"],
+                                event["type"],
+                                event.get("actor") or "unknown",
+                                json.dumps(event, sort_keys=True),
+                                event["at"],
+                            ),
+                        )
+        except Exception as exc:
+            _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+            raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
         _PERSISTENCE_HEALTH = "POSTGRES_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
         return
     if not _PATH:
         return
-    directory = os.path.dirname(os.path.abspath(_PATH))
-    os.makedirs(directory, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix="dealdesk-", suffix=".json", dir=directory)
+    temporary: str | None = None
     try:
+        directory = os.path.dirname(os.path.abspath(_PATH))
+        os.makedirs(directory, exist_ok=True)
+        fd, temporary = tempfile.mkstemp(
+            prefix="dealdesk-",
+            suffix=".json",
+            dir=directory,
+        )
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             json.dump(snapshot, handle, indent=2, sort_keys=True)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temporary, _PATH)
         _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
         _PERSISTENCE_READY_PATH = os.path.abspath(_PATH)
+    except Exception:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "FILE_WRITE_FAILED"
+        _PERSISTENCE_READY_PATH = None
+        raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
     finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+        if temporary and os.path.exists(temporary):
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 _load()
@@ -530,6 +559,19 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
         saved = candidate
         clearance = None
     call_ready = bool(clearance and saved.get("stage") in CONTACT_STAGES and not blocked)
+    cleared_channel = next(
+        (
+            item
+            for item in saved.get("channels") or []
+            if clearance and item.get("channel_id") == clearance.get("channel_id")
+        ),
+        None,
+    )
+    phone_call_ready = bool(
+        call_ready
+        and isinstance(cleared_channel, dict)
+        and cleared_channel.get("type") == "BUSINESS_PHONE"
+    )
     if call_ready:
         gate = "TIME_LIMITED_CLEARANCE"
     elif isinstance(saved.get("clearance"), dict) and not blocked:
@@ -559,6 +601,7 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
         "next_action": next_action,
         "contact_gate": gate,
         "call_ready": call_ready,
+        "phone_call_ready": phone_call_ready,
         "clearance_checklist": checklist,
         "clearance": clearance,
         "channels": list(saved.get("channels") or []),
@@ -590,6 +633,9 @@ def board(records: list[dict[str, Any]]) -> dict[str, Any]:
             "live": sum(1 for item in opportunities if item["truth_label"] == "LIVE"),
             "examples": sum(1 for item in opportunities if item["truth_label"] == "EXAMPLE"),
             "call_ready": sum(1 for item in opportunities if item["call_ready"]),
+            "phone_call_ready": sum(
+                1 for item in opportunities if item["phone_call_ready"]
+            ),
             "needs_research": sum(1 for item in opportunities if not item["call_ready"]),
             "stage_counts": stage_counts,
         },
@@ -777,7 +823,11 @@ def record_clearance(
         **previous,
         "stage": "READY",
         "clearance": clearance,
-        "next_action": "Open the governed call sheet and place one manual business call",
+        "next_action": (
+            "Open the governed call sheet and place one manual business call"
+            if channel.get("type") == "BUSINESS_PHONE"
+            else "Use only the cleared business channel; a phone call sheet remains locked"
+        ),
         "last_note": f"Time-limited clearance recorded for {jurisdiction}",
         "owner": previous.get("owner") or actor,
     }
@@ -981,6 +1031,7 @@ def export_rows() -> list[dict[str, Any]]:
             "priority": item.get("priority"),
             "contact_gate": item.get("contact_gate"),
             "call_ready": item.get("call_ready"),
+            "phone_call_ready": item.get("phone_call_ready"),
             "next_action": item.get("next_action"),
             "source_url": (item.get("citation") or {}).get("url"),
             "business_channel_type": (channel or {}).get("type"),
