@@ -18,10 +18,12 @@ this guard is that the UNSIGNED path is honest and no value is ever fabricated.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
 import unittest
+from copy import deepcopy
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _REPO_ROOT not in sys.path:
@@ -195,6 +197,75 @@ class ReceiptVerifiedClaimResolves(unittest.TestCase):
         self.assertEqual(verdict["verdict"], "FAILED")
         hash_check = next(c for c in verdict["checks"] if "hash re-derives" in c["check"])
         self.assertFalse(hash_check["pass"])
+
+    def test_brief_receipt_derives_fabricated_signal_count(self):
+        brief = {
+            "lead_id": "L-1001",
+            "lead_name": "Acme Freight Co",
+            "parts": [],
+        }
+        signals = _sample_signals() + [{
+            "source": "synthetic-fallback",
+            "signal": "invented",
+            "public": True,
+            "fabricated": True,
+        }]
+        receipt = receipts.make_brief_receipt(brief, signals, witness=False)
+        self.assertEqual(receipt["payload"]["fabricated_signals"], 1)
+        verdict = receipts.verify_receipt(receipt)
+        self.assertEqual(verdict["verdict"], "FAILED")
+        fabricated = next(
+            check for check in verdict["checks"]
+            if check["check"] == "Zero fabricated signals declared"
+        )
+        self.assertFalse(fabricated["pass"])
+
+    def test_invented_predecessor_is_not_claimed_as_verified(self):
+        receipt = receipts.make_receipt(
+            _sample_lead(),
+            _sample_signals(),
+            73.0,
+            witness=False,
+        )
+        forged = deepcopy(receipt)
+        forged["payload"]["prev_receipt_hash"] = "f" * 64
+        forged_hash = hashlib.sha256(receipts._canon(forged["payload"])).hexdigest()
+        forged["payload_sha256"] = forged_hash
+        forged["id"] = "rcpt_" + forged_hash[:16]
+
+        verdict = receipts.verify_receipt(forged)
+
+        self.assertEqual(verdict["verdict"], "HASH_INTEGRITY_VERIFIED")
+        self.assertEqual(verdict["chain_state"], "UNVERIFIED_PREDECESSOR")
+        self.assertFalse(
+            any(
+                check["pass"] is True and "predecessor" in check["check"].lower()
+                and "structurally" not in check["check"].lower()
+                for check in verdict["checks"]
+            )
+        )
+
+    def test_supplied_predecessor_must_rederive_and_match(self):
+        previous = receipts.make_receipt(
+            _sample_lead(),
+            _sample_signals(),
+            70.0,
+            witness=False,
+        )
+        current = receipts.make_receipt(
+            {**_sample_lead(), "id": "L-1002"},
+            _sample_signals(),
+            71.0,
+            witness=False,
+        )
+        verified = receipts.verify_receipt(current, previous_receipt=previous)
+        self.assertEqual(verified["chain_state"], "VERIFIED")
+
+        wrong = deepcopy(previous)
+        wrong["payload"]["score"] = 100.0
+        failed = receipts.verify_receipt(current, previous_receipt=wrong)
+        self.assertEqual(failed["verdict"], "FAILED")
+        self.assertEqual(failed["chain_state"], "FAILED")
 
 
 class ReceiptLakeHonesty(unittest.TestCase):
