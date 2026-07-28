@@ -20,6 +20,16 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
+    def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        job_configuration = workflow.split("    steps:", 1)[0]
+        for name in ("HF_TOKEN", "DAVID_USER", "DAVID_PASS", "DAVID_ACCESS_KEY"):
+            reference = f"{name}: ${{{{ secrets.{name} }}}}"
+            self.assertNotIn(reference, job_configuration)
+            self.assertEqual(workflow.count(reference), 2)
+
     def test_no_hardcoded_auth_defaults_in_current_tree(self):
         forbidden_patterns = [
             re.compile(r"""os\.environ\.get\(\s*["']DAVID_(?:USER|PASS|ACCESS_KEY)["']\s*,"""),
