@@ -1,6 +1,6 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · 1e279 SOURCE ALIGNMENT MEASURED · SUCCESSOR NOT READY**
+> Status: **PUBLIC · cf596 SOURCE ALIGNMENT MEASURED · SUCCESSOR NOT READY**
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
@@ -10,20 +10,22 @@
 The credential-remediation and governed broker-desk release was observed on
 2026-07-28. The evidence below is specific; it is not an estate-wide claim.
 
-- Protected source revision
-  `1e27921013f6f92419170b41cd4646aee38b64fc` passed CI in run
-  `30388869705`.
-- Protected deployment run `30388870254` completed successfully and bound the
-  live Hugging Face Space to that exact GitHub revision.
-- Independent drift-check run `30389219959` reported
-  `Source in sync with the live HF Space`.
+- Protected deployment run `30389823219` completed successfully for source
+  `cf59692307de7747cfa2c32401b5dda7ff21d0dd`.
+- Independent drift-check run `30389999202` succeeded for that exact revision.
 - The unauthenticated `/healthz` and `/readyz` probes returned HTTP 200 with
   `authentication=CONFIGURED`, `deal_desk_persistence=POSTGRES_READY`, and
   `persistence_diagnostic=OK`.
 - The live `/api/build-info` probe reported the exact protected revision,
   runtime bundle digest
-  `a6de59cf79530ab693f71e13428df718ddf1687f27f2c304a50fe3db75e0ce62`,
-  and 50 copied files.
+  `ec6f20d49e4b7c9c15befb1bb0128e5d2cdd9e51ab7ebf4628950fe540f4932b`,
+  and 50 copied files. The endpoint still reports
+  `github_huggingface_alignment=UNVERIFIED`; the independent drift run is the
+  separate measured alignment evidence.
+- Earlier source `1e27921013f6f92419170b41cd4646aee38b64fc` passed CI in run
+  `30388869705`, deployed in run `30388870254`, and passed drift run
+  `30389219959`. Those runs are historical evidence, not proof for the current
+  revision.
 - Neon preflight run `30388377093` succeeded on earlier source
   `b35bbfa7db2de64dd8307d86747bc5626f084547`; it is not exact-source proof for
   `1e27921013f6f92419170b41cd4646aee38b64fc`. The repository had no GitHub

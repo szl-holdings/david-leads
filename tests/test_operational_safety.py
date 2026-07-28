@@ -706,7 +706,13 @@ class PersistenceContractSafety(unittest.TestCase):
             for table, keys in sorted(dealdesk._SCHEMA_PRIMARY_KEYS.items())
             for position, column in enumerate(keys, start=1)
         ]
-        return [columns, primary_keys, [dealdesk._SCHEMA_EVENTS_INDEX]]
+        constraints = sorted(dealdesk._SCHEMA_CONSTRAINTS)
+        return [
+            columns,
+            primary_keys,
+            constraints,
+            [dealdesk._SCHEMA_EVENTS_INDEX],
+        ]
 
     def test_database_schema_validation_is_complete_and_fail_closed(self):
         connection = mock.MagicMock()
@@ -742,6 +748,49 @@ class PersistenceContractSafety(unittest.TestCase):
         incompatible_cursor.fetchall.side_effect = incompatible
         with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
             dealdesk._assert_schema_contract(incompatible_cursor)
+
+        unexpected_constraint = self._compatible_schema_results()
+        unexpected_constraint[2] = [
+            *unexpected_constraint[2],
+            (
+                "david_dealdesk_state",
+                "u",
+                "UNIQUE (updated_at)",
+            ),
+        ]
+        constraint_cursor = mock.MagicMock()
+        constraint_cursor.fetchone.return_value = (dealdesk._SCHEMA_VERSION,)
+        constraint_cursor.fetchall.side_effect = unexpected_constraint
+        with self.assertRaises(dealdesk._DatabaseSchemaIncompatible):
+            dealdesk._assert_schema_contract(constraint_cursor)
+
+    def test_ready_probe_periodically_revalidates_schema_drift(self):
+        dealdesk._DATABASE_URL = "postgresql://configured"
+        dealdesk._PERSISTENCE_HEALTH = "POSTGRES_READY"
+        dealdesk._PERSISTENCE_DIAGNOSTIC = "OK"
+        dealdesk._LAST_PROBE_AT = 0.0
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        incompatible = dealdesk._DatabaseSchemaIncompatible(
+            "unexpected foreign key"
+        )
+
+        with (
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(
+                dealdesk,
+                "_assert_schema_contract",
+                side_effect=incompatible,
+            ) as validate,
+        ):
+            observed = dealdesk.persistence_state()
+
+        self.assertEqual(observed, "POSTGRES_UNAVAILABLE")
+        self.assertEqual(
+            dealdesk._PERSISTENCE_DIAGNOSTIC,
+            "SCHEMA_INCOMPATIBLE",
+        )
+        validate.assert_called_once()
 
     def test_database_load_persists_legacy_suppression_backfill(self):
         dealdesk._DATABASE_URL = "postgresql://configured"

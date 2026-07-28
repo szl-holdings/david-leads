@@ -108,6 +108,33 @@ _SCHEMA_PRIMARY_KEYS = {
     "david_dealdesk_state": ("opportunity_id",),
     "david_dealdesk_events": ("event_id",),
 }
+_SCHEMA_CONSTRAINTS = {
+    (
+        "david_dealdesk_schema",
+        "c",
+        "CHECK (schema_version > 0)",
+    ),
+    (
+        "david_dealdesk_schema",
+        "p",
+        "PRIMARY KEY (schema_name)",
+    ),
+    (
+        "david_dealdesk_state",
+        "c",
+        "CHECK (version > 0)",
+    ),
+    (
+        "david_dealdesk_state",
+        "p",
+        "PRIMARY KEY (opportunity_id)",
+    ),
+    (
+        "david_dealdesk_events",
+        "p",
+        "PRIMARY KEY (event_id)",
+    ),
+}
 _SCHEMA_EVENTS_INDEX = (
     True,
     True,
@@ -357,6 +384,33 @@ def _assert_schema_contract(cursor: Any) -> None:
     if normalized_primary_keys != _SCHEMA_PRIMARY_KEYS:
         raise _DatabaseSchemaIncompatible(
             "database schema primary keys are incompatible with this service"
+        )
+
+    cursor.execute(
+        """
+        SELECT
+            table_relation.relname,
+            constraint_meta.contype,
+            pg_get_constraintdef(constraint_meta.oid, true)
+        FROM pg_catalog.pg_constraint AS constraint_meta
+        JOIN pg_catalog.pg_class AS table_relation
+          ON table_relation.oid = constraint_meta.conrelid
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = table_relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND table_relation.relname IN (%s, %s, %s)
+        ORDER BY table_relation.relname, constraint_meta.contype,
+                 constraint_meta.conname
+        """,
+        tuple(sorted(_SCHEMA_PRIMARY_KEYS)),
+    )
+    observed_constraints = {
+        (str(table), str(constraint_type), str(definition))
+        for table, constraint_type, definition in cursor.fetchall()
+    }
+    if observed_constraints != _SCHEMA_CONSTRAINTS:
+        raise _DatabaseSchemaIncompatible(
+            "database schema constraints are incompatible with this service"
         )
 
     cursor.execute(
