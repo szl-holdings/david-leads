@@ -6,6 +6,7 @@ import re
 import hashlib
 import socket
 import sys
+import tempfile
 import time
 import unittest
 import zipfile
@@ -191,6 +192,81 @@ class OpportunityDeskSafety(unittest.TestCase):
 
     def tearDown(self):
         dealdesk.reset_for_tests()
+
+    def test_persistence_requires_absolute_usable_root(self):
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", None),
+            patch.object(dealdesk, "_PATH", "relative/dealdesk.json"),
+        ):
+            self.assertEqual(dealdesk.persistence_state(), "NOT_CONFIGURED")
+            self.assertFalse(dealdesk.persistence_configured())
+
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            store.write_text('{"existing": {"stage": "REVIEW"}}', encoding="utf-8")
+            before = store.read_bytes()
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+                self.assertTrue(dealdesk.persistence_configured())
+            self.assertEqual(store.read_bytes(), before)
+
+            missing_root = Path(directory) / "missing" / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(missing_root)),
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
+                self.assertTrue(dealdesk.persistence_configured())
+                self.assertFalse(dealdesk.persistence_ready())
+
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", directory),
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
+                self.assertTrue(dealdesk.persistence_configured())
+                self.assertFalse(dealdesk.persistence_ready())
+
+    def test_persistence_probe_fails_closed_when_atomic_replace_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk.os, "replace", side_effect=OSError("read-only volume")),
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_UNAVAILABLE")
+                self.assertTrue(dealdesk.persistence_configured())
+                self.assertFalse(dealdesk.persistence_ready())
+
+    def test_persistence_probe_replaces_the_configured_target_with_identical_bytes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            original = b'{"existing":{"stage":"REVIEW"}}'
+            store.write_bytes(original)
+            real_replace = dealdesk.os.replace
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READABLE"),
+                patch.object(dealdesk.os, "replace", wraps=real_replace) as replace,
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+            replace.assert_called_once()
+            self.assertEqual(Path(replace.call_args.args[1]), store)
+            self.assertEqual(store.read_bytes(), original)
+
+    def test_database_state_preserves_runtime_health(self):
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_UNAVAILABLE"),
+        ):
+            self.assertTrue(dealdesk.persistence_configured())
+            self.assertEqual(dealdesk.persistence_state(), "POSTGRES_UNAVAILABLE")
+            self.assertFalse(dealdesk.persistence_ready())
 
     def _research(self, oid):
         return dealdesk.record_research(
@@ -476,6 +552,86 @@ class ApiSafety(unittest.TestCase):
             server_hostname="crm.example.com",
         )
         self.assertIs(connection.sock, wrapped_socket)
+
+    def test_webhook_validation_deduplicates_and_pins_one_address(self):
+        previous = os.environ.get("DAVID_CRM_WEBHOOK_ALLOWLIST")
+        os.environ["DAVID_CRM_WEBHOOK_ALLOWLIST"] = "crm.example.com"
+        answers = [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        ]
+        try:
+            with patch.object(socket, "getaddrinfo", return_value=answers):
+                parsed, hostname, addresses = self.server._webhook_destination(
+                    "https://crm.example.com/import"
+                )
+        finally:
+            if previous is None:
+                os.environ.pop("DAVID_CRM_WEBHOOK_ALLOWLIST", None)
+            else:
+                os.environ["DAVID_CRM_WEBHOOK_ALLOWLIST"] = previous
+
+        self.assertEqual(parsed.path, "/import")
+        self.assertEqual(hostname, "crm.example.com")
+        self.assertEqual(addresses, ("93.184.216.34",))
+
+    def test_webhook_tries_validated_addresses_until_connect_succeeds(self):
+        parsed = self.server.urllib.parse.urlparse("https://crm.example.com/import")
+        failed = mock.Mock()
+        failed.connect.side_effect = OSError("IPv6 route unavailable")
+        connected = mock.Mock()
+        response = mock.Mock(status=204)
+        connected.getresponse.return_value = response
+
+        with patch.object(
+            self.server,
+            "_PinnedHTTPSConnection",
+            side_effect=[failed, connected],
+        ) as connection_type:
+            status = self.server._post_validated_webhook(
+                parsed,
+                "crm.example.com",
+                ("2001:4860:4860::8888", "93.184.216.34"),
+                b"{}",
+            )
+
+        self.assertEqual(status, 204)
+        failed.close.assert_called_once()
+        connected.connect.assert_called_once()
+        connected.request.assert_called_once()
+        response.read.assert_called_once_with(1)
+        connected.close.assert_called_once()
+        self.assertEqual(
+            [call.args[1] for call in connection_type.call_args_list],
+            ["2001:4860:4860::8888", "93.184.216.34"],
+        )
+
+    def test_webhook_address_failover_shares_one_total_timeout(self):
+        parsed = self.server.urllib.parse.urlparse("https://crm.example.com/import")
+        failed = mock.Mock()
+        failed.connect.side_effect = TimeoutError("first address timed out")
+
+        with (
+            patch.object(
+                self.server,
+                "_PinnedHTTPSConnection",
+                return_value=failed,
+            ) as connection_type,
+            patch.object(
+                self.server.time,
+                "monotonic",
+                side_effect=[100.0, 100.0, 108.1],
+            ),
+        ):
+            with self.assertRaisesRegex(TimeoutError, "first address timed out"):
+                self.server._post_validated_webhook(
+                    parsed,
+                    "crm.example.com",
+                    ("2001:4860:4860::8888", "93.184.216.34"),
+                    b"{}",
+                )
+
+        connection_type.assert_called_once()
 
     def test_health_and_readiness_fail_closed_for_auth_and_persistence(self):
         with (

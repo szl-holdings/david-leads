@@ -1623,7 +1623,9 @@ class WebhookReq(BaseModel):
     lead_id: str | None = None  # optional: export a single enriched lead; default = all ranked leads
 
 
-def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str, str]:
+def _webhook_destination(
+    url: str,
+) -> tuple[urllib.parse.ParseResult, str, tuple[str, ...]]:
     parsed = urllib.parse.urlparse(url)
     hostname = (parsed.hostname or "").lower().rstrip(".")
     approved = {
@@ -1661,8 +1663,10 @@ def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str, str]:
             or ip.is_unspecified
         ):
             raise ValueError("approved CRM hostname resolves to a non-public address")
-    validated_address = sorted(addresses, key=lambda value: ipaddress.ip_address(value).packed)[0]
-    return parsed, hostname, validated_address
+    validated_addresses = tuple(
+        sorted(addresses, key=lambda value: ipaddress.ip_address(value).packed)
+    )
+    return parsed, hostname, validated_addresses
 
 
 class _PinnedHTTPSConnection(http.client.HTTPSConnection):
@@ -1699,8 +1703,10 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
 def _post_validated_webhook(
     parsed: urllib.parse.ParseResult,
     hostname: str,
-    validated_address: str,
+    validated_addresses: tuple[str, ...],
     body: bytes,
+    *,
+    total_timeout: float = 8.0,
 ) -> int:
     port = parsed.port or 443
     path = parsed.path or "/"
@@ -1708,13 +1714,39 @@ def _post_validated_webhook(
         path += ";" + parsed.params
     if parsed.query:
         path += "?" + parsed.query
-    connection = _PinnedHTTPSConnection(
-        hostname,
-        validated_address,
-        port=port,
-        timeout=8,
-    )
+
+    deadline = time.monotonic() + total_timeout
+    connection = None
+    last_connect_error: OSError | None = None
+    for validated_address in validated_addresses:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        candidate = _PinnedHTTPSConnection(
+            hostname,
+            validated_address,
+            port=port,
+            timeout=remaining,
+        )
+        try:
+            candidate.connect()
+        except OSError as exc:
+            last_connect_error = exc
+            candidate.close()
+            continue
+        connection = candidate
+        break
+    if connection is None:
+        raise last_connect_error or OSError(
+            "approved CRM hostname has no reachable validated address"
+        )
+
     try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("approved CRM webhook exceeded its total timeout")
+        if connection.sock is not None:
+            connection.sock.settimeout(remaining)
         connection.request(
             "POST",
             path,
@@ -1767,13 +1799,13 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
         return {"ok": True, "sent": False, "reason": "no url supplied",
                 "would_send": payload}
     try:
-        parsed, hostname, validated_address = _webhook_destination(req.url)
+        parsed, hostname, validated_addresses = _webhook_destination(req.url)
     except ValueError as exc:
         return {"ok": True, "sent": False,
                 "reason": str(exc), "would_send": payload}
     try:
         body = json.dumps(payload).encode("utf-8")
-        status = _post_validated_webhook(parsed, hostname, validated_address, body)
+        status = _post_validated_webhook(parsed, hostname, validated_addresses, body)
         return {"ok": True, "sent": True, "destination": hostname,
                 "status": status, "count": payload["count"]}
     except Exception as e:
