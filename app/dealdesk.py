@@ -347,7 +347,9 @@ def _backfill_legacy_suppressions(
 
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
-    for saved in _STATE.values():
+    current_opportunity_id = opportunity_id(record)
+    legacy_id = _legacy_unnamed_subject_id(record)
+    for saved_opportunity_id, saved in _STATE.items():
         suppression = saved.get("suppression")
         suppressed_ids = set(suppression.get("subject_ids") or ()) if isinstance(
             suppression, dict
@@ -358,6 +360,12 @@ def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
             isinstance(suppression, dict)
             and stable_ids.intersection(suppressed_ids)
             and suppression.get("active") is True
+        ):
+            return suppression
+        if (
+            legacy_id
+            and saved_opportunity_id == current_opportunity_id
+            and legacy_id in suppressed_ids
         ):
             return suppression
     return None
@@ -943,6 +951,7 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
             **saved,
             "clearance": {**clearance, "revoked_at": _now()},
             "stage": "BLOCKED",
+            "next_action": "Suppressed: do not contact",
         }
         event = {
             "at": _now(),
@@ -959,12 +968,15 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     elif isinstance(saved.get("clearance"), dict) and not blocked:
         gate = "CLEARANCE_EXPIRED_OR_REVOKED"
     stage = saved.get("stage") or ("BLOCKED" if blocked else "REVIEW")
-    if stage in CONTACT_STAGES and not call_ready:
+    if gate == "DO_NOT_CONTACT_SUPPRESSED":
+        stage = "BLOCKED"
+    elif stage in CONTACT_STAGES and not call_ready:
         stage = "RESEARCH"
-    next_action = saved.get("next_action") or (
+    next_action = (
         "Suppressed: do not contact"
         if gate == "DO_NOT_CONTACT_SUPPRESSED"
-        else record.get("recommended_next_action")
+        else saved.get("next_action")
+        or record.get("recommended_next_action")
         or (
             "Use for demonstration only"
             if gate.startswith("DO_NOT_CONTACT")

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import hashlib
+import json
 import socket
 import sys
 import tempfile
