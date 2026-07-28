@@ -83,6 +83,8 @@ Configure these values in the approved secret store for the deployment:
 - `CENSUS_API_KEY` for optional higher-capacity Census access
 
 Do not commit credentials or paste them into issues, pull requests, chat, or model cards.
+The fail-closed rotation procedure is documented in
+[`ops/credential-rotation.md`](ops/credential-rotation.md).
 
 ## Source and deployment
 
