@@ -195,6 +195,50 @@ def opportunity_id(record: dict[str, Any]) -> str:
     return "opp_" + hashlib.sha256(raw).hexdigest()[:16]
 
 
+def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
+    """Stable business aliases used to carry suppression across new signals."""
+    official_keys = (
+        "license_number",
+        "usdot_number",
+        "uei",
+        "cage_code",
+        "entity_number",
+    )
+    identities = [
+        {"official": f"{key}:{_clean(record.get(key), 160).lower()}"}
+        for key in official_keys
+        if _clean(record.get(key), 160)
+    ]
+    name = _clean(record.get("name"), 240).lower()
+    state = _clean(record.get("state"), 16).upper()
+    if name:
+        identities.append({"name": name, "state": state})
+    aliases: list[str] = []
+    for identity in identities or [{"name": "", "state": state}]:
+        raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
+    return tuple(dict.fromkeys(aliases))
+
+
+def subject_id(record: dict[str, Any]) -> str:
+    """Primary stable identity; volatile dates and source URLs are excluded."""
+    return subject_ids(record)[0]
+
+
+def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
+    stable_ids = set(subject_ids(record))
+    for saved in _STATE.values():
+        suppression = saved.get("suppression")
+        if not isinstance(suppression, dict) or suppression.get("active") is not True:
+            continue
+        suppressed_ids = set(suppression.get("subject_ids") or ())
+        if suppression.get("subject_id"):
+            suppressed_ids.add(str(suppression["subject_id"]))
+        if stable_ids.intersection(suppressed_ids):
+            return suppression
+    return None
+
+
 def _db_connect():
     if not _DATABASE_URL:
         raise RuntimeError("database persistence is not configured")
@@ -424,6 +468,14 @@ def _default_gate(record: dict[str, Any]) -> tuple[str, list[str]]:
     ]
 
 
+def _contact_gate(record: dict[str, Any]) -> tuple[str, list[str]]:
+    if _active_suppression(record):
+        return "DO_NOT_CONTACT_SUPPRESSED", [
+            "A prior do-not-call request permanently suppresses this business identity."
+        ]
+    return _default_gate(record)
+
+
 def _parse_time(value: Any) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
@@ -457,7 +509,7 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
     _KNOWN[oid] = dict(record)
-    gate, checklist = _default_gate(record)
+    gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
     clearance = _current_clearance(saved)
     blocked = gate.startswith(("DO_NOT_CONTACT", "BLOCKED"))
@@ -484,14 +536,20 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     stage = saved.get("stage") or ("BLOCKED" if blocked else "REVIEW")
     if stage in CONTACT_STAGES and not call_ready:
         stage = "RESEARCH"
-    next_action = saved.get("next_action") or record.get("recommended_next_action") or (
-        "Use for demonstration only"
-        if gate.startswith("DO_NOT_CONTACT")
-        else "Verify the source and find the official business contact channel"
+    next_action = saved.get("next_action") or (
+        "Suppressed: do not contact"
+        if gate == "DO_NOT_CONTACT_SUPPRESSED"
+        else record.get("recommended_next_action")
+        or (
+            "Use for demonstration only"
+            if gate.startswith("DO_NOT_CONTACT")
+            else "Verify the source and find the official business contact channel"
+        )
     )
     return {
         **record,
         "opportunity_id": oid,
+        "subject_id": subject_id(record),
         "priority": _priority(record),
         "stage": stage,
         "next_action": next_action,
@@ -597,7 +655,7 @@ def record_research(
     note: str = "",
 ) -> dict[str, Any]:
     record, previous = _saved(oid)
-    gate, _ = _default_gate(record)
+    gate, _ = _contact_gate(record)
     if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")):
         raise ValueError("this record cannot be researched for outreach")
     current_stage = previous.get("stage") or "REVIEW"
@@ -669,7 +727,7 @@ def record_clearance(
     expires_hours: int = 24,
 ) -> dict[str, Any]:
     record, previous = _saved(oid)
-    gate, _ = _default_gate(record)
+    gate, _ = _contact_gate(record)
     if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")):
         raise ValueError("this record cannot be cleared for contact")
     if (previous.get("stage") or "REVIEW") != "RESEARCH":
@@ -745,6 +803,9 @@ def update(
     normalized_stage = _clean(stage, 24).upper()
     if normalized_stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}")
+    gate, _ = _contact_gate(record)
+    if gate.startswith(("DO_NOT_CONTACT", "BLOCKED")) and normalized_stage != "BLOCKED":
+        raise ValueError("a suppressed record cannot be reopened for outreach")
     current = previous.get("stage") or "REVIEW"
     if normalized_stage != current and normalized_stage not in TRANSITIONS.get(current, set()):
         raise ValueError(f"invalid transition: {current} -> {normalized_stage}")
@@ -790,6 +851,8 @@ def call_sheet(oid: str) -> dict[str, Any]:
         item for item in saved.get("channels") or []
         if item.get("channel_id") == clearance.get("channel_id")
     )
+    if channel.get("type") != "BUSINESS_PHONE":
+        raise ValueError("a call sheet requires clearance for a recorded business phone")
     return {
         "opportunity_id": oid,
         "generated_at": _now(),
@@ -857,9 +920,14 @@ def record_disposition(
     }
     if normalized == "DO_NOT_CALL":
         candidate["stage"] = "BLOCKED"
-        clearance = candidate.get("clearance")
-        if isinstance(clearance, dict):
-            candidate["clearance"] = {**clearance, "revoked_at": event_at}
+        candidate["suppression"] = {
+            "subject_id": subject_id(record),
+            "subject_ids": list(subject_ids(record)),
+            "type": "DO_NOT_CALL",
+            "active": True,
+            "recorded_at": event_at,
+            "actor": _clean(actor, 80) or "David",
+        }
         candidate["next_action"] = "Suppressed: do not contact"
     elif normalized == "MEETING_BOOKED":
         candidate["stage"] = "MEETING"
@@ -867,6 +935,10 @@ def record_disposition(
         candidate["stage"] = "LOST"
     elif normalized in {"CONNECTED", "LEFT_VOICEMAIL", "NO_ANSWER", "FOLLOW_UP"}:
         candidate["stage"] = "CONTACTED"
+    if normalized in {"DO_NOT_CALL", "NOT_INTERESTED", "WRONG_BUSINESS"}:
+        clearance = candidate.get("clearance")
+        if isinstance(clearance, dict) and not clearance.get("revoked_at"):
+            candidate["clearance"] = {**clearance, "revoked_at": event_at}
     event = {
         "at": event_at,
         "opportunity_id": oid,

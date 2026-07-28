@@ -492,6 +492,70 @@ class OpportunityDeskSafety(unittest.TestCase):
         with self.assertRaises(ValueError):
             dealdesk.call_sheet(opportunity["opportunity_id"])
 
+    def test_do_not_call_suppression_survives_a_new_signal(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+            note="Business requested no further contact",
+        )
+
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        observed = dealdesk.board([later])["opportunities"][0]
+
+        self.assertNotEqual(observed["opportunity_id"], opportunity["opportunity_id"])
+        self.assertEqual(observed["subject_id"], opportunity["subject_id"])
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+        with self.assertRaisesRegex(ValueError, "cannot be researched"):
+            self._research(observed["opportunity_id"])
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
+
+    def test_not_interested_revokes_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+
+        lost = dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="NOT_INTERESTED",
+            note="Declined",
+        )
+
+        self.assertEqual(lost["stage"], "LOST")
+        self.assertFalse(lost["call_ready"])
+        self.assertIsNotNone(
+            dealdesk._STATE[opportunity["opportunity_id"]]["clearance"]["revoked_at"]
+        )
+
+    def test_call_sheet_requires_phone_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = dealdesk.record_research(
+            opportunity["opportunity_id"],
+            actor="David",
+            channel_type="BUSINESS_EMAIL",
+            channel_value="sales@examplelogistics.com",
+            source_url="https://examplelogistics.com/contact",
+            publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+        )
+        self._clear(
+            opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        with self.assertRaisesRegex(ValueError, "business phone"):
+            dealdesk.call_sheet(opportunity["opportunity_id"])
+
 
 class ReceiptTruthStates(unittest.TestCase):
     def setUp(self):
