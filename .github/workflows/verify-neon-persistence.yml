@@ -1,0 +1,120 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Verify David Neon persistence
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: david-neon-persistence-preflight
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require encrypted database URL
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DAVID_DATABASE_URL:-}" ]; then
+            echo "::error::Missing encrypted repository secret: DAVID_DATABASE_URL"
+            exit 1
+          fi
+          echo "::add-mask::$DAVID_DATABASE_URL"
+
+      - name: Install exact database client
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          "psycopg[binary]==3.2.9"
+
+      - name: Verify connection and required schema
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+
+          import psycopg
+          from psycopg.conninfo import conninfo_to_dict
+
+          dsn = os.environ["DAVID_DATABASE_URL"]
+          try:
+              fields = conninfo_to_dict(dsn)
+          except Exception as exc:
+              print(
+                  json.dumps(
+                      {
+                          "schema": "szl.david-neon-preflight/v1",
+                          "connection": "FAILED",
+                          "failure_class": type(exc).__name__,
+                          "credential_values_recorded": False,
+                      },
+                      sort_keys=True,
+                  )
+              )
+              raise SystemExit("DAVID_DATABASE_URL is not valid PostgreSQL connection information")
+
+          hostname = str(fields.get("host") or "").lower().rstrip(".")
+          database = str(fields.get("dbname") or "")
+          sslmode = str(fields.get("sslmode") or "")
+          if not hostname.endswith(".neon.tech"):
+              raise SystemExit("DAVID_DATABASE_URL host is not a Neon endpoint")
+          if database != "neondb":
+              raise SystemExit("DAVID_DATABASE_URL must select the neondb database")
+          if sslmode not in {"require", "verify-ca", "verify-full"}:
+              raise SystemExit("DAVID_DATABASE_URL must require TLS")
+
+          try:
+              connection = psycopg.connect(dsn, connect_timeout=20)
+              with connection:
+                  with connection.cursor() as cursor:
+                      cursor.execute(
+                          """
+                          SELECT
+                              current_database(),
+                              to_regclass('public.david_dealdesk_state') IS NOT NULL,
+                              to_regclass('public.david_dealdesk_events') IS NOT NULL
+                          """
+                      )
+                      current_database, state_table, events_table = cursor.fetchone()
+          except Exception as exc:
+              print(
+                  json.dumps(
+                      {
+                          "schema": "szl.david-neon-preflight/v1",
+                          "connection": "FAILED",
+                          "failure_class": type(exc).__name__,
+                          "sqlstate": getattr(exc, "sqlstate", None),
+                          "credential_values_recorded": False,
+                      },
+                      sort_keys=True,
+                  )
+              )
+              raise SystemExit("Neon connection or schema verification failed")
+
+          if current_database != "neondb" or not state_table or not events_table:
+              raise SystemExit("Neon connection succeeded but the required schema is incomplete")
+
+          print(
+              json.dumps(
+                  {
+                      "schema": "szl.david-neon-preflight/v1",
+                      "connection": "VERIFIED",
+                      "database": current_database,
+                      "state_table_present": state_table,
+                      "events_table_present": events_table,
+                      "credential_values_recorded": False,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
