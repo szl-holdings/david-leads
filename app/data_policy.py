@@ -122,6 +122,10 @@ OFFICIAL_GUIDANCE = [
         "url": "https://privacy.ca.gov/drop/",
     },
     {
+        "label": "EPA ECHO web services and data-use guidance",
+        "url": "https://echo.epa.gov/tools/web-services",
+    },
+    {
         "label": "LinkedIn User Agreement",
         "url": "https://www.linkedin.com/legal/user-agreement",
     },
@@ -150,6 +154,27 @@ IMPLEMENTED_FRONTIERS = [
             "award activity as proof of insurability or a coverage gap",
         ],
     },
+    {
+        "id": "epa-echo-monitoring-activity",
+        "status": "LIVE_ENTITY_AND_FACILITY_FIELDS_ONLY",
+        "purpose": (
+            "Recent facility compliance-monitoring activity for factual, licensed "
+            "environmental/property/continuity research."
+        ),
+        "excluded_fields": [
+            "compliance status",
+            "violations",
+            "penalties",
+            "community demographics",
+            "personal contacts",
+        ],
+        "excluded_claims": [
+            "unsafe facility",
+            "legal guilt",
+            "claim likelihood",
+            "insurability or a coverage gap",
+        ],
+    },
 ]
 
 DEFERRED_FRONTIERS = [
@@ -166,6 +191,15 @@ DEFERRED_FRONTIERS = [
         "id": "sam-gov-entities-opportunities",
         "status": "KEY_AND_TERMS_REVIEW_REQUIRED",
         "reason": "Use only through the documented API with an approved key and field-purpose map.",
+    },
+    {
+        "id": "fcc-uls-organization-bulk",
+        "status": "BULK_PARSER_AND_PRIVACY_TEST_REQUIRED",
+        "reason": (
+            "High-value organization licensing data is public, but the bulk files mix "
+            "person records and require an organization-only parser, daily-delta controls, "
+            "and restart-safe ingestion before production."
+        ),
     },
     {
         "id": "social-profiles",

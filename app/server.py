@@ -210,7 +210,10 @@ def healthz():
         "doctrine": "SZL governed-AI · honest by design",
     }
     persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
-    ready = body["authentication"] == "CONFIGURED" and persistence == "FILE_BACKED"
+    ready = body["authentication"] == "CONFIGURED" and persistence in {
+        "FILE_BACKED",
+        "POSTGRES_READY",
+    }
     body["status"] = "ready" if ready else "blocked"
     body["deal_desk_persistence"] = persistence
     return JSONResponse(content=body, status_code=200 if ready else 503)
@@ -1171,7 +1174,37 @@ class DealDeskUpdateReq(BaseModel):
     next_action: str | None = None
     note: str | None = None
     owner: str | None = None
-    clearance_confirmed: bool = False
+    actor: str = "David"
+
+
+class DealDeskResearchReq(BaseModel):
+    actor: str
+    channel_type: str
+    channel_value: str
+    source_url: str
+    publisher_class: str = "FIRST_PARTY_BUSINESS_WEBSITE"
+    note: str = ""
+
+
+class DealDeskClearanceReq(BaseModel):
+    actor: str
+    channel_id: str
+    business_purpose: str
+    talk_track_version: str
+    broker_jurisdiction: str
+    license_scope: str
+    federal_dnc_checked: bool
+    state_dnc_checked: bool
+    opt_out_checked: bool
+    rules_reviewed: bool
+    expires_hours: int = 24
+
+
+class DealDeskDispositionReq(BaseModel):
+    actor: str
+    disposition: str
+    note: str = ""
+    follow_up_at: str | None = None
 
 
 @app.get("/api/deal-desk")
@@ -1184,10 +1217,10 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     _auth(authorization)
     if rl is None or dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
-    if not dd.persistence_configured():
+    if not dd.persistence_ready():
         raise HTTPException(
             503,
-            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+            "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
@@ -1224,10 +1257,10 @@ def frontier_desk(
     _auth(authorization)
     if frontier_data is None or dd is None:
         raise HTTPException(503, "frontier radar unavailable")
-    if not dd.persistence_configured():
+    if not dd.persistence_ready():
         raise HTTPException(
             503,
-            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+            "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
@@ -1257,10 +1290,10 @@ def update_deal_desk(
     _auth(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
-    if not dd.persistence_configured():
+    if not dd.persistence_ready():
         raise HTTPException(
             503,
-            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+            "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
     try:
         opportunity = dd.update(
@@ -1269,13 +1302,149 @@ def update_deal_desk(
             next_action=req.next_action,
             note=req.note,
             owner=req.owner,
-            clearance_confirmed=req.clearance_confirmed,
+            actor=req.actor,
         )
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
     return {"ok": True, "opportunity": opportunity}
+
+
+@app.post("/api/deal-desk/{opportunity_id}/research")
+def record_deal_desk_research(
+    opportunity_id: str,
+    req: DealDeskResearchReq,
+    authorization: str | None = Header(default=None),
+):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_ready():
+        raise HTTPException(503, "deal desk persistence is unavailable")
+    try:
+        opportunity = dd.record_research(
+            opportunity_id,
+            actor=req.actor,
+            channel_type=req.channel_type,
+            channel_value=req.channel_value,
+            source_url=req.source_url,
+            publisher_class=req.publisher_class,
+            note=req.note,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "opportunity": opportunity}
+
+
+@app.post("/api/deal-desk/{opportunity_id}/clearance")
+def record_deal_desk_clearance(
+    opportunity_id: str,
+    req: DealDeskClearanceReq,
+    authorization: str | None = Header(default=None),
+):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_ready():
+        raise HTTPException(503, "deal desk persistence is unavailable")
+    try:
+        opportunity = dd.record_clearance(
+            opportunity_id,
+            actor=req.actor,
+            channel_id=req.channel_id,
+            business_purpose=req.business_purpose,
+            talk_track_version=req.talk_track_version,
+            broker_jurisdiction=req.broker_jurisdiction,
+            license_scope=req.license_scope,
+            federal_dnc_checked=req.federal_dnc_checked,
+            state_dnc_checked=req.state_dnc_checked,
+            opt_out_checked=req.opt_out_checked,
+            rules_reviewed=req.rules_reviewed,
+            expires_hours=req.expires_hours,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "opportunity": opportunity}
+
+
+@app.get("/api/deal-desk/{opportunity_id}/call-sheet")
+def get_deal_desk_call_sheet(
+    opportunity_id: str,
+    authorization: str | None = Header(default=None),
+):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_ready():
+        raise HTTPException(503, "deal desk persistence is unavailable")
+    try:
+        return dd.call_sheet(opportunity_id)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(423, str(exc)) from exc
+
+
+@app.post("/api/deal-desk/{opportunity_id}/disposition")
+def record_deal_desk_disposition(
+    opportunity_id: str,
+    req: DealDeskDispositionReq,
+    authorization: str | None = Header(default=None),
+):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_ready():
+        raise HTTPException(503, "deal desk persistence is unavailable")
+    try:
+        opportunity = dd.record_disposition(
+            opportunity_id,
+            actor=req.actor,
+            disposition=req.disposition,
+            note=req.note,
+            follow_up_at=req.follow_up_at,
+        )
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    return {"ok": True, "opportunity": opportunity}
+
+
+def _safe_csv_cell(value):
+    text = "" if value is None else str(value)
+    return "'" + text if text.startswith(("=", "+", "-", "@")) else text
+
+
+@app.get("/api/deal-desk-export.csv")
+def export_deal_desk(authorization: str | None = Header(default=None)):
+    _auth(authorization)
+    if dd is None:
+        raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_ready():
+        raise HTTPException(503, "deal desk persistence is unavailable")
+    rows = dd.export_rows()
+    fields = list(rows[0]) if rows else [
+        "opportunity_id", "business_name", "state", "source_frontier", "observed_trigger",
+        "trigger_date", "stage", "priority", "contact_gate", "call_ready", "next_action",
+        "source_url", "business_channel_type", "business_channel", "clearance_expires_at",
+        "not_for_underwriting",
+    ]
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=fields)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: _safe_csv_cell(row.get(key)) for key in fields})
+    return PlainTextResponse(
+        stream.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": "attachment; filename=david-leads-opportunities.csv"},
+    )
 
 
 @app.get("/api/data-policy")

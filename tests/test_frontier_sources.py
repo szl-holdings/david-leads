@@ -142,6 +142,52 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
         self.assertEqual(result["records"], [])
 
 
+class EchoFrontierSafety(unittest.TestCase):
+    def setUp(self):
+        receipts.reset_chain()
+
+    def test_echo_uses_minimized_facility_columns_and_neutral_labels(self):
+        captured = []
+
+        def fake_request(url, payload=None):
+            captured.append(url)
+            if "get_facilities" in url:
+                return {"Results": {"Message": "Success", "QueryID": "123"}}
+            return {
+                "Results": {
+                    "Message": "Success",
+                    "Facilities": [{
+                        "FacName": "EXAMPLE MANUFACTURING LLC",
+                        "FacStreet": "50 INDUSTRIAL ROAD",
+                        "FacCity": "ALBANY",
+                        "FacState": "NY",
+                        "FacZip": "12207",
+                        "RegistryID": "110000000001",
+                        "FacNAICSCodes": "332710",
+                        "FacDaysLastInspection": "3",
+                        "FacDateLastInspection": "07/25/2026",
+                        "FacComplianceStatus": "SHOULD NOT FLOW",
+                        "FacTotalPenalties": "SHOULD NOT FLOW",
+                        "FacPercentMinority": "SHOULD NOT FLOW",
+                    }],
+                },
+            }
+
+        with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
+            result = frontier_sources.fetch_echo(["NY"], limit=4)
+
+        self.assertEqual(len(captured), 2)
+        result_query = urllib.parse.parse_qs(urllib.parse.urlparse(captured[1]).query)
+        self.assertEqual(result_query["qcolumns"], ["1,2,3,4,5,6,16,42,43"])
+        record = result["records"][0]
+        self.assertEqual(record["status"], "MONITORING_ACTIVITY_OBSERVED")
+        self.assertTrue(record["not_for_underwriting"])
+        serialized = str(record).lower()
+        self.assertNotIn("should not flow", serialized)
+        self.assertNotIn("violation observed", serialized)
+        self.assertIn("not a violation", " ".join(record["limitations"]).lower())
+
+
 class FrontierAggregationSafety(unittest.TestCase):
     def setUp(self):
         dealdesk.reset_for_tests()
@@ -162,6 +208,11 @@ class FrontierAggregationSafety(unittest.TestCase):
         with (
             mock.patch.object(frontier_sources, "fetch_fmcsa", side_effect=TimeoutError),
             mock.patch.object(frontier_sources, "fetch_usaspending", return_value=live),
+            mock.patch.object(frontier_sources, "fetch_echo", return_value={
+                **live,
+                "source": "EPA ECHO",
+                "source_id": "epa-echo-monitoring-activity",
+            }),
         ):
             result = frontier_sources.frontier_opportunities(["NY"])
         self.assertEqual(result["leads"], [])

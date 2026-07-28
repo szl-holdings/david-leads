@@ -49,9 +49,12 @@ underwriting decision, consumer report, or permission to contact.
 - **Opportunity Desk** turns official business and license records into a research queue with
   explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
   is never treated as permission to contact.
-- **Frontier Radar** adds recent FMCSA carrier-entity additions and USAspending contract activity.
-  It requests only entity/operations fields, never substitutes samples, and labels award activity
-  as potentially reflecting a modification until the action history is verified.
+- **Frontier Radar** adds recent FMCSA carrier-entity additions, USAspending contract activity,
+  and EPA ECHO facility monitoring activity. It requests only minimized entity/facility fields,
+  never substitutes samples, and keeps every signal out of underwriting.
+- **Governed Broker Desk** records a business-published channel, issues a hashed 24-hour clearance
+  receipt only after all licensing/suppression checks are affirmative, unlocks a manual call sheet,
+  and captures factual outcomes including immediate do-not-call suppression.
 - **Decision Trace** opens the complete operator-readable path from source to action.
 - **Call Brief** gives a concise opening line and next step for human review.
 - **Proof & Sources** exposes the exact evidence record behind a recommendation.
@@ -68,8 +71,12 @@ underwriting decision, consumer report, or permission to contact.
 - Proof records are signed only when a real signing key is configured; otherwise they remain honestly unsigned.
 - Social-profile scraping and consumer-data enrichment are prohibited by default. See
   [`PUBLIC_DATA_OPERATING_MODEL.md`](PUBLIC_DATA_OPERATING_MODEL.md).
-- Frontier adapters do not request phone, email, named officer, crash/safety, insurance, or policy
-  fields, and every resulting packet is `PROSPECTING_ONLY` and `not_for_underwriting=true`.
+- Frontier adapters do not request phone, email, named officer, crash/safety, compliance status,
+  penalties, community demographics, insurance, or policy fields. Every resulting packet is
+  `PROSPECTING_ONLY` and `not_for_underwriting=true`.
+- A public record cannot enter `READY` through a checkbox or direct stage change. It requires a
+  first-party business channel, named operator, license scope, jurisdiction, talk-track version,
+  affirmative suppression/rules checks, and an unexpired clearance receipt.
 - Modeled lead segments are not named prospects and cannot be advanced to the broker queue.
 
 ## Access configuration
@@ -79,12 +86,15 @@ Configure these values in the approved secret store for the deployment:
 - `DAVID_USER`
 - `DAVID_PASS`
 - `DAVID_ACCESS_KEY`
+- `DAVID_DATABASE_URL` for restart-durable opportunity state and immutable workflow events
 - `SZL_COSIGN_PRIVATE_PEM` and `SZL_COSIGN_PUBLIC_PEM` for signed proof records
 - `CENSUS_API_KEY` for optional higher-capacity Census access
 
 Do not commit credentials or paste them into issues, pull requests, chat, or model cards.
 The fail-closed rotation procedure is documented in
 [`ops/credential-rotation.md`](ops/credential-rotation.md).
+The repository includes `ops/get_david_credentials.ps1` only as an administrator-side reader for
+Windows Credential Manager; the script contains no credential values.
 
 ## Source and deployment
 

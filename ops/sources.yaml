@@ -47,6 +47,13 @@ sources:
     method: GET
     expect: json_array
     verified: "2026-07-28"
+  - id: epa_echo_monitoring
+    name: EPA ECHO weekly bulk exporter availability
+    url: "https://echo.epa.gov/files/echodownloads/echo_exporter.zip"
+    method: HEAD
+    expect: any
+    note: health probe uses weekly bulk availability to avoid consuming the documented on-demand web-service capacity
+    verified: "2026-07-28"
   - id: propublica_990
     name: ProPublica Nonprofit 990
     url: "https://projects.propublica.org/nonprofits/api/v2/search.json?state%5Bid%5D=NY"
