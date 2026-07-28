@@ -23,6 +23,37 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
+    def test_neon_preflight_scopes_the_database_secret(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        job_configuration = workflow.split("    steps:", 1)[0]
+        reference = "DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}"
+        self.assertNotIn(reference, job_configuration)
+        self.assertEqual(workflow.count(reference), 2)
+
+    def test_neon_preflight_validates_every_effective_host(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('fields.get("hostaddr")', workflow)
+        self.assertIn('str(fields.get("host") or "").split(",")', workflow)
+        self.assertIn('hostname.endswith(".neon.tech")', workflow)
+
+    def test_neon_preflight_proves_application_reads_writes_and_rollback(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1",
+            workflow,
+        )
+        self.assertIn("INSERT INTO david_dealdesk_state", workflow)
+        self.assertIn("INSERT INTO david_dealdesk_events", workflow)
+        self.assertIn("connection.rollback()", workflow)
+        self.assertIn("rollback_verified", workflow)
+        self.assertIn("NOT EXISTS", workflow)
+
     def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
         workflow = (
             ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
