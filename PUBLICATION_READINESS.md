@@ -28,8 +28,10 @@ The credential-remediation and governed broker-desk release was observed on
   revision.
 - Neon preflight run `30388377093` succeeded on earlier source
   `b35bbfa7db2de64dd8307d86747bc5626f084547`; it is not exact-source proof for
-  `1e27921013f6f92419170b41cd4646aee38b64fc`. The repository had no GitHub
-  environments when audited, so this run was not protected-environment proof.
+  `1e27921013f6f92419170b41cd4646aee38b64fc`. That historical workflow read
+  `DAVID_DATABASE_URL` from a repository-scoped Actions secret; the credential
+  value was not included in its evidence. The repository had no GitHub
+  environments when audited, so the run was not protected-environment proof.
 - Replacement production login, protected Frontier Radar access, logout, and
   administrator-vault custody are `UNVERIFIED` here because no exact
   non-secret evidence record was available.
@@ -72,8 +74,11 @@ The historical credential triplet remains permanently revoked because it was
 published in tracked handoff/demo artifacts. Removing values from the current
 tree cannot revoke external copies.
 
-Repository secret metadata lists only the scoped Hugging Face deployment token.
-The proposed successor moves application, runtime-database, and migration-admin
+Current repository secret metadata was inspected and lists only the scoped
+Hugging Face deployment token. Historical run `30388377093` did access
+`DAVID_DATABASE_URL` through a repository-scoped Actions secret; current
+inventory does not make that historical access environment-protected. The
+proposed successor moves application, runtime-database, and migration-admin
 credentials into an owner-approved, protected-main-only GitHub environment so
 only the explicitly bound rotation, migration, and verification jobs can use
 them. That environment was absent at the audit snapshot, so its protection,
