@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 import hashlib
+import json
 import socket
 import sys
 import tempfile
@@ -131,6 +132,23 @@ class PublicCredentialSafety(unittest.TestCase):
             ):
                 hits.add(str(path.relative_to(ROOT)))
         self.assertEqual(sorted(hits), [])
+
+    def test_frontend_exposes_call_sheet_only_for_phone_ready_records(self):
+        javascript = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+        self.assertEqual(
+            javascript.count(
+                '${l.phone_call_ready ? `<button class="real-verify workflow ready" '
+                'onclick="openCallSheet'
+            ),
+            2,
+        )
+        self.assertEqual(
+            javascript.count(
+                '${l.call_ready ? `<button class="real-verify workflow" '
+                'onclick="openDispositionModal'
+            ),
+            2,
+        )
 
 
 class ContactPermissionTruth(unittest.TestCase):
@@ -365,6 +383,7 @@ class OpportunityDeskSafety(unittest.TestCase):
             researched["channels"][0]["channel_id"],
         )
         self.assertTrue(updated["call_ready"])
+        self.assertTrue(updated["phone_call_ready"])
         self.assertEqual(updated["contact_gate"], "TIME_LIMITED_CLEARANCE")
         self.assertRegex(updated["clearance"]["clearance_receipt"], r"^clr_[0-9a-f]{24}$")
 
@@ -426,6 +445,91 @@ class OpportunityDeskSafety(unittest.TestCase):
         diagnostic = dealdesk._classify_database_error(error)
         self.assertEqual(diagnostic, "CONNECTION_TIMEOUT")
         self.assertNotIn(secret_host, diagnostic)
+
+    def test_postgres_write_failure_downgrades_health_and_sanitizes_error(self):
+        private_detail = "timeout while connecting to private-db.example.invalid"
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_READY"),
+            patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+            patch.object(dealdesk, "_db_connect", side_effect=RuntimeError(private_detail)),
+        ):
+            with self.assertRaisesRegex(
+                dealdesk.PersistenceUnavailable,
+                "^deal-desk persistence is unavailable$",
+            ) as raised:
+                dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+            self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_UNAVAILABLE")
+            self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "CONNECTION_TIMEOUT")
+        self.assertNotIn("private-db", str(raised.exception))
+
+    def test_file_write_failure_downgrades_health_and_sanitizes_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk.os, "replace", side_effect=OSError("private path")),
+            ):
+                with self.assertRaisesRegex(
+                    dealdesk.PersistenceUnavailable,
+                    "^deal-desk persistence is unavailable$",
+                ) as raised:
+                    dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "FILE_UNAVAILABLE")
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+                self.assertIsNone(dealdesk._PERSISTENCE_READY_PATH)
+            self.assertNotIn("private path", str(raised.exception))
+
+    def test_file_temp_creation_failure_is_sanitized_and_fail_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk, "_PERSISTENCE_READY_PATH", str(store)),
+                patch.object(
+                    dealdesk.tempfile,
+                    "mkstemp",
+                    side_effect=OSError(f"cannot create {store}"),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    dealdesk.PersistenceUnavailable,
+                    "^deal-desk persistence is unavailable$",
+                ) as raised:
+                    dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "FILE_UNAVAILABLE")
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+                self.assertIsNone(dealdesk._PERSISTENCE_READY_PATH)
+            self.assertNotIn(str(store), str(raised.exception))
+
+    def test_file_persistence_recovers_to_ready_with_ok_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+                patch.object(dealdesk, "_PERSISTENCE_HEALTH", "FILE_READY"),
+                patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "OK"),
+                patch.object(dealdesk, "_PERSISTENCE_READY_PATH", str(store)),
+            ):
+                with patch.object(
+                    dealdesk.os,
+                    "replace",
+                    side_effect=OSError("temporary write failure"),
+                ):
+                    with self.assertRaises(dealdesk.PersistenceUnavailable):
+                        dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk._PERSISTENCE_DIAGNOSTIC, "FILE_WRITE_FAILED")
+
+                dealdesk._persist({"opp_example": {"stage": "RESEARCH"}})
+                self.assertEqual(dealdesk.persistence_state(), "FILE_BACKED")
+                self.assertEqual(dealdesk.persistence_diagnostic(), "OK")
 
     def test_current_default_block_revokes_stale_prior_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
@@ -490,6 +594,230 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertEqual(blocked["stage"], "BLOCKED")
         self.assertFalse(blocked["call_ready"])
         with self.assertRaises(ValueError):
+            dealdesk.call_sheet(opportunity["opportunity_id"])
+
+    def test_do_not_call_suppression_survives_a_new_signal(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+            note="Business requested no further contact",
+        )
+
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        observed = dealdesk.board([later])["opportunities"][0]
+
+        self.assertNotEqual(observed["opportunity_id"], opportunity["opportunity_id"])
+        self.assertEqual(observed["subject_id"], opportunity["subject_id"])
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+        with self.assertRaisesRegex(ValueError, "cannot be researched"):
+            self._research(observed["opportunity_id"])
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
+
+    def test_unnamed_records_do_not_share_a_state_only_suppression_identity(self):
+        first = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/blank-1"},
+        }
+        second = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/blank-2"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([first, second])["opportunities"]
+        }
+        first_opportunity = opportunities[dealdesk.opportunity_id(first)]
+        second_opportunity = opportunities[dealdesk.opportunity_id(second)]
+        self.assertNotEqual(first_opportunity["opportunity_id"], second_opportunity["opportunity_id"])
+        self.assertNotEqual(first_opportunity["subject_id"], second_opportunity["subject_id"])
+
+        researched = self._research(first_opportunity["opportunity_id"])
+        self._clear(
+            first_opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            first_opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        observed_second = dealdesk.enrich(second)
+        self.assertEqual(observed_second["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_second["stage"], "REVIEW")
+
+    def test_legacy_unnamed_suppression_survives_only_for_the_same_opportunity(self):
+        original = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/legacy-blank"},
+        }
+        original_id = dealdesk.opportunity_id(original)
+        legacy_identity = {
+            "name": "",
+            "state": original["state"],
+        }
+        legacy_raw = json.dumps(
+            legacy_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        legacy_id = "subj_" + hashlib.sha256(legacy_raw).hexdigest()[:24]
+        dealdesk._STATE[original_id] = {
+            "stage": "BLOCKED",
+            "next_action": "Suppressed: do not contact",
+            "suppression": {
+                "subject_id": legacy_id,
+                "subject_ids": [legacy_id],
+                "type": "DO_NOT_CALL",
+                "active": True,
+                "recorded_at": "2026-07-25T12:00:00Z",
+                "actor": "David",
+            },
+        }
+
+        observed_original = dealdesk.enrich(original)
+        self.assertEqual(
+            observed_original["contact_gate"],
+            "DO_NOT_CONTACT_SUPPRESSED",
+        )
+        self.assertEqual(observed_original["stage"], "BLOCKED")
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(original_id, stage="RESEARCH")
+
+        unrelated = {
+            **original,
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/other-blank"},
+        }
+        observed_unrelated = dealdesk.enrich(unrelated)
+        self.assertEqual(observed_unrelated["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_unrelated["stage"], "REVIEW")
+
+    def test_cross_signal_suppression_replaces_a_stale_call_action(self):
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([self.record, later])["opportunities"]
+        }
+        original = opportunities[dealdesk.opportunity_id(self.record)]
+        later_opportunity = opportunities[dealdesk.opportunity_id(later)]
+        for opportunity in (original, later_opportunity):
+            researched = self._research(opportunity["opportunity_id"])
+            self._clear(
+                opportunity["opportunity_id"],
+                researched["channels"][0]["channel_id"],
+            )
+
+        dealdesk.record_disposition(
+            original["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+        observed = dealdesk.enrich(later)
+
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+        self.assertIsNotNone(
+            dealdesk._STATE[later_opportunity["opportunity_id"]]["clearance"]["revoked_at"]
+        )
+
+    def test_cross_signal_suppression_derives_blocked_from_research(self):
+        later = {
+            **self.record,
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99", "label": "Later signal"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([self.record, later])["opportunities"]
+        }
+        original = opportunities[dealdesk.opportunity_id(self.record)]
+        later_opportunity = opportunities[dealdesk.opportunity_id(later)]
+        self._research(later_opportunity["opportunity_id"])
+        researched = self._research(original["opportunity_id"])
+        self._clear(
+            original["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            original["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        observed = dealdesk.enrich(later)
+
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["next_action"], "Suppressed: do not contact")
+        self.assertFalse(observed["call_ready"])
+
+    def test_not_interested_revokes_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+
+        lost = dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="NOT_INTERESTED",
+            note="Declined",
+        )
+
+        self.assertEqual(lost["stage"], "LOST")
+        self.assertFalse(lost["call_ready"])
+        self.assertIsNotNone(
+            dealdesk._STATE[opportunity["opportunity_id"]]["clearance"]["revoked_at"]
+        )
+
+    def test_call_sheet_requires_phone_clearance(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = dealdesk.record_research(
+            opportunity["opportunity_id"],
+            actor="David",
+            channel_type="BUSINESS_EMAIL",
+            channel_value="sales@examplelogistics.com",
+            source_url="https://examplelogistics.com/contact",
+            publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+        )
+        cleared = self._clear(
+            opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        self.assertTrue(cleared["call_ready"])
+        self.assertFalse(cleared["phone_call_ready"])
+        self.assertIn("phone call sheet remains locked", cleared["next_action"])
+        exported = {
+            row["opportunity_id"]: row
+            for row in dealdesk.export_rows()
+        }[opportunity["opportunity_id"]]
+        self.assertTrue(exported["call_ready"])
+        self.assertFalse(exported["phone_call_ready"])
+        with self.assertRaisesRegex(ValueError, "business phone"):
             dealdesk.call_sheet(opportunity["opportunity_id"])
 
 
@@ -747,6 +1075,28 @@ class ApiSafety(unittest.TestCase):
             response = self.client.get("/api/deal-desk", headers=self.headers)
         self.assertEqual(response.status_code, 503)
         self.assertIn("DAVID_DATABASE_URL", response.json()["detail"])
+
+    def test_runtime_write_failure_returns_sanitized_service_unavailable(self):
+        with (
+            patch.object(self.server.dd, "persistence_ready", return_value=True),
+            patch.object(
+                self.server.dd,
+                "update",
+                side_effect=self.server.dd.PersistenceUnavailable(
+                    "deal-desk persistence is unavailable"
+                ),
+            ),
+        ):
+            response = self.client.post(
+                "/api/deal-desk/opp_example",
+                headers=self.headers,
+                json={"stage": "RESEARCH", "actor": "David"},
+            )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json()["detail"],
+            "deal-desk persistence is unavailable",
+        )
 
     def test_build_info_is_explicitly_unverified_until_external_compare(self):
         response = self.client.get("/api/build-info")
