@@ -27,6 +27,14 @@ _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
 
 
+def persistence_configured() -> bool:
+    return bool(_PATH and os.path.isabs(_PATH))
+
+
+def persistence_state() -> str:
+    return "FILE_BACKED" if persistence_configured() else "NOT_CONFIGURED"
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -126,7 +134,18 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     _KNOWN[oid] = dict(record)
     gate, call_ready, checklist = _default_gate(record)
     saved = _STATE.get(oid, {})
-    if saved.get("clearance_confirmed") is True and saved.get("stage") not in {"BLOCKED", "LOST"}:
+    default_blocked = gate.startswith("DO_NOT_CONTACT") or gate.startswith("BLOCKED")
+    if default_blocked and saved.get("clearance_confirmed") is True:
+        candidate = {**saved, "clearance_confirmed": False}
+        snapshot = {**_STATE, oid: candidate}
+        _persist(snapshot)
+        _STATE[oid] = candidate
+        saved = candidate
+    if (
+        not default_blocked
+        and saved.get("clearance_confirmed") is True
+        and saved.get("stage") in {"READY", "CONTACTED", "MEETING", "PROPOSAL", "WON"}
+    ):
         gate = "MANUAL_CLEARANCE_RECORDED"
         call_ready = True
     stage = saved.get("stage") or ("BLOCKED" if gate.startswith("DO_NOT_CONTACT") else "REVIEW")
@@ -175,7 +194,7 @@ def board(records: list[dict[str, Any]]) -> dict[str, Any]:
             "needs_research": sum(1 for item in opportunities if item["contact_gate"] == "RESEARCH_REQUIRED"),
             "stage_counts": stage_counts,
         },
-        "persistence": "FILE_BACKED" if _PATH else "IN_MEMORY",
+        "persistence": persistence_state(),
         "doctrine": (
             "Public B2B records are research signals, not permission to contact. "
             "Manual source verification and execution-time outreach clearance are required."

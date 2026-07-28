@@ -3,7 +3,7 @@
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
 import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
-import ipaddress, socket, time
+import http.client, ipaddress, socket, ssl, time
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
@@ -197,7 +197,7 @@ def _auth(authorization: str | None):
 
 @app.get("/healthz")
 def healthz():
-    return {
+    body = {
         "status": "ok",
         "service": "david-leads",
         "authentication": (
@@ -209,6 +209,16 @@ def healthz():
         ),
         "doctrine": "SZL governed-AI · honest by design",
     }
+    persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
+    ready = body["authentication"] == "CONFIGURED" and persistence == "FILE_BACKED"
+    body["status"] = "ready" if ready else "blocked"
+    body["deal_desk_persistence"] = persistence
+    return JSONResponse(content=body, status_code=200 if ready else 503)
+
+
+@app.get("/readyz")
+def readyz():
+    return healthz()
 
 
 def _runtime_bundle_manifest() -> dict:
@@ -1174,6 +1184,11 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     _auth(authorization)
     if rl is None or dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_configured():
+        raise HTTPException(
+            503,
+            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+        )
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
     ]
@@ -1209,6 +1224,11 @@ def frontier_desk(
     _auth(authorization)
     if frontier_data is None or dd is None:
         raise HTTPException(503, "frontier radar unavailable")
+    if not dd.persistence_configured():
+        raise HTTPException(
+            503,
+            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+        )
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
     ]
@@ -1237,6 +1257,11 @@ def update_deal_desk(
     _auth(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
+    if not dd.persistence_configured():
+        raise HTTPException(
+            503,
+            "deal desk persistence requires an absolute DAVID_DEAL_DESK_PATH",
+        )
     try:
         opportunity = dd.update(
             opportunity_id,
@@ -1429,7 +1454,7 @@ class WebhookReq(BaseModel):
     lead_id: str | None = None  # optional: export a single enriched lead; default = all ranked leads
 
 
-def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str]:
+def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str, str]:
     parsed = urllib.parse.urlparse(url)
     hostname = (parsed.hostname or "").lower().rstrip(".")
     approved = {
@@ -1441,10 +1466,21 @@ def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str]:
         raise ValueError("CRM webhook is disabled until DAVID_CRM_WEBHOOK_ALLOWLIST is configured")
     if parsed.scheme.lower() != "https" or not hostname or hostname not in approved:
         raise ValueError("destination must be an approved HTTPS CRM hostname")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("destination credentials are not permitted")
     try:
-        addresses = {item[4][0] for item in socket.getaddrinfo(hostname, parsed.port or 443)}
+        port = parsed.port or 443
+    except ValueError as exc:
+        raise ValueError("destination port is invalid") from exc
+    try:
+        addresses = {
+            item[4][0]
+            for item in socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+        }
     except OSError as exc:
         raise ValueError("approved CRM hostname could not be resolved") from exc
+    if not addresses:
+        raise ValueError("approved CRM hostname did not resolve to an address")
     for address in addresses:
         ip = ipaddress.ip_address(address)
         if (
@@ -1456,12 +1492,77 @@ def _webhook_destination(url: str) -> tuple[urllib.parse.ParseResult, str]:
             or ip.is_unspecified
         ):
             raise ValueError("approved CRM hostname resolves to a non-public address")
-    return parsed, hostname
+    validated_address = sorted(addresses, key=lambda value: ipaddress.ip_address(value).packed)[0]
+    return parsed, hostname, validated_address
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # pragma: no cover - stdlib callback
-        return None
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    def __init__(
+        self,
+        hostname: str,
+        validated_address: str,
+        *,
+        port: int = 443,
+        timeout: float = 8,
+        context: ssl.SSLContext | None = None,
+    ):
+        self._validated_address = validated_address
+        super().__init__(
+            host=hostname,
+            port=port,
+            timeout=timeout,
+            context=context or ssl.create_default_context(),
+        )
+
+    def connect(self):
+        raw_socket = socket.create_connection(
+            (self._validated_address, self.port),
+            self.timeout,
+            self.source_address,
+        )
+        if self._tunnel_host:
+            self.sock = raw_socket
+            self._tunnel()
+            raw_socket = self.sock
+        self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+
+
+def _post_validated_webhook(
+    parsed: urllib.parse.ParseResult,
+    hostname: str,
+    validated_address: str,
+    body: bytes,
+) -> int:
+    port = parsed.port or 443
+    path = parsed.path or "/"
+    if parsed.params:
+        path += ";" + parsed.params
+    if parsed.query:
+        path += "?" + parsed.query
+    connection = _PinnedHTTPSConnection(
+        hostname,
+        validated_address,
+        port=port,
+        timeout=8,
+    )
+    try:
+        connection.request(
+            "POST",
+            path,
+            body=body,
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": "SZL-David-Leads webhook-test",
+            },
+        )
+        response = connection.getresponse()
+        status = response.status
+        response.read(1)
+    finally:
+        connection.close()
+    if not 200 <= status < 300:
+        raise OSError(f"CRM webhook returned HTTP {status}")
+    return status
 
 
 @app.post("/api/webhook/test")
@@ -1497,20 +1598,13 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
         return {"ok": True, "sent": False, "reason": "no url supplied",
                 "would_send": payload}
     try:
-        _parsed, hostname = _webhook_destination(req.url)
+        parsed, hostname, validated_address = _webhook_destination(req.url)
     except ValueError as exc:
         return {"ok": True, "sent": False,
                 "reason": str(exc), "would_send": payload}
     try:
         body = json.dumps(payload).encode("utf-8")
-        request = urllib.request.Request(
-            req.url, data=body, method="POST",
-            headers={"Content-Type": "application/json",
-                     "User-Agent": "SZL-David-Leads webhook-test"})
-        opener = urllib.request.build_opener(_NoRedirect)
-        with opener.open(request, timeout=8) as resp:
-            status = resp.getcode()
-            resp.read(1)
+        status = _post_validated_webhook(parsed, hostname, validated_address, body)
         return {"ok": True, "sent": True, "destination": hostname,
                 "status": status, "count": payload["count"]}
     except Exception as e:
