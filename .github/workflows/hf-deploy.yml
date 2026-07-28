@@ -10,8 +10,9 @@ name: Deploy to HuggingFace Space
 # resolves once that PR merges to .github main. TODO: nothing to flip; @main is
 # the steady state.
 #
-# Requires org/repo secret HF_TOKEN (HF write token, org write to SZLHOLDINGS).
-# No application or database credential is available to this workflow.
+# Requires only the narrowly scoped org/repo publisher secret HF_TOKEN. This
+# workflow is protected-main push-only: it must not be branch-selectable while
+# that publisher secret is available.
 
 on:
   push:
@@ -25,6 +26,7 @@ on:
       - "PUBLIC_DATA_OPERATING_MODEL.md"
       - "SPACE_PROVENANCE.json"
       - ".github/workflows/hf-deploy.yml"
+      - ".github/workflows/migrate-neon-persistence.yml"
 permissions:
   contents: read
 
@@ -33,7 +35,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  migrate:
+    uses: ./.github/workflows/migrate-neon-persistence.yml
+
   deploy:
+    needs: migrate
     uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
     secrets:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}

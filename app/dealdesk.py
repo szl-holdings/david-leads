@@ -10,14 +10,19 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import pathlib
 import re
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
+
+if os.name == "nt":
+    import msvcrt
+else:  # pragma: no cover - exercised by Linux production and CI
+    import fcntl
 
 try:  # Optional locally; required when DAVID_DATABASE_URL is configured.
     import psycopg
@@ -82,14 +87,88 @@ _PATH = os.environ.get("DAVID_DEAL_DESK_PATH")
 _DATABASE_URL = os.environ.get("DAVID_DATABASE_URL")
 _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
-_PERSISTENCE_PROBE_LOCK = threading.Lock()
-_PERSISTENCE_READY_PATH: str | None = None
-_PERSISTENCE_RETRY_SECONDS = max(
-    5,
-    int(os.environ.get("DAVID_DATABASE_RETRY_SECONDS", "15")),
+_SCHEMA_VERSION = 2
+_SUBJECT_IDENTIFIER_KEYS = {
+    "license_number": "license_number",
+    "usdot_number": "usdot",
+    "uei": "uei",
+    "cage_code": "cage",
+    "entity_number": "entity_number",
+}
+_AUTHORITATIVE_IDENTIFIER_SYSTEMS = {
+    "cage": "cage",
+    "cage code": "cage",
+    "epa frs": "epa_frs",
+    "epa_frs": "epa_frs",
+    "entity_number": "entity_number",
+    "frs": "epa_frs",
+    "license_number": "license_number",
+    "uei": "uei",
+    "usdot": "usdot",
+}
+_SCHEMA_COLUMNS = {
+    ("david_dealdesk_schema", "schema_name"): ("text", "NO"),
+    ("david_dealdesk_schema", "schema_version"): ("int4", "NO"),
+    ("david_dealdesk_schema", "applied_at"): ("timestamptz", "NO"),
+    ("david_dealdesk_state", "opportunity_id"): ("text", "NO"),
+    ("david_dealdesk_state", "payload"): ("jsonb", "NO"),
+    ("david_dealdesk_state", "version"): ("int8", "NO"),
+    ("david_dealdesk_state", "updated_at"): ("timestamptz", "NO"),
+    ("david_dealdesk_events", "event_id"): ("text", "NO"),
+    ("david_dealdesk_events", "opportunity_id"): ("text", "NO"),
+    ("david_dealdesk_events", "event_type"): ("text", "NO"),
+    ("david_dealdesk_events", "actor"): ("text", "NO"),
+    ("david_dealdesk_events", "payload"): ("jsonb", "NO"),
+    ("david_dealdesk_events", "created_at"): ("timestamptz", "NO"),
+}
+_SCHEMA_PRIMARY_KEYS = {
+    "david_dealdesk_schema": ("schema_name",),
+    "david_dealdesk_state": ("opportunity_id",),
+    "david_dealdesk_events": ("event_id",),
+}
+_SCHEMA_CONSTRAINTS = {
+    (
+        "david_dealdesk_schema",
+        "c",
+        "CHECK (schema_version > 0)",
+    ),
+    (
+        "david_dealdesk_schema",
+        "p",
+        "PRIMARY KEY (schema_name)",
+    ),
+    (
+        "david_dealdesk_state",
+        "c",
+        "CHECK (version > 0)",
+    ),
+    (
+        "david_dealdesk_state",
+        "p",
+        "PRIMARY KEY (opportunity_id)",
+    ),
+    (
+        "david_dealdesk_events",
+        "p",
+        "PRIMARY KEY (event_id)",
+    ),
+}
+_SCHEMA_EVENTS_INDEX = (
+    True,
+    True,
+    False,
+    True,
+    True,
+    2,
+    2,
+    "btree",
+    "opportunity_id",
+    "created_at",
 )
 _PERSISTENCE_LOCK = threading.Lock()
-_LAST_PERSISTENCE_ATTEMPT = 0.0
+_LAST_PROBE_AT = 0.0
+_READY_PROBE_INTERVAL_SECONDS = 10.0
+_FAILED_PROBE_INTERVAL_SECONDS = 3.0
 _PERSISTENCE_DIAGNOSTIC = "NOT_CONFIGURED"
 _PERSISTENCE_HEALTH = (
     "POSTGRES_CONFIGURED"
@@ -109,63 +188,17 @@ def persistence_configured() -> bool:
 
 
 def persistence_state() -> str:
-    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     if _DATABASE_URL:
-        _recover_postgres_if_due()
+        _refresh_postgres_health()
         return _PERSISTENCE_HEALTH
-    if not _PATH or not os.path.isabs(_PATH):
-        return "NOT_CONFIGURED"
-
-    with _PERSISTENCE_PROBE_LOCK:
-        path = os.path.abspath(_PATH)
-        directory = os.path.dirname(path)
-        if not os.path.isdir(directory) or (
-            os.path.exists(path) and not os.path.isfile(path)
-        ):
-            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-            _PERSISTENCE_DIAGNOSTIC = "FILE_PATH_UNAVAILABLE"
-            _PERSISTENCE_READY_PATH = None
-            return "FILE_UNAVAILABLE"
-        if _PERSISTENCE_HEALTH == "FILE_READY" and _PERSISTENCE_READY_PATH == path:
-            return "FILE_BACKED"
-
-        temporary: str | None = None
-        try:
-            original = pathlib.Path(path).read_bytes() if os.path.exists(path) else b"{}"
-            fd, temporary = tempfile.mkstemp(
-                prefix=".dealdesk-readiness-",
-                suffix=".tmp",
-                dir=directory,
-            )
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(original)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, path)
-            temporary = None
-            if pathlib.Path(path).read_bytes() != original:
-                _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-                _PERSISTENCE_DIAGNOSTIC = "FILE_PROBE_MISMATCH"
-                return "FILE_UNAVAILABLE"
-            _PERSISTENCE_HEALTH = "FILE_READY"
-            _PERSISTENCE_DIAGNOSTIC = "OK"
-            _PERSISTENCE_READY_PATH = path
-            return "FILE_BACKED"
-        except OSError:
-            _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-            _PERSISTENCE_DIAGNOSTIC = "FILE_PROBE_FAILED"
-            _PERSISTENCE_READY_PATH = None
-            return "FILE_UNAVAILABLE"
-        finally:
-            if temporary and os.path.exists(temporary):
-                try:
-                    os.unlink(temporary)
-                except OSError:
-                    pass
+    if _PATH and os.path.isabs(_PATH):
+        _refresh_file_health()
+        return _PERSISTENCE_HEALTH
+    return "NOT_CONFIGURED"
 
 
 def persistence_ready() -> bool:
-    return persistence_state() in {"FILE_BACKED", "POSTGRES_READY"}
+    return persistence_state() in {"FILE_READY", "POSTGRES_READY"}
 
 
 def persistence_diagnostic() -> str:
@@ -199,74 +232,146 @@ def opportunity_id(record: dict[str, Any]) -> str:
     return "opp_" + hashlib.sha256(raw).hexdigest()[:16]
 
 
-def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
-    """Stable business aliases used to carry suppression across new signals."""
-    official_keys = (
-        "license_number",
-        "usdot_number",
-        "uei",
-        "cage_code",
-        "entity_number",
-    )
-    identities = [
-        {"official": f"{key}:{_clean(record.get(key), 160).lower()}"}
-        for key in official_keys
+def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    identifiers = [
+        (system, _clean(record.get(key), 160))
+        for key, system in _SUBJECT_IDENTIFIER_KEYS.items()
         if _clean(record.get(key), 160)
+    ]
+    emitted = record.get("authoritative_entity_ids")
+    if isinstance(emitted, list):
+        for item in emitted:
+            if not isinstance(item, dict):
+                continue
+            system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS.get(
+                _clean(item.get("system"), 80).lower()
+            )
+            value = _clean(item.get("value"), 160)
+            if system and value:
+                identifiers.append((system, value))
+    credential = _clean(record.get("credential"), 200)
+    match = re.fullmatch(r"(USDOT|UEI|CAGE|FRS)\s+(.+)", credential, re.IGNORECASE)
+    if match:
+        system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS[match.group(1).lower()]
+        identifiers.append((system, _clean(match.group(2), 160)))
+    return tuple(
+        dict.fromkeys(
+            (system, value.lower())
+            for system, value in identifiers
+            if value
+        )
+    )
+
+
+def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
+    """Stable business aliases used for irreversible contact suppression."""
+    identities = [
+        {"official": f"{system}:{value}"}
+        for system, value in _official_identifiers(record)
     ]
     name = _clean(record.get("name"), 240).lower()
     state = _clean(record.get("state"), 16).upper()
     if name:
         identities.append({"name": name, "state": state})
-    aliases: list[str] = []
-    for identity in identities or [{"opportunity": opportunity_id(record)}]:
+    aliases = []
+    for identity in identities or [{"name": "", "state": state}]:
         raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
         aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
     return tuple(dict.fromkeys(aliases))
 
 
 def subject_id(record: dict[str, Any]) -> str:
-    """Primary stable identity; volatile dates and source URLs are excluded."""
+    """Primary stable identity; volatile trigger dates and URLs are excluded."""
     return subject_ids(record)[0]
 
 
-def _legacy_unnamed_subject_id(record: dict[str, Any]) -> str | None:
-    """Return the pre-scoping alias only for records that lacked an identity."""
-    official_keys = (
-        "license_number",
-        "usdot_number",
-        "uei",
-        "cage_code",
-        "entity_number",
-    )
-    if _clean(record.get("name"), 240) or any(
-        _clean(record.get(key), 160) for key in official_keys
-    ):
-        return None
-    identity = {
-        "name": "",
-        "state": _clean(record.get("state"), 16).upper(),
-    }
-    raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
+def _subject_identity(record: dict[str, Any]) -> dict[str, Any] | None:
+    identity: dict[str, Any] = {}
+    official = _official_identifiers(record)
+    if official:
+        identity["authoritative_entity_ids"] = [
+            {"system": system, "value": value}
+            for system, value in official
+        ]
+    name = _clean(record.get("name"), 240)
+    if name:
+        identity["name"] = name
+        identity["state"] = _clean(record.get("state"), 16).upper()
+    return identity or None
+
+
+def _backfill_legacy_suppressions(
+    state: dict[str, dict[str, Any]],
+    known_records: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    """Upgrade legacy DNC rows only when a real business identity is available."""
+    changed = False
+    known_records = known_records or {}
+    for oid, saved in state.items():
+        if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
+            continue
+        suppression = saved.get("suppression")
+        identity = saved.get("subject_identity")
+        if not isinstance(identity, dict):
+            identity = _subject_identity(known_records.get(oid) or saved)
+        else:
+            identity = _subject_identity(identity)
+        if not identity:
+            # Older payloads did not retain source identity. Never manufacture
+            # one empty alias shared by every legacy DNC row; backfill when the
+            # exact source opportunity is observed again.
+            continue
+        aliases = subject_ids(identity)
+        if isinstance(suppression, dict) and suppression.get("active") is True:
+            normalized = {
+                **suppression,
+                "subject_id": aliases[0],
+                "subject_ids": list(aliases),
+            }
+            if (
+                normalized != suppression
+                or saved.get("subject_identity") != identity
+            ):
+                saved["stage"] = "BLOCKED"
+                saved["next_action"] = "Suppressed: do not contact"
+                saved["subject_identity"] = identity
+                saved["suppression"] = normalized
+                changed = True
+            continue
+        clearance = saved.get("clearance")
+        revoked_at = (
+            clearance.get("revoked_at")
+            if isinstance(clearance, dict)
+            else None
+        )
+        saved["stage"] = "BLOCKED"
+        saved["next_action"] = "Suppressed: do not contact"
+        saved["subject_identity"] = identity
+        saved["suppression"] = {
+            "subject_id": aliases[0],
+            "subject_ids": list(aliases),
+            "type": "DO_NOT_CALL",
+            "active": True,
+            "recorded_at": revoked_at or "UNAVAILABLE",
+            "actor": "legacy-persistence-backfill",
+        }
+        changed = True
+    return changed
 
 
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
-    current_opportunity_id = opportunity_id(record)
-    legacy_id = _legacy_unnamed_subject_id(record)
-    for saved_opportunity_id, saved in _STATE.items():
+    for saved in _STATE.values():
         suppression = saved.get("suppression")
-        if not isinstance(suppression, dict) or suppression.get("active") is not True:
-            continue
-        suppressed_ids = set(suppression.get("subject_ids") or ())
-        if suppression.get("subject_id"):
+        suppressed_ids = set(suppression.get("subject_ids") or ()) if isinstance(
+            suppression, dict
+        ) else set()
+        if isinstance(suppression, dict) and suppression.get("subject_id"):
             suppressed_ids.add(str(suppression["subject_id"]))
-        if stable_ids.intersection(suppressed_ids):
-            return suppression
         if (
-            legacy_id
-            and saved_opportunity_id == current_opportunity_id
-            and legacy_id in suppressed_ids
+            isinstance(suppression, dict)
+            and stable_ids.intersection(suppressed_ids)
+            and suppression.get("active") is True
         ):
             return suppression
     return None
@@ -277,53 +382,359 @@ def _db_connect():
         raise RuntimeError("database persistence is not configured")
     if psycopg is None:
         raise RuntimeError("psycopg is required when DAVID_DATABASE_URL is configured")
-    return psycopg.connect(_DATABASE_URL, connect_timeout=8)
+    return psycopg.connect(_DATABASE_URL, connect_timeout=4)
 
 
 class PersistenceUnavailable(RuntimeError):
-    """Sanitized persistence failure safe to expose as a service-unavailable error."""
+    """Sanitized persistence failure safe to return without connection details."""
 
 
-def _ensure_database_schema(connection: Any) -> None:
-    """Create only the fixed, idempotent tables this service owns."""
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS david_dealdesk_state (
-                opportunity_id text PRIMARY KEY,
-                payload jsonb NOT NULL,
-                version bigint NOT NULL DEFAULT 1,
-                updated_at timestamptz NOT NULL DEFAULT now()
-            )
-            """
+class _DatabaseSchemaUnavailable(RuntimeError):
+    pass
+
+
+class _DatabaseSchemaIncompatible(RuntimeError):
+    pass
+
+
+class _LegacySuppressionIdentityRequired(RuntimeError):
+    pass
+
+
+def _assert_no_unresolved_legacy_suppressions(
+    state: dict[str, dict[str, Any]],
+) -> None:
+    for saved in state.values():
+        if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
+            continue
+        suppression = saved.get("suppression")
+        identity = saved.get("subject_identity")
+        if (
+            isinstance(suppression, dict)
+            and suppression.get("active") is True
+            and isinstance(identity, dict)
+            and _subject_identity(identity)
+        ):
+            continue
+        raise _LegacySuppressionIdentityRequired(
+            "legacy do-not-call identity requires governed backfill"
         )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS david_dealdesk_events (
-                event_id text PRIMARY KEY,
-                opportunity_id text NOT NULL,
-                event_type text NOT NULL,
-                actor text NOT NULL,
-                payload jsonb NOT NULL,
-                created_at timestamptz NOT NULL
-            )
-            """
+
+
+def _assert_schema_contract(cursor: Any) -> None:
+    cursor.execute(
+        "SELECT schema_version FROM david_dealdesk_schema WHERE schema_name = %s",
+        ("dealdesk",),
+    )
+    row = cursor.fetchone()
+    if row != (_SCHEMA_VERSION,):
+        raise _DatabaseSchemaIncompatible(
+            "unsupported deal-desk schema version"
         )
-        cursor.execute(
-            """
-            CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx
-            ON david_dealdesk_events (opportunity_id, created_at)
-            """
+    cursor.execute(
+        """
+        SELECT table_name, column_name, udt_name, is_nullable
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name IN (%s, %s, %s)
+        ORDER BY table_name, ordinal_position
+        """,
+        tuple(sorted(_SCHEMA_PRIMARY_KEYS)),
+    )
+    observed_columns = {
+        (str(table), str(column)): (str(data_type), str(nullable))
+        for table, column, data_type, nullable in cursor.fetchall()
+    }
+    if set(_SCHEMA_PRIMARY_KEYS) - {
+        table for table, _column in observed_columns
+    }:
+        raise _DatabaseSchemaUnavailable(
+            "database schema is missing required service tables"
         )
+    if observed_columns != _SCHEMA_COLUMNS:
+        raise _DatabaseSchemaIncompatible(
+            "database schema columns are incompatible with this service"
+        )
+
+    cursor.execute(
+        """
+        SELECT constraints.table_name, columns.column_name, columns.ordinal_position
+        FROM information_schema.table_constraints AS constraints
+        JOIN information_schema.key_column_usage AS columns
+          ON columns.constraint_schema = constraints.constraint_schema
+         AND columns.constraint_name = constraints.constraint_name
+         AND columns.table_name = constraints.table_name
+        WHERE constraints.table_schema = current_schema()
+          AND constraints.constraint_type = 'PRIMARY KEY'
+          AND constraints.table_name IN (%s, %s, %s)
+        ORDER BY constraints.table_name, columns.ordinal_position
+        """,
+        tuple(sorted(_SCHEMA_PRIMARY_KEYS)),
+    )
+    observed_primary_keys: dict[str, list[tuple[int, str]]] = {}
+    for table, column, position in cursor.fetchall():
+        observed_primary_keys.setdefault(str(table), []).append(
+            (int(position), str(column))
+        )
+    normalized_primary_keys = {
+        table: tuple(column for _position, column in sorted(columns))
+        for table, columns in observed_primary_keys.items()
+    }
+    if normalized_primary_keys != _SCHEMA_PRIMARY_KEYS:
+        raise _DatabaseSchemaIncompatible(
+            "database schema primary keys are incompatible with this service"
+        )
+
+    cursor.execute(
+        """
+        SELECT
+            table_relation.relname,
+            constraint_meta.contype,
+            pg_get_constraintdef(constraint_meta.oid, true)
+        FROM pg_catalog.pg_constraint AS constraint_meta
+        JOIN pg_catalog.pg_class AS table_relation
+          ON table_relation.oid = constraint_meta.conrelid
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = table_relation.relnamespace
+        WHERE namespace.nspname = current_schema()
+          AND table_relation.relname IN (%s, %s, %s)
+        ORDER BY table_relation.relname, constraint_meta.contype,
+                 constraint_meta.conname
+        """,
+        tuple(sorted(_SCHEMA_PRIMARY_KEYS)),
+    )
+    observed_constraints = {
+        (str(table), str(constraint_type), str(definition))
+        for table, constraint_type, definition in cursor.fetchall()
+    }
+    if observed_constraints != _SCHEMA_CONSTRAINTS:
+        raise _DatabaseSchemaIncompatible(
+            "database schema constraints are incompatible with this service"
+        )
+
+    cursor.execute(
+        """
+        SELECT
+            index_meta.indisvalid,
+            index_meta.indisready,
+            index_meta.indisunique,
+            index_meta.indpred IS NULL,
+            index_meta.indexprs IS NULL,
+            index_meta.indnkeyatts,
+            index_meta.indnatts,
+            access_method.amname,
+            pg_get_indexdef(index_meta.indexrelid, 1, true),
+            pg_get_indexdef(index_meta.indexrelid, 2, true)
+        FROM pg_catalog.pg_index AS index_meta
+        JOIN pg_catalog.pg_class AS index_relation
+          ON index_relation.oid = index_meta.indexrelid
+        JOIN pg_catalog.pg_class AS table_relation
+          ON table_relation.oid = index_meta.indrelid
+        JOIN pg_catalog.pg_namespace AS namespace
+          ON namespace.oid = table_relation.relnamespace
+        JOIN pg_catalog.pg_am AS access_method
+          ON access_method.oid = index_relation.relam
+        WHERE namespace.nspname = current_schema()
+          AND table_relation.relname = %s
+          AND index_relation.relname = %s
+        """,
+        (
+            "david_dealdesk_events",
+            "david_dealdesk_events_opportunity_created_idx",
+        ),
+    )
+    index_rows = list(cursor.fetchall())
+    if not index_rows:
+        raise _DatabaseSchemaUnavailable(
+            "database schema is missing the required events index"
+        )
+    if len(index_rows) != 1 or tuple(index_rows[0]) != _SCHEMA_EVENTS_INDEX:
+        raise _DatabaseSchemaIncompatible(
+            "database events index is incompatible with this service"
+        )
+
+
+def _database_snapshot() -> dict[str, dict[str, Any]]:
+    loaded: dict[str, dict[str, Any]] = {}
+    with _db_connect() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+            _assert_schema_contract(cursor)
+            cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
+            for oid, payload in cursor.fetchall():
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                if isinstance(payload, dict):
+                    loaded[str(oid)] = payload
+    return loaded
+
+
+def _mark_postgres_unavailable(
+    *,
+    error: Exception | None = None,
+    retry_immediately: bool = False,
+) -> None:
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+    _PERSISTENCE_DIAGNOSTIC = (
+        _classify_database_error(error) if error is not None else "CONNECTION_UNAVAILABLE"
+    )
+    _LAST_PROBE_AT = 0.0 if retry_immediately else time.monotonic()
+
+
+def _refresh_postgres_health(*, force: bool = False) -> None:
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    now = time.monotonic()
+    interval = (
+        _READY_PROBE_INTERVAL_SECONDS
+        if _PERSISTENCE_HEALTH == "POSTGRES_READY"
+        else _FAILED_PROBE_INTERVAL_SECONDS
+    )
+    if not force and _LAST_PROBE_AT and now - _LAST_PROBE_AT < interval:
+        return
+    if not _PERSISTENCE_LOCK.acquire(blocking=False):
+        return
+    try:
+        now = time.monotonic()
+        if not force and _LAST_PROBE_AT and now - _LAST_PROBE_AT < interval:
+            return
+        try:
+            if _PERSISTENCE_HEALTH == "POSTGRES_READY":
+                with _db_connect() as connection:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+                        _assert_schema_contract(cursor)
+            else:
+                recovered = _database_snapshot()
+                backfilled = _backfill_legacy_suppressions(recovered)
+                _assert_no_unresolved_legacy_suppressions(recovered)
+                if backfilled:
+                    _persist(recovered)
+                _STATE.clear()
+                _STATE.update(recovered)
+            _PERSISTENCE_HEALTH = "POSTGRES_READY"
+            _PERSISTENCE_DIAGNOSTIC = "OK"
+            _LAST_PROBE_AT = time.monotonic()
+        except Exception as exc:
+            _mark_postgres_unavailable(error=exc)
+    finally:
+        _PERSISTENCE_LOCK.release()
+
+
+def _probe_file_store() -> dict[str, dict[str, Any]]:
+    if not _PATH or not os.path.isabs(_PATH):
+        raise PersistenceUnavailable("file persistence is not configured")
+    directory = os.path.dirname(_PATH)
+    if not os.path.isdir(directory) or (os.path.exists(_PATH) and not os.path.isfile(_PATH)):
+        raise PersistenceUnavailable("file persistence path is unavailable")
+    with _file_store_lock():
+        original = b"{}"
+        if os.path.exists(_PATH):
+            with open(_PATH, "rb") as handle:
+                original = handle.read()
+        persisted = json.loads(original)
+        if not isinstance(persisted, dict):
+            raise PersistenceUnavailable("file persistence payload is invalid")
+        fd, temporary = tempfile.mkstemp(
+            prefix="dealdesk-probe-",
+            suffix=".tmp",
+            dir=directory,
+        )
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(original)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, _PATH)
+            with open(_PATH, "rb") as handle:
+                if handle.read() != original:
+                    raise PersistenceUnavailable("file persistence probe is invalid")
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    return {
+        str(key): value
+        for key, value in persisted.items()
+        if isinstance(value, dict)
+    }
+
+
+@contextmanager
+def _file_store_lock():
+    if not _PATH:
+        raise PersistenceUnavailable("file persistence is not configured")
+    lock_path = _PATH + ".lock"
+    deadline = time.monotonic() + 2.0
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    acquired = False
+    while not acquired:
+        try:
+            if os.name == "nt":
+                if os.fstat(descriptor).st_size == 0:
+                    os.write(descriptor, b"\0")
+                    os.fsync(descriptor)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            else:  # pragma: no cover - exercised by Linux production and CI
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
+        except OSError:
+            if time.monotonic() >= deadline:
+                os.close(descriptor)
+                raise PersistenceUnavailable("file persistence lock is unavailable") from None
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            else:  # pragma: no cover - exercised by Linux production and CI
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _refresh_file_health() -> None:
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
+    try:
+        loaded = _probe_file_store()
+        backfilled = _backfill_legacy_suppressions(loaded)
+        _assert_no_unresolved_legacy_suppressions(loaded)
+        if backfilled:
+            _persist(loaded)
+        _STATE.clear()
+        _STATE.update(loaded)
+        _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
+    except _LegacySuppressionIdentityRequired:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "LEGACY_DNC_IDENTITY_REQUIRED"
+    except Exception:
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
 
 
 def _classify_database_error(exc: Exception) -> str:
     name = type(exc).__name__.lower()
     message = str(exc).lower()
+    if isinstance(exc, _DatabaseSchemaUnavailable):
+        return "SCHEMA_UNAVAILABLE"
+    if isinstance(exc, _DatabaseSchemaIncompatible):
+        return "SCHEMA_INCOMPATIBLE"
+    if isinstance(exc, _LegacySuppressionIdentityRequired):
+        return "LEGACY_DNC_IDENTITY_REQUIRED"
     if psycopg is None or "psycopg is required" in message:
         return "DRIVER_UNAVAILABLE"
     if "does not exist" in message or "undefinedtable" in name:
         return "SCHEMA_UNAVAILABLE"
+    if (
+        "undefinedcolumn" in name
+        or "datatypemismatch" in name
+        or "no unique or exclusion constraint" in message
+    ):
+        return "SCHEMA_INCOMPATIBLE"
     if "password authentication failed" in message or "invalidpassword" in name:
         return "AUTHENTICATION_FAILED"
     if "name or service not known" in message or "could not translate host" in message:
@@ -333,84 +744,64 @@ def _classify_database_error(exc: Exception) -> str:
     return "CONNECTION_UNAVAILABLE"
 
 
-def _read_database_rows(connection: Any) -> list[tuple[Any, Any]]:
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
-        return list(cursor.fetchall())
-
-
 def _load() -> None:
-    global _LAST_PERSISTENCE_ATTEMPT
-    global _PERSISTENCE_DIAGNOSTIC
-    global _PERSISTENCE_HEALTH
+    global _LAST_PROBE_AT, _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     if _DATABASE_URL:
-        _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
-        try:
-            with _db_connect() as connection:
-                try:
-                    rows = _read_database_rows(connection)
-                except Exception as exc:
-                    if _classify_database_error(exc) != "SCHEMA_UNAVAILABLE":
-                        raise
-                    connection.rollback()
-                    _ensure_database_schema(connection)
-                    rows = _read_database_rows(connection)
-                for oid, payload in rows:
-                    if isinstance(payload, str):
-                        payload = json.loads(payload)
-                    if isinstance(payload, dict):
-                        _STATE[str(oid)] = payload
-            _PERSISTENCE_HEALTH = "POSTGRES_READY"
-            _PERSISTENCE_DIAGNOSTIC = "OK"
-        except Exception as exc:
-            _STATE.clear()
-            _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
-            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+        last_error = None
+        for attempt in range(3):
+            try:
+                loaded = _database_snapshot()
+                backfilled = _backfill_legacy_suppressions(loaded)
+                _assert_no_unresolved_legacy_suppressions(loaded)
+                _STATE.clear()
+                _STATE.update(loaded)
+                if backfilled:
+                    _persist(_STATE)
+                _PERSISTENCE_HEALTH = "POSTGRES_READY"
+                _PERSISTENCE_DIAGNOSTIC = "OK"
+                _LAST_PROBE_AT = time.monotonic()
+                return
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(0.25 * (attempt + 1))
+        _STATE.clear()
+        _mark_postgres_unavailable(error=last_error, retry_immediately=True)
         return
-    if not _PATH or not os.path.exists(_PATH):
+    if not _PATH or not os.path.isabs(_PATH):
         return
     try:
-        with open(_PATH, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if isinstance(data, dict):
-            _STATE.update({str(k): v for k, v in data.items() if isinstance(v, dict)})
-        _PERSISTENCE_HEALTH = "FILE_READABLE"
-        if persistence_state() != "FILE_BACKED":
-            _STATE.clear()
+        loaded = _probe_file_store()
+        _STATE.clear()
+        _STATE.update(loaded)
+        if _backfill_legacy_suppressions(_STATE):
+            _persist(_STATE)
+        _assert_no_unresolved_legacy_suppressions(_STATE)
+        _PERSISTENCE_HEALTH = "FILE_READY"
+        _PERSISTENCE_DIAGNOSTIC = "OK"
+    except _LegacySuppressionIdentityRequired:
+        _STATE.clear()
+        _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+        _PERSISTENCE_DIAGNOSTIC = "LEGACY_DNC_IDENTITY_REQUIRED"
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-        _PERSISTENCE_DIAGNOSTIC = "FILE_LOAD_FAILED"
-
-
-def _recover_postgres_if_due() -> None:
-    if not _DATABASE_URL or _PERSISTENCE_HEALTH == "POSTGRES_READY":
-        return
-    if time.monotonic() - _LAST_PERSISTENCE_ATTEMPT < _PERSISTENCE_RETRY_SECONDS:
-        return
-    if not _PERSISTENCE_LOCK.acquire(blocking=False):
-        return
-    try:
-        if (
-            _PERSISTENCE_HEALTH != "POSTGRES_READY"
-            and time.monotonic() - _LAST_PERSISTENCE_ATTEMPT
-            >= _PERSISTENCE_RETRY_SECONDS
-        ):
-            _load()
-    finally:
-        _PERSISTENCE_LOCK.release()
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
 
 
 def _persist(
     state: dict[str, dict[str, Any]] | None = None,
     event: dict[str, Any] | None = None,
 ) -> None:
-    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
+    global _PERSISTENCE_DIAGNOSTIC, _PERSISTENCE_HEALTH
     snapshot = _STATE if state is None else state
+    _assert_no_unresolved_legacy_suppressions(snapshot)
     if _DATABASE_URL:
         try:
             with _db_connect() as connection:
                 with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '4000ms'")
+                    _assert_schema_contract(cursor)
                     for oid, payload in snapshot.items():
                         cursor.execute(
                             """
@@ -441,43 +832,37 @@ def _persist(
                                 event["at"],
                             ),
                         )
+            _PERSISTENCE_HEALTH = "POSTGRES_READY"
+            _PERSISTENCE_DIAGNOSTIC = "OK"
         except Exception as exc:
-            _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
-            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
+            _mark_postgres_unavailable(error=exc)
             raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
-        _PERSISTENCE_HEALTH = "POSTGRES_READY"
-        _PERSISTENCE_DIAGNOSTIC = "OK"
         return
     if not _PATH:
         return
-    temporary: str | None = None
+    directory = os.path.dirname(os.path.abspath(_PATH))
     try:
-        directory = os.path.dirname(os.path.abspath(_PATH))
-        os.makedirs(directory, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(
-            prefix="dealdesk-",
-            suffix=".json",
-            dir=directory,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(snapshot, handle, indent=2, sort_keys=True)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, _PATH)
+        with _file_store_lock():
+            fd, temporary = tempfile.mkstemp(
+                prefix="dealdesk-",
+                suffix=".json",
+                dir=directory,
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(snapshot, handle, indent=2, sort_keys=True)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, _PATH)
+            finally:
+                if os.path.exists(temporary):
+                    os.unlink(temporary)
         _PERSISTENCE_HEALTH = "FILE_READY"
         _PERSISTENCE_DIAGNOSTIC = "OK"
-        _PERSISTENCE_READY_PATH = os.path.abspath(_PATH)
     except Exception:
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
-        _PERSISTENCE_DIAGNOSTIC = "FILE_WRITE_FAILED"
-        _PERSISTENCE_READY_PATH = None
+        _PERSISTENCE_DIAGNOSTIC = "FILE_UNAVAILABLE"
         raise PersistenceUnavailable("deal-desk persistence is unavailable") from None
-    finally:
-        if temporary and os.path.exists(temporary):
-            try:
-                os.unlink(temporary)
-            except OSError:
-                pass
 
 
 _load()
@@ -567,6 +952,8 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
     _KNOWN[oid] = dict(record)
+    if _backfill_legacy_suppressions(_STATE, {oid: record}):
+        _persist(_STATE)
     gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
     clearance = _current_clearance(saved)
@@ -588,19 +975,6 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
         saved = candidate
         clearance = None
     call_ready = bool(clearance and saved.get("stage") in CONTACT_STAGES and not blocked)
-    cleared_channel = next(
-        (
-            item
-            for item in saved.get("channels") or []
-            if clearance and item.get("channel_id") == clearance.get("channel_id")
-        ),
-        None,
-    )
-    phone_call_ready = bool(
-        call_ready
-        and isinstance(cleared_channel, dict)
-        and cleared_channel.get("type") == "BUSINESS_PHONE"
-    )
     if call_ready:
         gate = "TIME_LIMITED_CLEARANCE"
     elif isinstance(saved.get("clearance"), dict) and not blocked:
@@ -630,7 +1004,6 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
         "next_action": next_action,
         "contact_gate": gate,
         "call_ready": call_ready,
-        "phone_call_ready": phone_call_ready,
         "clearance_checklist": checklist,
         "clearance": clearance,
         "channels": list(saved.get("channels") or []),
@@ -662,9 +1035,6 @@ def board(records: list[dict[str, Any]]) -> dict[str, Any]:
             "live": sum(1 for item in opportunities if item["truth_label"] == "LIVE"),
             "examples": sum(1 for item in opportunities if item["truth_label"] == "EXAMPLE"),
             "call_ready": sum(1 for item in opportunities if item["call_ready"]),
-            "phone_call_ready": sum(
-                1 for item in opportunities if item["phone_call_ready"]
-            ),
             "needs_research": sum(1 for item in opportunities if not item["call_ready"]),
             "stage_counts": stage_counts,
         },
@@ -683,6 +1053,9 @@ def _saved(oid: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _commit(oid: str, candidate: dict[str, Any], event: dict[str, Any]) -> None:
+    identity = _subject_identity(_KNOWN.get(oid) or {})
+    if identity:
+        candidate["subject_identity"] = identity
     event = {**event, "event_id": _event_id(event)}
     history = list(candidate.get("history") or [])
     history.append(event)
@@ -820,6 +1193,8 @@ def record_clearance(
     channel = next((item for item in channels if item.get("channel_id") == channel_id), None)
     if not channel:
         raise ValueError("clearance must reference a recorded business-published channel")
+    if channel.get("type") != "BUSINESS_PHONE":
+        raise ValueError("call clearance requires a recorded business phone")
     if not all((actor, business_purpose, talk_track_version, jurisdiction, license_scope)):
         raise ValueError("actor, business purpose, talk track, jurisdiction, and license scope are required")
     checks = (federal_dnc_checked, state_dnc_checked, opt_out_checked, rules_reviewed)
@@ -852,11 +1227,7 @@ def record_clearance(
         **previous,
         "stage": "READY",
         "clearance": clearance,
-        "next_action": (
-            "Open the governed call sheet and place one manual business call"
-            if channel.get("type") == "BUSINESS_PHONE"
-            else "Use only the cleared business channel; a phone call sheet remains locked"
-        ),
+        "next_action": "Open the governed call sheet and place one manual business call",
         "last_note": f"Time-limited clearance recorded for {jurisdiction}",
         "owner": previous.get("owner") or actor,
     }
@@ -1060,7 +1431,6 @@ def export_rows() -> list[dict[str, Any]]:
             "priority": item.get("priority"),
             "contact_gate": item.get("contact_gate"),
             "call_ready": item.get("call_ready"),
-            "phone_call_ready": item.get("phone_call_ready"),
             "next_action": item.get("next_action"),
             "source_url": (item.get("citation") or {}).get("url"),
             "business_channel_type": (channel or {}).get("type"),
