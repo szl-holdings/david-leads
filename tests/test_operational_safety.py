@@ -22,6 +22,23 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
+    def test_rotation_requires_the_named_protected_environment(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        job_configuration = workflow.split("    steps:", 1)[0]
+        guide = (ROOT / "ops" / "credential-rotation.md").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "    environment:\n      name: david-space-credential-rotation",
+            job_configuration,
+        )
+        self.assertIn("deployment branches restricted to the protected `main` branch", guide)
+        self.assertIn("a required owner approval", guide)
+        self.assertIn("stored as environment secrets", guide)
+        self.assertIn("Delete repository-scoped copies", guide)
+        self.assertIn("Keep this pull request in draft", guide)
+
     def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
         workflow = (
             ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
