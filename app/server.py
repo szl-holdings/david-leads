@@ -216,6 +216,9 @@ def healthz():
     }
     body["status"] = "ready" if ready else "blocked"
     body["deal_desk_persistence"] = persistence
+    body["persistence_diagnostic"] = (
+        dd.persistence_diagnostic() if dd is not None else "MODULE_UNAVAILABLE"
+    )
     return JSONResponse(content=body, status_code=200 if ready else 503)
 
 

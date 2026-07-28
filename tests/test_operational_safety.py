@@ -271,6 +271,32 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertFalse(observed["call_ready"])
         self.assertEqual(observed["contact_gate"], "RESEARCH_REQUIRED")
 
+    def test_postgres_readiness_recovers_after_a_transient_startup_failure(self):
+        def recover():
+            dealdesk._PERSISTENCE_HEALTH = "POSTGRES_READY"
+            dealdesk._PERSISTENCE_DIAGNOSTIC = "OK"
+            dealdesk._LAST_PERSISTENCE_ATTEMPT = time.monotonic()
+
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_PERSISTENCE_HEALTH", "POSTGRES_UNAVAILABLE"),
+            patch.object(dealdesk, "_PERSISTENCE_DIAGNOSTIC", "CONNECTION_TIMEOUT"),
+            patch.object(dealdesk, "_LAST_PERSISTENCE_ATTEMPT", 0.0),
+            patch.object(dealdesk, "_load", side_effect=recover) as load,
+        ):
+            self.assertEqual(dealdesk.persistence_state(), "POSTGRES_READY")
+            self.assertEqual(dealdesk.persistence_diagnostic(), "OK")
+        load.assert_called_once()
+
+    def test_postgres_diagnostics_never_echo_connection_details(self):
+        secret_host = "secret-db.example.invalid"
+        error = RuntimeError(
+            f"connection timeout while connecting to {secret_host}"
+        )
+        diagnostic = dealdesk._classify_database_error(error)
+        self.assertEqual(diagnostic, "CONNECTION_TIMEOUT")
+        self.assertNotIn(secret_host, diagnostic)
+
     def test_current_default_block_revokes_stale_prior_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
         researched = self._research(opportunity["opportunity_id"])
