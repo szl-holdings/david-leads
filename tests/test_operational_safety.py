@@ -23,43 +23,24 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
-    def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        job_configuration = workflow.split("    steps:", 1)[0]
+    def test_github_actions_cannot_rotate_application_credentials(self):
+        rotation = ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        self.assertFalse(rotation.exists())
+
+        deploy = (ROOT / ".github" / "workflows" / "hf-deploy.yml").read_text(
+            encoding="utf-8"
+        )
         for name in (
-            "HF_TOKEN",
             "DAVID_USER",
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
         ):
-            reference = f"{name}: ${{{{ secrets.{name} }}}}"
-            self.assertNotIn(reference, job_configuration)
-            self.assertEqual(workflow.count(reference), 2)
-
-    def test_rotation_preserves_an_unexposed_factor_during_partial_writes(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        order = workflow.split("          rotation_order = (", 1)[1].split(
-            "          )", 1
-        )[0]
-        self.assertLess(order.index('"DAVID_ACCESS_KEY"'), order.index('"DAVID_USER"'))
-        self.assertIn("          for key in rotation_order:", workflow)
-
-    def test_restart_poll_waits_for_replacement_login(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        poll = workflow.split(
-            "          while time.monotonic() < deadline:", 1
-        )[1].split("          if health is None:", 1)[0]
-        self.assertIn('requests.post(', poll)
-        self.assertIn('f"{base_url}/api/login"', poll)
-        self.assertIn("if login.status_code == 200:", poll)
-        self.assertIn("session_token = candidate_token", poll)
+            self.assertNotIn(name, deploy)
+        self.assertNotIn("workflow_dispatch", deploy)
+        self.assertNotIn("secrets: inherit", deploy)
+        self.assertNotIn("rotate-app-secrets", deploy)
+        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy)
 
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
