@@ -259,15 +259,19 @@ class PublicCredentialSafety(unittest.TestCase):
         sentinel_environment = {
             "SPACE_ID": "SZLHOLDINGS/david-leads",
             "SPACE_BASE_URL": "https://example.invalid",
-            "HF_TOKEN": "sentinel-hf-token-91",
-            "DAVID_USER": "sentinel-user-92",
-            "DAVID_PASS": "sentinel-pass-93",
-            "DAVID_ACCESS_KEY": "sentinel-access-key-94",
-            "DAVID_DATABASE_URL": "sentinel-database-url-95",
+            "HF_TOKEN": "sentinel-hf-token-91\r\n",
+            "DAVID_USER": "sentinel-user-92\r\n",
+            "DAVID_PASS": "sentinel-pass-93\r\n",
+            "DAVID_ACCESS_KEY": "sentinel-access-key-94\r\n",
+            "DAVID_DATABASE_URL": "sentinel-database-url-95\r\n",
+        }
+        normalized_sentinels = {
+            name: value.rstrip("\r\n")
+            for name, value in sentinel_environment.items()
         }
         combined_fingerprint = hashlib.sha256(
             "\0".join(
-                sentinel_environment[name]
+                normalized_sentinels[name]
                 for name in ("DAVID_USER", "DAVID_PASS", "DAVID_ACCESS_KEY")
             ).encode("utf-8")
         ).hexdigest()
@@ -377,9 +381,9 @@ class PublicCredentialSafety(unittest.TestCase):
                     self.assertEqual(
                         json,
                         {
-                            "username": sentinel_environment["DAVID_USER"],
-                            "password": sentinel_environment["DAVID_PASS"],
-                            "access_key": sentinel_environment["DAVID_ACCESS_KEY"],
+                            "username": normalized_sentinels["DAVID_USER"],
+                            "password": normalized_sentinels["DAVID_PASS"],
+                            "access_key": normalized_sentinels["DAVID_ACCESS_KEY"],
                         },
                     )
                     return login_events.pop(0)
@@ -393,10 +397,11 @@ class PublicCredentialSafety(unittest.TestCase):
 
                 class FakeHfApi:
                     def __init__(self, token):
-                        self.assert_token = token
+                        if token != normalized_sentinels["HF_TOKEN"]:
+                            raise AssertionError("wrong token")
 
                     def whoami(self, token):
-                        if token != sentinel_environment["HF_TOKEN"]:
+                        if token != normalized_sentinels["HF_TOKEN"]:
                             raise AssertionError("wrong token")
 
                     def add_space_secret(
@@ -408,11 +413,13 @@ class PublicCredentialSafety(unittest.TestCase):
                         description,
                         token,
                     ):
-                        if not key or not value or not description or not token:
+                        if value != normalized_sentinels[key]:
+                            raise AssertionError("secret was not normalized")
+                        if not key or not description or token != normalized_sentinels["HF_TOKEN"]:
                             raise AssertionError("missing rotation input")
 
                     def get_space_runtime(self, _repo_id, *, token):
-                        if token != sentinel_environment["HF_TOKEN"]:
+                        if token != normalized_sentinels["HF_TOKEN"]:
                             raise AssertionError("wrong token")
                         if scenario["runtime_error"]:
                             raise RuntimeError("runtime metadata unavailable")
@@ -448,6 +455,7 @@ class PublicCredentialSafety(unittest.TestCase):
                     "DAVID_DATABASE_URL",
                 ):
                     self.assertNotIn(sentinel_environment[name], output)
+                    self.assertNotIn(normalized_sentinels[name], output)
                 self.assertNotIn(combined_fingerprint, output)
                 receipt = json.loads(stdout.getvalue().strip().splitlines()[-1])
                 self.assertEqual(
@@ -459,6 +467,25 @@ class PublicCredentialSafety(unittest.TestCase):
                 self.assertFalse(receipt["credential_values_recorded"])
                 for key, expected in scenario["expected"].items():
                     self.assertEqual(receipt[key], expected)
+
+    def test_rotation_normalizes_only_accidental_secret_line_endings(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('os.environ[name].rstrip("\\r\\n")', workflow)
+        self.assertIn(
+            "protected environment secret is empty after line-ending normalization",
+            workflow,
+        )
+        for name in (
+            "HF_TOKEN",
+            "DAVID_USER",
+            "DAVID_PASS",
+            "DAVID_ACCESS_KEY",
+            "DAVID_DATABASE_URL",
+        ):
+            self.assertIn(f'normalized_secret("{name}")', workflow)
+        self.assertNotIn(".strip()", workflow)
 
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
