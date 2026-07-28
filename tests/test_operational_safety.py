@@ -1649,6 +1649,47 @@ class ApiSafety(unittest.TestCase):
     def tearDownClass(cls):
         cls.server._TOKENS.pop(cls.token, None)
 
+    def test_login_accepts_utf8_secret_factors_without_server_error(self):
+        with (
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "USERS", {"operador-ñ": "frase-🔒"}),
+            patch.object(self.server, "ACCESS_KEY", "llave-🗝️"),
+        ):
+            response = self.client.post(
+                "/api/login",
+                json={
+                    "username": "operador-ñ",
+                    "password": "frase-🔒",
+                    "access_key": "llave-🗝️",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            token = response.json()["token"]
+            logout = self.client.post(
+                "/api/logout",
+                headers={"Authorization": "Bearer " + token},
+            )
+            self.assertEqual(logout.status_code, 200)
+
+    def test_login_rejects_wrong_utf8_secret_with_401_not_500(self):
+        with (
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "USERS", {"operador-ñ": "frase-🔒"}),
+            patch.object(self.server, "ACCESS_KEY", "llave-🗝️"),
+        ):
+            response = self.client.post(
+                "/api/login",
+                json={
+                    "username": "operador-ñ",
+                    "password": "frase-incorrecta-🔒",
+                    "access_key": "llave-🗝️",
+                },
+            )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Invalid credentials or access key")
+
     def test_unknown_outcome_is_rejected(self):
         self.server._STATE["leads"] = []
         response = self.client.post(

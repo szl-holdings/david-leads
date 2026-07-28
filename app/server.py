@@ -138,6 +138,18 @@ def _credential_fingerprint(username: str | None, password: str | None, access_k
     return hashlib.sha256(material).hexdigest()
 
 
+def _constant_time_text_equal(supplied: str, expected: str | None) -> bool:
+    if expected is None:
+        return False
+    try:
+        return secrets.compare_digest(
+            supplied.encode("utf-8"),
+            expected.encode("utf-8"),
+        )
+    except UnicodeEncodeError:
+        return False
+
+
 _CREDS_PRESENT = bool(DAVID_USER and DAVID_PASS and ACCESS_KEY)
 _CREDS_ROTATION_REQUIRED = (
     _CREDS_PRESENT
@@ -192,18 +204,6 @@ class RunReq(BaseModel):
     live: bool = True
     state: str = "NY"
     age_min: float = 0.0  # V8: demonstrate Λ time-decay live (minutes since trigger observed)
-
-
-def _secret_equal(presented: str, configured: str | None) -> bool:
-    if configured is None:
-        return False
-    try:
-        return secrets.compare_digest(
-            presented.encode("utf-8"),
-            configured.encode("utf-8"),
-        )
-    except UnicodeEncodeError:
-        return False
 
 
 def _auth(authorization: str | None):
@@ -334,8 +334,8 @@ def login(req: LoginReq):
             "credentials not configured — set DAVID_USER / DAVID_PASS / DAVID_ACCESS_KEY in Space settings",
         )
     expected = USERS.get(req.username)
-    pass_ok = _secret_equal(req.password, expected)
-    key_ok = _secret_equal(req.access_key, ACCESS_KEY)
+    pass_ok = _constant_time_text_equal(req.password, expected)
+    key_ok = _constant_time_text_equal(req.access_key, ACCESS_KEY)
     if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
