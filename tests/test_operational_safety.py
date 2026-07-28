@@ -30,6 +30,28 @@ class PublicCredentialSafety(unittest.TestCase):
             self.assertNotIn(reference, job_configuration)
             self.assertEqual(workflow.count(reference), 2)
 
+    def test_rotation_preserves_an_unexposed_factor_during_partial_writes(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        order = workflow.split("          rotation_order = (", 1)[1].split(
+            "          )", 1
+        )[0]
+        self.assertLess(order.index('"DAVID_ACCESS_KEY"'), order.index('"DAVID_USER"'))
+        self.assertIn("          for key in rotation_order:", workflow)
+
+    def test_restart_poll_waits_for_replacement_login(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        poll = workflow.split(
+            "          while time.monotonic() < deadline:", 1
+        )[1].split("          if health is None:", 1)[0]
+        self.assertIn('requests.post(', poll)
+        self.assertIn('f"{base_url}/api/login"', poll)
+        self.assertIn("if login.status_code == 200:", poll)
+        self.assertIn("session_token = candidate_token", poll)
+
     def test_no_hardcoded_auth_defaults_in_current_tree(self):
         forbidden_patterns = [
             re.compile(r"""os\.environ\.get\(\s*["']DAVID_(?:USER|PASS|ACCESS_KEY)["']\s*,"""),
