@@ -38,4 +38,4 @@ jobs:
       include-readme: true
       source-revision-variable: SOURCE_GITHUB_SHA
       source-revision-probe-path: /api/build-info
-      smoke-paths: '["/", "/healthz", "/api/build-info"]'
+      smoke-paths: '["/", "/healthz", "/readyz", "/api/build-info"]'

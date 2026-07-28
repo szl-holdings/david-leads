@@ -61,12 +61,18 @@ def _witness(action_hash: str):
         return None
 
 
-def _normalize_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+_PERMITTED_SOURCE_CLASSES = {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
+
+
+def _normalize_signals(signals: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     normalized = []
-    for signal in signals:
-        public = bool(signal.get("public", True))
-        source_class = signal.get("source_class") or (
-            "PUBLIC" if public else "UNCLASSIFIED"
+    for signal in signals or []:
+        public = signal.get("public") is True
+        raw_source_class = signal.get("source_class")
+        source_class = (
+            str(raw_source_class).strip().upper()
+            if raw_source_class
+            else ("PUBLIC" if public else "UNCLASSIFIED")
         )
         normalized.append({
             "source": signal["source"],
@@ -78,6 +84,16 @@ def _normalize_signals(signals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return normalized
 
 
+def _source_classes(signals: list[dict[str, Any]]) -> list[str]:
+    return sorted({signal["source_class"] for signal in signals})
+
+
+def _sources_permitted(source_classes: list[str]) -> bool:
+    return bool(source_classes) and all(
+        source_class in _PERMITTED_SOURCE_CLASSES for source_class in source_classes
+    )
+
+
 def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: float,
                  witness: bool = True) -> dict[str, Any]:
     """Build a tamper-evident receipt for a single scored lead.
@@ -85,7 +101,7 @@ def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: flo
     When witness=True, attach a 3-of-4 khipu multi-party consensus block over the payload."""
     ts = datetime.now(timezone.utc).isoformat()
     normalized_signals = _normalize_signals(signals)
-    permitted_classes = {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
+    source_classes = _source_classes(normalized_signals)
     body = {
         "lead_id": lead["id"],
         "lead_name": lead["name"],
@@ -93,10 +109,8 @@ def make_receipt(lead: dict[str, Any], signals: list[dict[str, Any]], score: flo
         "bucket": lead["bucket"],
         "product": lead["product"],
         "signals_used": normalized_signals,
-        "source_classes": sorted({s["source_class"] for s in normalized_signals}),
-        "all_sources_permitted": all(
-            s["source_class"] in permitted_classes for s in normalized_signals
-        ),
+        "source_classes": source_classes,
+        "all_sources_permitted": _sources_permitted(source_classes),
         "all_signals_public": all(s["public"] for s in normalized_signals),
         "fabricated_signals": sum(1 for s in normalized_signals if s["fabricated"]),
         "timestamp": ts,
@@ -137,7 +151,7 @@ def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]],
             if c.get("label"):
                 cite_sources.append(c["label"])
     normalized_signals = _normalize_signals(signals or [])
-    permitted_classes = {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
+    source_classes = _source_classes(normalized_signals)
     body = {
         "kind": "signed-4-part-brief",
         "lead_id": brief["lead_id"],
@@ -148,13 +162,8 @@ def make_brief_receipt(brief: dict[str, Any], signals: list[dict[str, Any]],
         "parts": [{"key": pt["key"], "body": pt["body"]} for pt in brief.get("parts", [])],
         "citations": sorted(set(cite_sources)),
         "signals_used": normalized_signals,
-        "source_classes": sorted(
-            {signal["source_class"] for signal in normalized_signals}
-        ),
-        "all_sources_permitted": all(
-            signal["source_class"] in permitted_classes
-            for signal in normalized_signals
-        ),
+        "source_classes": source_classes,
+        "all_sources_permitted": _sources_permitted(source_classes),
         "all_signals_public": all(
             signal["public"] for signal in normalized_signals
         ),
@@ -195,15 +204,18 @@ def verify_receipt(
     recomputed = hashlib.sha256(body_bytes).hexdigest()
     hash_ok = recomputed == receipt["payload_sha256"]
     payload = receipt["payload"]
-    source_classes = payload.get("source_classes")
-    if source_classes is None:
-        source_classes = ["PUBLIC"] if payload.get("all_signals_public") else ["UNCLASSIFIED"]
-    sources_permitted = payload.get(
-        "all_sources_permitted",
-        all(
-            value in {"PUBLIC", "FIRST_PARTY_CONSENT", "INTERNAL_OPERATIONAL"}
-            for value in source_classes
-        ),
+    normalized_signals = _normalize_signals(payload.get("signals_used") or [])
+    source_classes = _source_classes(normalized_signals)
+    sources_permitted = _sources_permitted(source_classes)
+    declared_source_classes = payload.get("source_classes")
+    source_summary_consistent = (
+        declared_source_classes is None
+        or sorted({str(value).strip().upper() for value in declared_source_classes})
+        == source_classes
+    )
+    permission_summary_consistent = (
+        payload.get("all_sources_permitted") is None
+        or payload.get("all_sources_permitted") is sources_permitted
     )
     previous_hash = payload.get("prev_receipt_hash")
     pointer_valid = (
@@ -213,7 +225,9 @@ def verify_receipt(
     )
     checks = [
         {"check": "Payload hash re-derives (tamper-evident)", "pass": hash_ok},
-        {"check": "Evidence source classes are permitted", "pass": bool(sources_permitted)},
+        {"check": "Source-class summary matches bound signals", "pass": source_summary_consistent},
+        {"check": "Evidence source classes are permitted", "pass": sources_permitted},
+        {"check": "Permission summary matches source classes", "pass": permission_summary_consistent},
         {"check": "Zero fabricated signals declared", "pass": payload["fabricated_signals"] == 0},
         {"check": "Predecessor pointer is structurally valid", "pass": pointer_valid},
     ]
