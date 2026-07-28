@@ -10,82 +10,34 @@ name: Deploy to HuggingFace Space
 # resolves once that PR merges to .github main. TODO: nothing to flip; @main is
 # the steady state.
 #
-# Requires only the narrowly scoped org/repo publisher secret HF_TOKEN. This
-# workflow is protected-main push-only: it must not be branch-selectable while
-# that publisher secret is available.
+# Requires only the narrowly scoped org/repo publisher secret HF_TOKEN. A
+# protected-main push first runs the environment-gated Neon migration workflow.
+# This deployer accepts only that workflow's successful exact main SHA, so
+# environment secrets never have to cross a reusable-workflow boundary.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "app/**"
-      - "requirements.txt"
-      - "Dockerfile"
-      - "README.md"
-      - "PUBLICATION_READINESS.md"
-      - "PUBLIC_DATA_OPERATING_MODEL.md"
-      - "SPACE_PROVENANCE.json"
-      - ".github/scripts/migrate_neon_persistence.py"
-      - ".github/workflows/hf-deploy.yml"
-      - ".github/workflows/migrate-neon-persistence.yml"
+  workflow_run:
+    workflows: ["Migrate David Neon persistence"]
+    types: [completed]
 permissions:
   contents: read
 
 concurrency:
-  group: hf-deploy-${{ github.ref }}
+  group: hf-deploy-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
-  migrate:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    concurrency:
-      group: david-neon-persistence-migration
-      cancel-in-progress: false
-    environment:
-      name: david-space-credential-rotation
-    steps:
-      - name: Checkout protected main
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          persist-credentials: false
-
-      - name: Require protected migration credentials
-        env:
-          DAVID_DATABASE_ADMIN_URL: ${{ secrets.DAVID_DATABASE_ADMIN_URL }}
-          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -z "${DAVID_DATABASE_ADMIN_URL:-}" ]; then
-            echo "::error::Missing protected environment secret: DAVID_DATABASE_ADMIN_URL"
-            exit 1
-          fi
-          if [ -z "${DAVID_DATABASE_URL:-}" ]; then
-            echo "::error::Missing protected environment secret: DAVID_DATABASE_URL"
-            exit 1
-          fi
-          echo "::add-mask::$DAVID_DATABASE_ADMIN_URL"
-          echo "::add-mask::$DAVID_DATABASE_URL"
-
-      - name: Install exact database client
-        run: >-
-          python3 -m pip install --disable-pip-version-check
-          "psycopg[binary]==3.2.9"
-
-      - name: Apply and verify versioned schema in one transaction
-        env:
-          DAVID_DATABASE_ADMIN_URL: ${{ secrets.DAVID_DATABASE_ADMIN_URL }}
-          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
-        run: python3 .github/scripts/migrate_neon_persistence.py
-
   deploy:
-    needs: migrate
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_sha == github.sha
     uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
     secrets:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     with:
+      ref: ${{ github.event.workflow_run.head_sha }}
       include-readme: true
       source-revision-variable: SOURCE_GITHUB_SHA
       source-revision-probe-path: /api/build-info
