@@ -268,6 +268,62 @@ class OpportunityDeskSafety(unittest.TestCase):
             self.assertEqual(dealdesk.persistence_state(), "POSTGRES_UNAVAILABLE")
             self.assertFalse(dealdesk.persistence_ready())
 
+    def test_database_schema_bootstrap_is_fixed_and_idempotent(self):
+        connection = mock.MagicMock()
+        cursor = connection.cursor.return_value.__enter__.return_value
+
+        dealdesk._ensure_database_schema(connection)
+
+        statements = [
+            " ".join(call.args[0].split())
+            for call in cursor.execute.call_args_list
+        ]
+        self.assertEqual(len(statements), 3)
+        self.assertIn(
+            "CREATE TABLE IF NOT EXISTS david_dealdesk_state",
+            statements[0],
+        )
+        self.assertIn(
+            "CREATE TABLE IF NOT EXISTS david_dealdesk_events",
+            statements[1],
+        )
+        self.assertIn(
+            "CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx",
+            statements[2],
+        )
+        self.assertNotIn("DROP ", " ".join(statements).upper())
+        self.assertNotIn("ALTER ", " ".join(statements).upper())
+
+    def test_database_load_bootstraps_schema_before_reading_state(self):
+        connection = mock.MagicMock()
+        connection.__enter__.return_value = connection
+        cursor = connection.cursor.return_value.__enter__.return_value
+        cursor.fetchall.return_value = []
+        calls: list[str] = []
+
+        def record_schema(observed):
+            self.assertIs(observed, connection)
+            calls.append("schema")
+
+        def record_select(statement, *args):
+            if statement.strip().startswith("SELECT"):
+                calls.append("select")
+
+        cursor.execute.side_effect = record_select
+        with (
+            patch.object(dealdesk, "_DATABASE_URL", "postgresql://configured"),
+            patch.object(dealdesk, "_db_connect", return_value=connection),
+            patch.object(
+                dealdesk,
+                "_ensure_database_schema",
+                side_effect=record_schema,
+            ),
+        ):
+            dealdesk._load()
+
+        self.assertEqual(calls, ["schema", "select"])
+        self.assertEqual(dealdesk._PERSISTENCE_HEALTH, "POSTGRES_READY")
+
     def _research(self, oid):
         return dealdesk.record_research(
             oid,

@@ -188,11 +188,45 @@ def _db_connect():
     return psycopg.connect(_DATABASE_URL, connect_timeout=8)
 
 
+def _ensure_database_schema(connection: Any) -> None:
+    """Create only the fixed, idempotent tables this service owns."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS david_dealdesk_state (
+                opportunity_id text PRIMARY KEY,
+                payload jsonb NOT NULL,
+                version bigint NOT NULL DEFAULT 1,
+                updated_at timestamptz NOT NULL DEFAULT now()
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS david_dealdesk_events (
+                event_id text PRIMARY KEY,
+                opportunity_id text NOT NULL,
+                event_type text NOT NULL,
+                actor text NOT NULL,
+                payload jsonb NOT NULL,
+                created_at timestamptz NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS david_dealdesk_events_opportunity_created_idx
+            ON david_dealdesk_events (opportunity_id, created_at)
+            """
+        )
+
+
 def _load() -> None:
     global _PERSISTENCE_HEALTH
     if _DATABASE_URL:
         try:
             with _db_connect() as connection:
+                _ensure_database_schema(connection)
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state")
                     for oid, payload in cursor.fetchall():
@@ -228,6 +262,7 @@ def _persist(
     snapshot = _STATE if state is None else state
     if _DATABASE_URL:
         with _db_connect() as connection:
+            _ensure_database_schema(connection)
             with connection.cursor() as cursor:
                 for oid, payload in snapshot.items():
                     cursor.execute(
