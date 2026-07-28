@@ -680,6 +680,209 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
         self.assertFalse(observed["call_ready"])
 
+    def test_authoritative_and_scalar_ids_normalize_to_the_same_alias(self):
+        emitted = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        scalar = {
+            **self.record,
+            "name": "Different Legal Name LLC",
+            "usdot_number": "1234567",
+        }
+
+        self.assertTrue(
+            set(dealdesk.subject_ids(emitted)).intersection(
+                dealdesk.subject_ids(scalar)
+            )
+        )
+
+    def test_legacy_do_not_call_row_is_persistently_backfilled(self):
+        identified = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        oid = dealdesk.opportunity_id(identified)
+        dealdesk._STATE[oid] = {
+            "stage": "BLOCKED",
+            "last_disposition": "DO_NOT_CALL",
+            "updated_at": "2026-07-25T12:00:00+00:00",
+        }
+
+        direct = dealdesk._active_suppression(identified)
+        self.assertIsNotNone(direct)
+        self.assertTrue(direct["active"])
+
+        with patch.object(dealdesk, "_persist") as persist:
+            observed = dealdesk.enrich(identified)
+
+        persist.assert_called_once()
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "BLOCKED")
+        saved = dealdesk._STATE[oid]
+        self.assertTrue(saved["suppression"]["active"])
+        self.assertEqual(saved["suppression"]["type"], "DO_NOT_CALL")
+        self.assertEqual(
+            saved["subject_identity"]["authoritative_entity_ids"],
+            [{"system": "usdot", "value": "1234567"}],
+        )
+        self.assertEqual(
+            saved["history"][-1]["type"],
+            "LEGACY_DO_NOT_CALL_BACKFILLED",
+        )
+
+        renamed = {
+            **identified,
+            "name": "Renamed Carrier Holdings LLC",
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        self.assertEqual(
+            dealdesk.enrich(renamed)["contact_gate"],
+            "DO_NOT_CONTACT_SUPPRESSED",
+        )
+
+    def test_legacy_unnamed_suppression_survives_when_official_id_appears(self):
+        original = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/legacy-blank"},
+        }
+        original_id = dealdesk.opportunity_id(original)
+        legacy_identity = {"name": "", "state": original["state"]}
+        legacy_raw = json.dumps(
+            legacy_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        legacy_id = "subj_" + hashlib.sha256(legacy_raw).hexdigest()[:24]
+        dealdesk._STATE[original_id] = {
+            "stage": "BLOCKED",
+            "last_disposition": "DO_NOT_CALL",
+            "suppression": {
+                "subject_id": legacy_id,
+                "subject_ids": [legacy_id],
+                "type": "DO_NOT_CALL",
+                "active": True,
+                "recorded_at": "2026-07-25T12:00:00Z",
+                "actor": "David",
+            },
+        }
+        identified = {
+            **original,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+
+        observed = dealdesk.enrich(identified)
+
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertIn(
+            dealdesk.subject_id(identified),
+            dealdesk._STATE[original_id]["suppression"]["subject_ids"],
+        )
+
+    def test_unnamed_records_do_not_share_a_state_only_suppression_identity(self):
+        first = {
+            **self.record,
+            "name": "",
+            "opportunity_id": "opp_untrusted_shared_value",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/blank-1"},
+        }
+        second = {
+            **self.record,
+            "name": "",
+            "opportunity_id": "opp_untrusted_shared_value",
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/blank-2"},
+        }
+        opportunities = {
+            item["opportunity_id"]: item
+            for item in dealdesk.board([first, second])["opportunities"]
+        }
+        first_opportunity = opportunities[dealdesk.opportunity_id(first)]
+        second_opportunity = opportunities[dealdesk.opportunity_id(second)]
+        self.assertNotEqual(
+            first_opportunity["opportunity_id"],
+            second_opportunity["opportunity_id"],
+        )
+        self.assertNotEqual(
+            first_opportunity["subject_id"],
+            second_opportunity["subject_id"],
+        )
+
+        researched = self._research(first_opportunity["opportunity_id"])
+        self._clear(
+            first_opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            first_opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        observed_second = dealdesk.enrich(second)
+        self.assertEqual(observed_second["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_second["stage"], "REVIEW")
+
+    def test_legacy_unnamed_suppression_survives_only_for_the_same_opportunity(self):
+        original = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/legacy-blank"},
+        }
+        original_id = dealdesk.opportunity_id(original)
+        legacy_identity = {
+            "name": "",
+            "state": original["state"],
+        }
+        legacy_raw = json.dumps(
+            legacy_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        legacy_id = "subj_" + hashlib.sha256(legacy_raw).hexdigest()[:24]
+        dealdesk._STATE[original_id] = {
+            "stage": "BLOCKED",
+            "next_action": "Suppressed: do not contact",
+            "suppression": {
+                "subject_id": legacy_id,
+                "subject_ids": [legacy_id],
+                "type": "DO_NOT_CALL",
+                "active": True,
+                "recorded_at": "2026-07-25T12:00:00Z",
+                "actor": "David",
+            },
+        }
+
+        observed_original = dealdesk.enrich(original)
+        self.assertEqual(
+            observed_original["contact_gate"],
+            "DO_NOT_CONTACT_SUPPRESSED",
+        )
+        self.assertEqual(observed_original["stage"], "BLOCKED")
+        with self.assertRaisesRegex(ValueError, "cannot be reopened"):
+            dealdesk.update(original_id, stage="RESEARCH")
+
+        unrelated = {
+            **original,
+            "license_or_issue_date": "2026-07-26",
+            "citation": {"url": "https://example.gov/entity/other-blank"},
+        }
+        observed_unrelated = dealdesk.enrich(unrelated)
+        self.assertEqual(observed_unrelated["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(observed_unrelated["stage"], "REVIEW")
+
     def test_non_unique_credential_category_is_not_an_official_alias(self):
         first = {
             **self.record,
@@ -713,14 +916,15 @@ class OpportunityDeskSafety(unittest.TestCase):
         with patch.object(dealdesk, "_persist") as persist:
             current = dealdesk.enrich(self.record)
 
-        self.assertTrue(legacy["suppression"]["active"])
+        saved = dealdesk._STATE[legacy_oid]
+        self.assertTrue(saved["suppression"]["active"])
         self.assertEqual(
-            legacy["suppression"]["subject_ids"],
+            saved["suppression"]["subject_ids"],
             list(dealdesk.subject_ids(self.record)),
         )
-        self.assertEqual(legacy["subject_identity"]["name"], self.record["name"])
+        self.assertEqual(saved["subject_identity"]["name"], self.record["name"])
         self.assertEqual(current["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
-        persist.assert_called_once_with(dealdesk._STATE)
+        persist.assert_called_once()
 
         later = {
             **self.record,
@@ -889,6 +1093,10 @@ class PersistenceContractSafety(unittest.TestCase):
         cursor.fetchall.side_effect = self._compatible_schema_results()
 
         dealdesk._assert_schema_contract(cursor)
+        primary_key_query = cursor.execute.call_args_list[2].args[0]
+        self.assertIn("pg_catalog.pg_index", primary_key_query)
+        self.assertIn("index_meta.indisprimary", primary_key_query)
+        self.assertNotIn("information_schema.table_constraints", primary_key_query)
 
         incomplete = self._compatible_schema_results()
         incomplete[0] = [
