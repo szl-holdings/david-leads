@@ -884,6 +884,9 @@ async function openReceipt(rid, leadId) {
 function closeModal() { $("modalMount").innerHTML = ""; }
 
 /* ---------- Real Prospects — public B2B business & license records (separate panel) ---------- */
+const brokerDeskItems = {};
+const brokerDeskViews = {};
+
 function escHtml(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -902,6 +905,10 @@ async function loadRealLeads() {
   try {
     const d = await api("/api/deal-desk?states=" + encodeURIComponent(states));
     const leads = d.opportunities || [];
+    leads.forEach(l => {
+      brokerDeskItems[l.opportunity_id] = l;
+      brokerDeskViews[l.opportunity_id] = "real";
+    });
     const s = d.summary || {};
     if (!leads.length) {
       body.innerHTML = `<div style="padding:20px;color:var(--muted)">No public records returned for ${escHtml(states)}. Try DE,CT.</div>`;
@@ -927,6 +934,11 @@ async function loadRealLeads() {
       const gateClass = l.call_ready ? "ready" : l.truth_label === "EXAMPLE" ? "blocked" : "review";
       const options = stages.map(stage =>
         `<option value="${stage}"${stage===l.stage?" selected":""}>${stage.replace("_"," ")}</option>`).join("");
+      const workflowButtons = `
+        <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','real')">Research channel</button>
+        ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','real')">Clear 24h</button>` : ""}
+        ${l.call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>
+          <button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','real')">Outcome</button>` : ""}`;
       return `<article class="opp-card">
         <div class="opp-head">
           <div><div class="real-name">${escHtml(l.name)}</div>
@@ -943,6 +955,7 @@ async function loadRealLeads() {
             ${options}
           </select>
           ${verifyBtn}
+          ${workflowButtons}
         </div>
       </article>`;
     }).join("");
@@ -970,6 +983,10 @@ async function loadFrontiers() {
   try {
     const d = await api("/api/frontier-desk?states=" + encodeURIComponent(states));
     const leads = d.opportunities || [];
+    leads.forEach(l => {
+      brokerDeskItems[l.opportunity_id] = l;
+      brokerDeskViews[l.opportunity_id] = "frontier";
+    });
     const s = d.summary || {};
     const sources = d.sources || [];
     const liveSources = sources.filter(src => src.mode === "LIVE").length;
@@ -998,8 +1015,11 @@ async function loadFrontiers() {
       const sourceRecord = (l.source_record && l.source_record.url)
         ? `<a class="real-cite" href="${escHtml(l.source_record.url)}" target="_blank" rel="noopener">${escHtml(l.source_record.label || "dataset")} ↗</a>`
         : "";
-      const fleet = l.operational_snapshot
+      const fleet = l.operational_snapshot && ("power_units" in l.operational_snapshot || "drivers" in l.operational_snapshot)
         ? `${escHtml(l.operational_snapshot.power_units||0)} power units · ${escHtml(l.operational_snapshot.drivers||0)} drivers`
+        : "";
+      const facility = l.source_frontier === "EPA_ECHO" && l.operational_snapshot
+        ? `${escHtml(l.operational_snapshot.naics_codes||"NAICS unavailable")} NAICS · ${escHtml(l.operational_snapshot.days_since_activity||0)} days since activity`
         : "";
       const award = l.award
         ? `$${Number(l.award.amount||0).toLocaleString()} · ${escHtml(l.award.agency||"Federal agency")}`
@@ -1010,6 +1030,11 @@ async function loadFrontiers() {
       const verifyBtn = l.receipt_id
         ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">Proof</button>`
         : "";
+      const workflowButtons = `
+        <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','frontier')">Research channel</button>
+        ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','frontier')">Clear 24h</button>` : ""}
+        ${l.call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>
+          <button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','frontier')">Outcome</button>` : ""}`;
       return `<article class="opp-card">
         <span class="frontier-badge">${escHtml(l.source_frontier || "OFFICIAL FRONTIER")}</span>
         <div class="opp-head">
@@ -1018,7 +1043,7 @@ async function loadFrontiers() {
           <div class="opp-priority" title="Evidence-completeness priority">${escHtml(l.priority)}</div>
         </div>
         <div class="opp-source">${addr || escHtml(l.contact_quality || "No business address")}<br>${cite}${cite&&sourceRecord?" · ":""}${sourceRecord}</div>
-        <div class="frontier-signal"><strong>${escHtml(l.observed_trigger || "Official observation")}</strong><br>${escHtml(l.signal_summary || "")}${fleet?`<br>${fleet}`:""}${award?`<br>${award}`:""}</div>
+        <div class="frontier-signal"><strong>${escHtml(l.observed_trigger || "Official observation")}</strong><br>${escHtml(l.signal_summary || "")}${fleet?`<br>${fleet}`:""}${facility?`<br>${facility}`:""}${award?`<br>${award}`:""}</div>
         <div class="opp-angle"><strong>${escHtml(l.product_angle || "Licensed business review")}</strong><br>${escHtml(l.why || "")}</div>
         <div class="opp-next"><strong>Next action</strong><br>${escHtml(l.next_action || "")}</div>
         <div class="frontier-limit"><strong>Limit:</strong> ${escHtml((l.limitations||[]).join(" "))}</div>
@@ -1029,6 +1054,7 @@ async function loadFrontiers() {
             ${options}
           </select>
           ${verifyBtn}
+          ${workflowButtons}
         </div>
       </article>`;
     }).join("")}</div>`;
@@ -1040,13 +1066,10 @@ async function loadFrontiers() {
 async function updateOpportunity(opportunityId, select, view) {
   const stage = select.value;
   const prior = select.dataset.prior || "REVIEW";
-  const requiresClearance = ["READY","CONTACTED","MEETING","PROPOSAL","WON"].includes(stage);
-  let clearance = false;
-  if (requiresClearance) {
-    clearance = window.confirm(
-      "Confirm you verified the current official source, found a business-published contact channel, checked suppression lists, and reviewed applicable outreach rules."
-    );
-    if (!clearance) { select.value = prior; return; }
+  if (stage === "READY") {
+    select.value = prior;
+    openClearanceModal(opportunityId, view);
+    return;
   }
   select.disabled = true;
   try {
@@ -1054,11 +1077,9 @@ async function updateOpportunity(opportunityId, select, view) {
       method: "POST",
       body: JSON.stringify({
         stage,
-        clearance_confirmed: clearance,
+        actor: "David",
         next_action: stage === "RESEARCH"
           ? "Verify the source and find the official business contact channel"
-          : stage === "READY"
-          ? "Place one manual, truthful business call and record the outcome"
           : "",
       }),
     });
@@ -1070,6 +1091,189 @@ async function updateOpportunity(opportunityId, select, view) {
     window.alert(e.message);
   } finally {
     select.disabled = false;
+  }
+}
+
+function reloadBrokerDesk(view) {
+  closeModal();
+  return view === "frontier" ? loadFrontiers() : loadRealLeads();
+}
+
+function modalField(id, label, type="text", value="", hint="") {
+  return `<label class="workflow-field">${escHtml(label)}
+    <input id="${escHtml(id)}" type="${escHtml(type)}" value="${escHtml(value)}" autocomplete="off">
+    ${hint ? `<small>${escHtml(hint)}</small>` : ""}
+  </label>`;
+}
+
+function openResearchModal(opportunityId, view) {
+  const item = brokerDeskItems[opportunityId] || {};
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal workflow-modal">
+      <button class="mclose" onclick="closeModal()">Close</button>
+      <h3>Record business-published channel</h3>
+      <div class="mbody">
+        <div class="workflow-guard">This records evidence, not contact permission. Use only the business's own HTTPS website. Social profiles, personal mobile numbers, and free-mail addresses are rejected.</div>
+        <div class="workflow-form">
+          ${modalField("researchActor","Researcher","text","David")}
+          <label class="workflow-field">Channel type
+            <select id="researchType"><option>BUSINESS_PHONE</option><option>BUSINESS_EMAIL</option><option>WEBSITE_FORM</option><option>WEBSITE</option></select>
+          </label>
+          ${modalField("researchValue","Business channel","text","","Main business phone, role mailbox, or HTTPS contact URL")}
+          ${modalField("researchSource","First-party source URL","url","","Exact HTTPS company page where the channel appears")}
+          ${modalField("researchNote","Research note","text",`Verified for ${item.name||"business"}`)}
+        </div>
+        <div class="workflow-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" id="researchSave" onclick="saveResearch('${escHtml(opportunityId)}','${escHtml(view||"real")}')">Save evidence</button></div>
+        <div class="workflow-result" id="researchResult"></div>
+      </div>
+    </div></div>`;
+}
+
+async function saveResearch(opportunityId, view) {
+  const button = $("researchSave"); button.disabled = true;
+  try {
+    await api(`/api/deal-desk/${encodeURIComponent(opportunityId)}/research`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: $("researchActor").value,
+        channel_type: $("researchType").value,
+        channel_value: $("researchValue").value,
+        source_url: $("researchSource").value,
+        publisher_class: "FIRST_PARTY_BUSINESS_WEBSITE",
+        note: $("researchNote").value,
+      }),
+    });
+    await reloadBrokerDesk(view);
+  } catch (e) {
+    $("researchResult").textContent = e.message; button.disabled = false;
+  }
+}
+
+function openClearanceModal(opportunityId, view) {
+  const item = brokerDeskItems[opportunityId] || {};
+  const channels = item.channels || [];
+  if (!channels.length) {
+    openResearchModal(opportunityId, view);
+    return;
+  }
+  const options = channels.map(channel =>
+    `<option value="${escHtml(channel.channel_id)}">${escHtml(channel.type)} · ${escHtml(channel.value)} · ${escHtml(channel.source_host)}</option>`
+  ).join("");
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()">
+    <div class="modal workflow-modal">
+      <button class="mclose" onclick="closeModal()">Close</button>
+      <h3>Issue time-limited outreach clearance</h3>
+      <div class="mbody">
+        <div class="workflow-guard">Every box is an execution-time assertion by the operator. Clearance expires in 24 hours and is revoked by suppression, research, block, or loss transitions.</div>
+        <div class="workflow-form">
+          ${modalField("clearActor","Licensed operator","text","David")}
+          <label class="workflow-field wide">Verified channel<select id="clearChannel">${options}</select></label>
+          ${modalField("clearPurpose","Truthful business purpose","text","Licensed business coverage and continuity review")}
+          ${modalField("clearTalk","Talk-track version","text","DL-B2B-MANUAL-v1")}
+          ${modalField("clearState","Broker jurisdiction","text",item.state||"")}
+          ${modalField("clearScope","License / appointment scope","text","","Record the applicable line, state, and carrier/agency authority")}
+        </div>
+        <div class="workflow-checks">
+          <label><input type="checkbox" id="checkFederal"> Federal/company suppression checked</label>
+          <label><input type="checkbox" id="checkState"> Applicable state suppression checked</label>
+          <label><input type="checkbox" id="checkOptout"> No prior opt-out or do-not-contact request</label>
+          <label><input type="checkbox" id="checkRules"> Licensing and channel rules reviewed now</label>
+        </div>
+        <div class="workflow-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" id="clearSave" onclick="saveClearance('${escHtml(opportunityId)}','${escHtml(view||"real")}')">Issue 24-hour clearance</button></div>
+        <div class="workflow-result" id="clearResult"></div>
+      </div>
+    </div></div>`;
+}
+
+async function saveClearance(opportunityId, view) {
+  const button = $("clearSave"); button.disabled = true;
+  try {
+    await api(`/api/deal-desk/${encodeURIComponent(opportunityId)}/clearance`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: $("clearActor").value,
+        channel_id: $("clearChannel").value,
+        business_purpose: $("clearPurpose").value,
+        talk_track_version: $("clearTalk").value,
+        broker_jurisdiction: $("clearState").value,
+        license_scope: $("clearScope").value,
+        federal_dnc_checked: $("checkFederal").checked,
+        state_dnc_checked: $("checkState").checked,
+        opt_out_checked: $("checkOptout").checked,
+        rules_reviewed: $("checkRules").checked,
+        expires_hours: 24,
+      }),
+    });
+    await reloadBrokerDesk(view);
+  } catch (e) {
+    $("clearResult").textContent = e.message; button.disabled = false;
+  }
+}
+
+async function openCallSheet(opportunityId) {
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal workflow-modal">
+    <button class="mclose" onclick="closeModal()">Close</button><h3>Governed broker call sheet</h3>
+    <div class="mbody" id="callSheetBody"><div class="skeleton"></div></div></div></div>`;
+  try {
+    const sheet = await api(`/api/deal-desk/${encodeURIComponent(opportunityId)}/call-sheet`);
+    const b = sheet.business || {}, c = sheet.business_channel || {}, t = sheet.talk_track || {};
+    $("callSheetBody").innerHTML = `
+      <div class="call-sheet-head"><span>CALL READY</span><b>Expires ${escHtml(sheet.clearance_expires_at)}</b></div>
+      <h4>${escHtml(b.name)}</h4>
+      <div class="call-sheet-grid"><div><small>Verified channel</small><strong>${escHtml(c.type)} · ${escHtml(c.value)}</strong><a href="${escHtml(c.source_url)}" target="_blank" rel="noopener">First-party source ↗</a></div>
+      <div><small>Clearance receipt</small><strong>${escHtml(sheet.clearance_receipt)}</strong><span>${escHtml(sheet.jurisdiction)} · ${escHtml(sheet.license_scope)}</span></div></div>
+      <div class="workflow-guard">${escHtml(b.official_signal||"Official signal")}<br><strong>Limits:</strong> ${escHtml((b.limitations||[]).join(" "))}</div>
+      <h4>Manual opening</h4><div class="call-script">${escHtml(t.opening)}</div>
+      <h4>Discovery</h4><ol>${(t.discovery_questions||[]).map(q=>`<li>${escHtml(q)}</li>`).join("")}</ol>
+      <h4>Do not say or do</h4><ul>${(t.prohibited_claims||[]).map(q=>`<li>${escHtml(q)}</li>`).join("")}</ul>`;
+  } catch (e) {
+    $("callSheetBody").innerHTML = `<div class="workflow-result">${escHtml(e.message)}</div>`;
+  }
+}
+
+function openDispositionModal(opportunityId, view) {
+  const options = ["NO_ANSWER","LEFT_VOICEMAIL","CONNECTED","MEETING_BOOKED","NOT_INTERESTED","FOLLOW_UP","DO_NOT_CALL","WRONG_BUSINESS"];
+  $("modalMount").innerHTML = `<div class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal workflow-modal">
+    <button class="mclose" onclick="closeModal()">Close</button><h3>Record observed outcome</h3><div class="mbody">
+      <div class="workflow-form">${modalField("dispActor","Operator","text","David")}
+      <label class="workflow-field">Disposition<select id="dispValue">${options.map(v=>`<option>${v}</option>`).join("")}</select></label>
+      ${modalField("dispNote","Factual note","text","")}${modalField("dispFollow","Follow-up date/time","datetime-local","")}</div>
+      <div class="workflow-actions"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn primary" id="dispSave" onclick="saveDisposition('${escHtml(opportunityId)}','${escHtml(view||"real")}')">Record outcome</button></div>
+      <div class="workflow-result" id="dispResult"></div>
+    </div></div></div>`;
+}
+
+async function saveDisposition(opportunityId, view) {
+  const button = $("dispSave"); button.disabled = true;
+  try {
+    await api(`/api/deal-desk/${encodeURIComponent(opportunityId)}/disposition`, {
+      method: "POST",
+      body: JSON.stringify({
+        actor: $("dispActor").value,
+        disposition: $("dispValue").value,
+        note: $("dispNote").value,
+        follow_up_at: $("dispFollow").value || null,
+      }),
+    });
+    await reloadBrokerDesk(view);
+  } catch (e) {
+    $("dispResult").textContent = e.message; button.disabled = false;
+  }
+}
+
+async function exportBrokerDesk() {
+  try {
+    const response = await fetch("/api/deal-desk-export.csv", {headers:{Authorization:"Bearer "+token}});
+    if (!response.ok) throw new Error((await response.text()) || `HTTP ${response.status}`);
+    const blob = await response.blob(), link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "david-leads-opportunities.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  } catch (e) {
+    window.alert(e.message);
   }
 }
 
