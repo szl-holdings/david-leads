@@ -918,10 +918,15 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
     stage = saved.get("stage") or ("BLOCKED" if blocked else "REVIEW")
     if stage in CONTACT_STAGES and not call_ready:
         stage = "RESEARCH"
-    next_action = saved.get("next_action") or record.get("recommended_next_action") or (
-        "Use for demonstration only"
-        if gate.startswith("DO_NOT_CONTACT")
-        else "Verify the source and find the official business contact channel"
+    next_action = saved.get("next_action") or (
+        "Suppressed: do not contact"
+        if gate == "DO_NOT_CONTACT_SUPPRESSED"
+        else record.get("recommended_next_action")
+        or (
+            "Use for demonstration only"
+            if gate.startswith("DO_NOT_CONTACT")
+            else "Verify the source and find the official business contact channel"
+        )
     )
     return {
         **record,
