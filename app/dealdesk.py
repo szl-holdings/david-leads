@@ -264,6 +264,11 @@ def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]
     )
 
 
+def _subject_alias(identity: dict[str, str]) -> str:
+    raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
+
+
 def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     """Stable business aliases used for irreversible contact suppression."""
     identities = [
@@ -274,15 +279,11 @@ def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     state = _clean(record.get("state"), 16).upper()
     if name:
         identities.append({"name": name, "state": state})
-    aliases = []
-    scoped_opportunity = (
-        _clean(record.get("opportunity_id"), 160)
-        or opportunity_id(record)
-    )
-    for identity in identities or [{"opportunity": scoped_opportunity}]:
-        raw = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        aliases.append("subj_" + hashlib.sha256(raw).hexdigest()[:24])
-    return tuple(dict.fromkeys(aliases))
+    # Public source records must not be able to select another opportunity's
+    # suppression alias by supplying an `opportunity_id` field. Always derive
+    # the fallback scope from the governed opportunity contract.
+    identities = identities or [{"opportunity": opportunity_id(record)}]
+    return tuple(dict.fromkeys(_subject_alias(identity) for identity in identities))
 
 
 def subject_id(record: dict[str, Any]) -> str:
@@ -330,7 +331,14 @@ def _backfill_legacy_suppressions(
             # one empty alias shared by every legacy DNC row; backfill when the
             # exact source opportunity is observed again.
             continue
-        aliases = subject_ids(identity)
+        if identity.get("opportunity_id"):
+            aliases = (
+                _subject_alias(
+                    {"opportunity": _clean(identity["opportunity_id"], 160)}
+                ),
+            )
+        else:
+            aliases = subject_ids(identity)
         if isinstance(suppression, dict) and suppression.get("active") is True:
             normalized = {
                 **suppression,

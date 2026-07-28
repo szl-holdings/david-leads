@@ -775,12 +775,14 @@ class OpportunityDeskSafety(unittest.TestCase):
         first = {
             **self.record,
             "name": "",
+            "opportunity_id": "opp_untrusted_shared_value",
             "license_or_issue_date": "2026-07-25",
             "citation": {"url": "https://example.gov/entity/blank-1"},
         }
         second = {
             **self.record,
             "name": "",
+            "opportunity_id": "opp_untrusted_shared_value",
             "license_or_issue_date": "2026-07-26",
             "citation": {"url": "https://example.gov/entity/blank-2"},
         }
