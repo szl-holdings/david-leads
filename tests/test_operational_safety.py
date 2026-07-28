@@ -60,6 +60,14 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("if login.status_code == 200:", poll)
         self.assertIn("session_token = candidate_token", poll)
 
+    def test_rotation_uses_secret_triggered_restarts_with_bounded_convergence(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("api.restart_space(", workflow)
+        self.assertIn("deadline = time.monotonic() + 900", workflow)
+        self.assertIn("timeout-minutes: 25", workflow)
+
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
         "9c33ff3e69a11bed324b9aebd2b7d526293c55981f6eb5ae1e493422ef355820",
