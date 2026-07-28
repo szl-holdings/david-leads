@@ -1,0 +1,204 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Verify David Neon persistence
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: david-neon-persistence-preflight
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Require encrypted database URL
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${DAVID_DATABASE_URL:-}" ]; then
+            echo "::error::Missing encrypted repository secret: DAVID_DATABASE_URL"
+            exit 1
+          fi
+          echo "::add-mask::$DAVID_DATABASE_URL"
+
+      - name: Install exact database client
+        run: >-
+          python3 -m pip install --disable-pip-version-check
+          "psycopg[binary]==3.2.9"
+
+      - name: Verify connection and required schema
+        env:
+          DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import uuid
+
+          import psycopg
+          from psycopg.conninfo import conninfo_to_dict
+
+          dsn = os.environ["DAVID_DATABASE_URL"]
+          try:
+              fields = conninfo_to_dict(dsn)
+          except Exception as exc:
+              print(
+                  json.dumps(
+                      {
+                          "schema": "szl.david-neon-preflight/v1",
+                          "connection": "FAILED",
+                          "failure_class": type(exc).__name__,
+                          "credential_values_recorded": False,
+                      },
+                      sort_keys=True,
+                  )
+              )
+              raise SystemExit("DAVID_DATABASE_URL is not valid PostgreSQL connection information")
+
+          if fields.get("hostaddr"):
+              raise SystemExit("DAVID_DATABASE_URL must not select an address separately from its host")
+          hostnames = [
+              member.strip().lower().rstrip(".")
+              for member in str(fields.get("host") or "").split(",")
+          ]
+          database = str(fields.get("dbname") or "")
+          sslmode = str(fields.get("sslmode") or "")
+          if not hostnames or any(
+              not hostname or not hostname.endswith(".neon.tech")
+              for hostname in hostnames
+          ):
+              raise SystemExit("Every DAVID_DATABASE_URL host must be a Neon endpoint")
+          if database != "neondb":
+              raise SystemExit("DAVID_DATABASE_URL must select the neondb database")
+          if sslmode not in {"require", "verify-ca", "verify-full"}:
+              raise SystemExit("DAVID_DATABASE_URL must require TLS")
+
+          probe_id = "preflight_" + uuid.uuid4().hex
+          event_id = "preflight_event_" + uuid.uuid4().hex
+          connection = None
+          verification = None
+          try:
+              connection = psycopg.connect(dsn, connect_timeout=20)
+              with connection.cursor() as cursor:
+                  cursor.execute("SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1")
+                  cursor.fetchall()
+                  read_verified = True
+                  cursor.execute(
+                      """
+                      INSERT INTO david_dealdesk_state
+                          (opportunity_id, payload, version, updated_at)
+                      VALUES (%s, %s::jsonb, 1, now())
+                      ON CONFLICT (opportunity_id) DO UPDATE SET
+                          payload = EXCLUDED.payload,
+                          version = david_dealdesk_state.version + 1,
+                          updated_at = now()
+                      """,
+                      (probe_id, json.dumps({"preflight_probe": True})),
+                  )
+                  cursor.execute(
+                      """
+                      INSERT INTO david_dealdesk_events
+                          (event_id, opportunity_id, event_type, actor, payload, created_at)
+                      VALUES (%s, %s, %s, %s, %s::jsonb, now())
+                      ON CONFLICT (event_id) DO NOTHING
+                      """,
+                      (
+                          event_id,
+                          probe_id,
+                          "PERSISTENCE_PREFLIGHT",
+                          "github-actions",
+                          json.dumps({"preflight_probe": True}),
+                      ),
+                  )
+                  cursor.execute(
+                      """
+                      SELECT
+                          EXISTS (
+                              SELECT 1 FROM david_dealdesk_state
+                              WHERE opportunity_id = %s
+                          ),
+                          EXISTS (
+                              SELECT 1 FROM david_dealdesk_events
+                              WHERE event_id = %s AND opportunity_id = %s
+                          )
+                      """,
+                      (probe_id, event_id, probe_id),
+                  )
+                  state_written, event_written = cursor.fetchone()
+                  transactional_writes_verified = bool(state_written and event_written)
+                  if not transactional_writes_verified:
+                      raise RuntimeError("transactional persistence probe was not readable")
+              connection.rollback()
+              connection.close()
+              connection = None
+
+              verification = psycopg.connect(dsn, connect_timeout=20)
+              with verification.cursor() as cursor:
+                  cursor.execute(
+                      """
+                      SELECT
+                          NOT EXISTS (
+                              SELECT 1 FROM david_dealdesk_state
+                              WHERE opportunity_id = %s
+                          ),
+                          NOT EXISTS (
+                              SELECT 1 FROM david_dealdesk_events
+                              WHERE event_id = %s
+                          ),
+                          current_database()
+                      """,
+                      (probe_id, event_id),
+                  )
+                  state_absent, event_absent, current_database = cursor.fetchone()
+              rollback_verified = bool(state_absent and event_absent)
+              if not rollback_verified:
+                  raise RuntimeError("transactional persistence probe was not rolled back")
+          except Exception as exc:
+              if connection is not None:
+                  connection.rollback()
+              print(
+                  json.dumps(
+                      {
+                          "schema": "szl.david-neon-preflight/v1",
+                          "connection": "FAILED",
+                          "failure_class": type(exc).__name__,
+                          "sqlstate": getattr(exc, "sqlstate", None),
+                          "credential_values_recorded": False,
+                      },
+                      sort_keys=True,
+                  )
+              )
+              raise SystemExit("Neon connection, schema, or privilege verification failed")
+          finally:
+              if connection is not None:
+                  connection.close()
+              if verification is not None:
+                  verification.close()
+
+          if current_database != "neondb":
+              raise SystemExit("Neon connection selected an unexpected database")
+
+          print(
+              json.dumps(
+                  {
+                      "schema": "szl.david-neon-preflight/v1",
+                      "connection": "VERIFIED",
+                      "database": current_database,
+                      "read_verified": read_verified,
+                      "transactional_writes_verified": transactional_writes_verified,
+                      "rollback_verified": rollback_verified,
+                      "credential_values_recorded": False,
+                  },
+                  sort_keys=True,
+              )
+          )
+          PY
