@@ -187,6 +187,48 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("deadline = time.monotonic() + 900", workflow)
         self.assertIn("timeout-minutes: 25", workflow)
 
+    def test_rotation_normalizes_only_accidental_secret_line_endings(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('os.environ[name].rstrip("\\r\\n")', workflow)
+        self.assertIn(
+            "protected environment secret is empty after line-ending normalization",
+            workflow,
+        )
+        for name in (
+            "HF_TOKEN",
+            "DAVID_USER",
+            "DAVID_PASS",
+            "DAVID_ACCESS_KEY",
+            "DAVID_DATABASE_URL",
+        ):
+            self.assertIn(f'normalized_secret("{name}")', workflow)
+        self.assertNotIn(".strip()", workflow)
+
+    def test_rotation_timeout_diagnostics_never_include_response_or_secret_values(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        timeout = workflow.split("          if health is None:", 1)[1].split(
+            "          logout = requests.post(", 1
+        )[0]
+        for field in (
+            "health_http_status",
+            "authentication",
+            "deal_desk_persistence",
+            "login_http_status",
+            "error_class",
+            "credential_values_recorded",
+        ):
+            self.assertIn(f'"{field}"', timeout)
+        self.assertNotIn("response.text", workflow)
+        self.assertNotIn("response.content", workflow)
+        self.assertNotIn("login.text", workflow)
+        self.assertNotIn("login.content", workflow)
+        self.assertNotIn("credentials[", timeout)
+        self.assertNotIn("space_secrets[", timeout)
+
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
         "9c33ff3e69a11bed324b9aebd2b7d526293c55981f6eb5ae1e493422ef355820",
