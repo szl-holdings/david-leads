@@ -14,6 +14,7 @@ import pathlib
 import re
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
@@ -83,6 +84,13 @@ _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
 _PERSISTENCE_PROBE_LOCK = threading.Lock()
 _PERSISTENCE_READY_PATH: str | None = None
+_PERSISTENCE_RETRY_SECONDS = max(
+    5,
+    int(os.environ.get("DAVID_DATABASE_RETRY_SECONDS", "15")),
+)
+_PERSISTENCE_LOCK = threading.Lock()
+_LAST_PERSISTENCE_ATTEMPT = 0.0
+_PERSISTENCE_DIAGNOSTIC = "NOT_CONFIGURED"
 _PERSISTENCE_HEALTH = (
     "POSTGRES_CONFIGURED"
     if _DATABASE_URL
@@ -103,6 +111,7 @@ def persistence_configured() -> bool:
 def persistence_state() -> str:
     global _PERSISTENCE_HEALTH, _PERSISTENCE_READY_PATH
     if _DATABASE_URL:
+        _recover_postgres_if_due()
         return _PERSISTENCE_HEALTH
     if not _PATH or not os.path.isabs(_PATH):
         return "NOT_CONFIGURED"
@@ -155,6 +164,12 @@ def persistence_ready() -> bool:
     return persistence_state() in {"FILE_BACKED", "POSTGRES_READY"}
 
 
+def persistence_diagnostic() -> str:
+    """Return a non-secret operational diagnostic suitable for health probes."""
+    persistence_state()
+    return _PERSISTENCE_DIAGNOSTIC
+
+
 def _now() -> str:
     return _now_dt().isoformat()
 
@@ -188,9 +203,28 @@ def _db_connect():
     return psycopg.connect(_DATABASE_URL, connect_timeout=8)
 
 
+def _classify_database_error(exc: Exception) -> str:
+    name = type(exc).__name__.lower()
+    message = str(exc).lower()
+    if psycopg is None or "psycopg is required" in message:
+        return "DRIVER_UNAVAILABLE"
+    if "does not exist" in message or "undefinedtable" in name:
+        return "SCHEMA_UNAVAILABLE"
+    if "password authentication failed" in message or "invalidpassword" in name:
+        return "AUTHENTICATION_FAILED"
+    if "name or service not known" in message or "could not translate host" in message:
+        return "DNS_UNAVAILABLE"
+    if "timeout" in name or "timeout" in message:
+        return "CONNECTION_TIMEOUT"
+    return "CONNECTION_UNAVAILABLE"
+
+
 def _load() -> None:
+    global _LAST_PERSISTENCE_ATTEMPT
+    global _PERSISTENCE_DIAGNOSTIC
     global _PERSISTENCE_HEALTH
     if _DATABASE_URL:
+        _LAST_PERSISTENCE_ATTEMPT = time.monotonic()
         try:
             with _db_connect() as connection:
                 with connection.cursor() as cursor:
@@ -201,9 +235,11 @@ def _load() -> None:
                         if isinstance(payload, dict):
                             _STATE[str(oid)] = payload
             _PERSISTENCE_HEALTH = "POSTGRES_READY"
-        except Exception:
+            _PERSISTENCE_DIAGNOSTIC = "OK"
+        except Exception as exc:
             _STATE.clear()
             _PERSISTENCE_HEALTH = "POSTGRES_UNAVAILABLE"
+            _PERSISTENCE_DIAGNOSTIC = _classify_database_error(exc)
         return
     if not _PATH or not os.path.exists(_PATH):
         return
@@ -218,6 +254,24 @@ def _load() -> None:
     except Exception:
         _STATE.clear()
         _PERSISTENCE_HEALTH = "FILE_UNAVAILABLE"
+
+
+def _recover_postgres_if_due() -> None:
+    if not _DATABASE_URL or _PERSISTENCE_HEALTH == "POSTGRES_READY":
+        return
+    if time.monotonic() - _LAST_PERSISTENCE_ATTEMPT < _PERSISTENCE_RETRY_SECONDS:
+        return
+    if not _PERSISTENCE_LOCK.acquire(blocking=False):
+        return
+    try:
+        if (
+            _PERSISTENCE_HEALTH != "POSTGRES_READY"
+            and time.monotonic() - _LAST_PERSISTENCE_ATTEMPT
+            >= _PERSISTENCE_RETRY_SECONDS
+        ):
+            _load()
+    finally:
+        _PERSISTENCE_LOCK.release()
 
 
 def _persist(
