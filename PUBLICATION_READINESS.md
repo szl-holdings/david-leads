@@ -80,12 +80,15 @@ secret state.
 Historical Neon preflight run `30388377093` read `DAVID_DATABASE_URL` from a
 scoped GitHub Actions secret to verify schema reads, transactional writes, and
 rollback; the credential value was not included in its evidence.
-The current deployment workflow receives only the scoped Hugging Face token, and
-the former GitHub workflow that rotated application and database values has been
-removed. This record does not claim that every present or future Actions
-workflow can never read a separately scoped credential. The intended local,
-non-displaying administrator rotation policy is documented in
-`ops/credential-rotation.md`; current conformance remains `UNVERIFIED`.
+The current deployment caller passes only the repository-secret reference
+`secrets.HF_TOKEN` to the pinned reusable deployer, and the former GitHub
+workflow that rotated application and database values has been removed. This
+record did not inspect that token's value, permissions, or effective Hugging
+Face scope; those properties remain `UNVERIFIED`. This record also does not
+claim that every present or future Actions workflow can never read a separately
+scoped credential. The intended local, non-displaying administrator rotation
+policy is documented in `ops/credential-rotation.md`; current conformance
+remains `UNVERIFIED`.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,
@@ -110,9 +113,10 @@ administrator session used for rotation.
 Production remediation remains `UNVERIFIED` until a non-displaying
 administrator-vault flow has produced reviewable, secret-free evidence of
 replacement login/logout and current credential-policy conformance, including
-proof that no GitHub workflow can read or mutate the application or database
-credentials. Observed HTTP health, exact source alignment, and Neon
-read/write/rollback verification do not waive these credential gates.
+evidence at an observed protected revision that the current reviewed workflow
+set and configured secret inventory do not expose the application or database
+credentials to GitHub Actions. Observed HTTP health, exact source alignment,
+and Neon read/write/rollback verification do not waive these credential gates.
 
 `receipt_minted=false` remains the truthful release-receipt state. Exact GitHub
 revision, runtime byte manifest, protected deployment, live probes, and
