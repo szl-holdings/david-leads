@@ -58,6 +58,16 @@ amount, dates, and description. The interface explicitly warns that the search
 window may reflect a modification to an older award; award amount is never
 presented as revenue, cash flow, insurance need, or a newly signed contract.
 
+The third implemented lane uses the documented
+[EPA ECHO web service](https://echo.epa.gov/tools/web-services) for small, on-demand
+facility research. It selects only facility name/address, FRS identifier, NAICS,
+and the last compliance-monitoring date. It deliberately excludes compliance
+status, violations, penalties, demographics, and person fields. The interface
+describes the result as monitoring activity—not a violation, enforcement
+finding, unsafe condition, claim predictor, or underwriting fact. Production-
+scale collection must use EPA's weekly bulk exporter instead of robotic UI
+queries.
+
 Guardrails:
 
 - Hide full policy identifiers from the broker UI.
@@ -76,7 +86,8 @@ Guardrails:
 | 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | award activity and award periods | Activity may be a modification; not financial-health truth |
 | 1 | state Secretary of State open data | formations, status changes, mergers | Registered-agent/service address may not be an operating contact |
 | 1 | [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | 8-K events, financing, acquisitions, disclosed changes | Follow SEC fair-access guidance and declared User-Agent |
-| 2 | [OSHA data](https://www.osha.gov/foia/) and [EPA ECHO](https://echo.epa.gov/tools/web-services) | facility, inspection, permit, enforcement events | Reported event, not a conclusive risk judgment |
+| 1 | [EPA ECHO](https://echo.epa.gov/tools/web-services) | recent facility compliance-monitoring activity | Live, minimized facility fields; not a violation, risk judgment, or underwriting fact |
+| 2 | [OSHA data](https://www.osha.gov/foia/) | inspection and enforcement events | Reported event, not a conclusive risk judgment |
 | 2 | [OpenFEMA](https://www.fema.gov/about/reports-and-data/openfema), [NOAA Storm Events](https://www.ncei.noaa.gov/stormevents/ftp.jsp), [USGS](https://earthquake.usgs.gov/ws/) | facility/geographic hazard context | Aggregate/facility context; no household reconstruction |
 | 2 | [CMS provider enrollment](https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment) | facility openings, ownership and enrollment changes | Facility only; no PHI or beneficiary data |
 | 2 | [IRS tax-exempt bulk data](https://www.irs.gov/charities-non-profits/tax-exempt-organization-search-bulk-data-downloads) and [Form 990 XML](https://www.irs.gov/charities-non-profits/form-990-series-downloads) | nonprofit scale and organizational changes | Do not use home addresses or personal compensation as sales hooks |
@@ -88,7 +99,7 @@ Guardrails:
 | Frontier | Potential signal | Decision |
 |---|---|---|
 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active registration, NAICS/PSC scope, address/name changes | `KEY_AND_TERMS_REVIEW_REQUIRED`; public-sensitivity responses only, no FOUO/CUI fields |
-| [EPA ECHO web services](https://echo.epa.gov/tools/web-services) | facility openings, permits, program enrollment | `FACILITY_CONTEXT_ONLY`; no compliance-event sales claims or underwriting use |
+| [EPA ECHO weekly exporter](https://echo.epa.gov/tools/data-downloads) | restart-safe bulk facility refresh | On-demand adapter is live; bulk automation needs a durable incremental parser |
 | [FCC ULS public data](https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4/data) | new entity radio licenses and infrastructure operations | `SCHEMA_AND_REFRESH_REVIEW_REQUIRED`; entity licensees only |
 | [FAA releasable aircraft database](https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download) | corporate aircraft registration/transfer | `PRIVACY_REVIEW_REQUIRED`; the bulk file mixes company and individual owners and supports owner-information withholding |
 | Company RSS/newsroom/job feeds | expansion, executive, location and hiring events | `ALLOWLIST_REVIEW_REQUIRED`; terms/robots check, low-rate retrieval, normalized fact only |
@@ -123,7 +134,8 @@ Primary references:
 
 ## Outreach execution gate
 
-An opportunity becomes `READY` only after the broker records:
+An opportunity becomes `READY` only through the evidence-backed clearance endpoint
+after the broker records:
 
 1. current official entity verification,
 2. at least one timely, attributable trigger,
@@ -133,6 +145,13 @@ An opportunity becomes `READY` only after the broker records:
 6. applicable federal and state DNC/TCPA/email checks,
 7. internal and company-specific suppression checks,
 8. a truthful human-created call purpose.
+
+The clearance binds the chosen channel, operator, jurisdiction, license scope,
+talk-track version, four affirmative checks, issue time, expiry (maximum 24
+hours), and a deterministic receipt identifier. `RESEARCH`, `BLOCKED`, `LOST`,
+expiry, or a `DO_NOT_CALL` disposition revokes call readiness. The governed CSV
+export includes only entity research fields and exposes a business channel only
+while its clearance is current; spreadsheet-formula prefixes are escaped.
 
 Automated dialing, texting, prerecorded voice, and AI voice are disabled by
 default. First-party consent must retain the exact language, seller, channel,

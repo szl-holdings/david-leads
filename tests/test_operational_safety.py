@@ -27,7 +27,13 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
         ).read_text(encoding="utf-8")
         job_configuration = workflow.split("    steps:", 1)[0]
-        for name in ("HF_TOKEN", "DAVID_USER", "DAVID_PASS", "DAVID_ACCESS_KEY"):
+        for name in (
+            "HF_TOKEN",
+            "DAVID_USER",
+            "DAVID_PASS",
+            "DAVID_ACCESS_KEY",
+            "DAVID_DATABASE_URL",
+        ):
             reference = f"{name}: ${{{{ secrets.{name} }}}}"
             self.assertNotIn(reference, job_configuration)
             self.assertEqual(workflow.count(reference), 2)
@@ -186,30 +192,58 @@ class OpportunityDeskSafety(unittest.TestCase):
     def tearDown(self):
         dealdesk.reset_for_tests()
 
+    def _research(self, oid):
+        return dealdesk.record_research(
+            oid,
+            actor="David",
+            channel_type="BUSINESS_PHONE",
+            channel_value="212-555-0123",
+            source_url="https://examplelogistics.com/contact",
+            publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+            note="Main business line verified",
+        )
+
+    def _clear(self, oid, channel_id):
+        return dealdesk.record_clearance(
+            oid,
+            actor="David",
+            channel_id=channel_id,
+            business_purpose="Licensed business coverage review",
+            talk_track_version="DL-B2B-MANUAL-v1",
+            broker_jurisdiction="NY",
+            license_scope="NY commercial lines through appointed agency",
+            federal_dnc_checked=True,
+            state_dnc_checked=True,
+            opt_out_checked=True,
+            rules_reviewed=True,
+            expires_hours=24,
+        )
+
     def test_public_record_is_research_only_by_default(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
         self.assertEqual(opportunity["contact_gate"], "RESEARCH_REQUIRED")
         self.assertFalse(opportunity["call_ready"])
         self.assertEqual(opportunity["stage"], "REVIEW")
 
-    def test_ready_stage_requires_manual_clearance(self):
+    def test_ready_stage_requires_evidence_backed_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
         with self.assertRaises(ValueError):
             dealdesk.update(opportunity["opportunity_id"], stage="READY")
-        updated = dealdesk.update(
+        researched = self._research(opportunity["opportunity_id"])
+        updated = self._clear(
             opportunity["opportunity_id"],
-            stage="READY",
-            clearance_confirmed=True,
+            researched["channels"][0]["channel_id"],
         )
         self.assertTrue(updated["call_ready"])
-        self.assertEqual(updated["contact_gate"], "MANUAL_CLEARANCE_RECORDED")
+        self.assertEqual(updated["contact_gate"], "TIME_LIMITED_CLEARANCE")
+        self.assertRegex(updated["clearance"]["clearance_receipt"], r"^clr_[0-9a-f]{24}$")
 
     def test_return_to_research_revokes_prior_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
-        ready = dealdesk.update(
+        researched = self._research(opportunity["opportunity_id"])
+        ready = self._clear(
             opportunity["opportunity_id"],
-            stage="READY",
-            clearance_confirmed=True,
+            researched["channels"][0]["channel_id"],
         )
         self.assertTrue(ready["call_ready"])
 
@@ -218,31 +252,31 @@ class OpportunityDeskSafety(unittest.TestCase):
             stage="RESEARCH",
         )
         self.assertFalse(research["call_ready"])
-        self.assertEqual(research["contact_gate"], "RESEARCH_REQUIRED")
+        self.assertEqual(research["contact_gate"], "CLEARANCE_EXPIRED_OR_REVOKED")
         with self.assertRaises(ValueError):
             dealdesk.update(opportunity["opportunity_id"], stage="READY")
 
     def test_failed_persistence_does_not_change_in_memory_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
         with patch.object(dealdesk, "_persist", side_effect=OSError("disk unavailable")):
             with self.assertRaisesRegex(OSError, "disk unavailable"):
-                dealdesk.update(
+                self._clear(
                     opportunity["opportunity_id"],
-                    stage="READY",
-                    clearance_confirmed=True,
+                    researched["channels"][0]["channel_id"],
                 )
 
         observed = dealdesk.enrich(self.record)
-        self.assertEqual(observed["stage"], "REVIEW")
+        self.assertEqual(observed["stage"], "RESEARCH")
         self.assertFalse(observed["call_ready"])
         self.assertEqual(observed["contact_gate"], "RESEARCH_REQUIRED")
 
     def test_current_default_block_revokes_stale_prior_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
-        dealdesk.update(
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(
             opportunity["opportunity_id"],
-            stage="READY",
-            clearance_confirmed=True,
+            researched["channels"][0]["channel_id"],
         )
         currently_blocked = dict(self.record, contact_quality="[SAMPLE]")
 
@@ -257,11 +291,50 @@ class OpportunityDeskSafety(unittest.TestCase):
         sample = dict(self.record, name="[SAMPLE] Example", contact_quality="[SAMPLE]")
         opportunity = dealdesk.board([sample])["opportunities"][0]
         with self.assertRaises(ValueError):
-            dealdesk.update(
+            dealdesk.record_research(
                 opportunity["opportunity_id"],
-                stage="READY",
-                clearance_confirmed=True,
+                actor="David",
+                channel_type="BUSINESS_PHONE",
+                channel_value="2125550123",
+                source_url="https://example.com/contact",
+                publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
             )
+
+    def test_social_and_personal_channels_are_rejected(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        with self.assertRaisesRegex(ValueError, "social-profile"):
+            dealdesk.record_research(
+                opportunity["opportunity_id"],
+                actor="David",
+                channel_type="BUSINESS_EMAIL",
+                channel_value="sales@examplelogistics.com",
+                source_url="https://linkedin.com/company/example",
+                publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+            )
+        with self.assertRaisesRegex(ValueError, "personal/free-mail"):
+            dealdesk.record_research(
+                opportunity["opportunity_id"],
+                actor="David",
+                channel_type="BUSINESS_EMAIL",
+                channel_value="owner@gmail.com",
+                source_url="https://examplelogistics.com/contact",
+                publisher_class="FIRST_PARTY_BUSINESS_WEBSITE",
+            )
+
+    def test_do_not_call_disposition_revokes_and_blocks(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        blocked = dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+            note="Business requested no further contact",
+        )
+        self.assertEqual(blocked["stage"], "BLOCKED")
+        self.assertFalse(blocked["call_ready"])
+        with self.assertRaises(ValueError):
+            dealdesk.call_sheet(opportunity["opportunity_id"])
 
 
 class ReceiptTruthStates(unittest.TestCase):
@@ -331,6 +404,10 @@ class DataPolicySafety(unittest.TestCase):
         self.assertEqual(by_id["consumer-report"]["ingestion"], "PROHIBITED_BY_DEFAULT")
         live = {item["id"]: item for item in policy["implemented_frontiers"]}
         self.assertEqual(live["fmcsa-company-census"]["status"], "LIVE_ENTITY_FIELDS_ONLY")
+        self.assertEqual(
+            live["epa-echo-monitoring-activity"]["status"],
+            "LIVE_ENTITY_AND_FACILITY_FIELDS_ONLY",
+        )
         deferred = {item["id"]: item for item in policy["deferred_frontiers"]}
         self.assertEqual(deferred["faa-aircraft-registry"]["status"], "PRIVACY_REVIEW_REQUIRED")
         self.assertEqual(policy["legal_status"], "OPERATIONAL_GUARDRAIL_NOT_LEGAL_ADVICE")
@@ -420,11 +497,20 @@ class ApiSafety(unittest.TestCase):
         self.assertEqual(readiness.status_code, 503)
         self.assertEqual(readiness.json()["deal_desk_persistence"], "NOT_CONFIGURED")
 
+        with (
+            patch.object(self.server, "_CREDS_CONFIGURED", True),
+            patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(self.server.dd, "persistence_state", return_value="POSTGRES_READY"),
+        ):
+            readiness = self.client.get("/readyz")
+        self.assertEqual(readiness.status_code, 200)
+        self.assertEqual(readiness.json()["status"], "ready")
+
     def test_deal_desk_fails_closed_without_durable_persistence(self):
-        with patch.object(self.server.dd, "persistence_configured", return_value=False):
+        with patch.object(self.server.dd, "persistence_ready", return_value=False):
             response = self.client.get("/api/deal-desk", headers=self.headers)
         self.assertEqual(response.status_code, 503)
-        self.assertIn("DAVID_DEAL_DESK_PATH", response.json()["detail"])
+        self.assertIn("DAVID_DATABASE_URL", response.json()["detail"])
 
     def test_build_info_is_explicitly_unverified_until_external_compare(self):
         response = self.client.get("/api/build-info")
@@ -465,7 +551,7 @@ class ApiSafety(unittest.TestCase):
         self.server.dd.reset_for_tests()
         try:
             with (
-                mock.patch.object(self.server.dd, "persistence_configured", return_value=True),
+                mock.patch.object(self.server.dd, "persistence_ready", return_value=True),
                 mock.patch.object(
                     self.server.frontier_data,
                     "frontier_opportunities",

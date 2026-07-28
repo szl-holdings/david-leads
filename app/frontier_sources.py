@@ -22,6 +22,7 @@ from . import receipts as rc
 UA = {"User-Agent": "SZL-David-Leads/1.1 research@szlholdings.com"}
 TIMEOUT = 15
 DEFAULT_STATES = ("NY", "NJ", "PA", "MD", "DE", "CT")
+_ECHO_CACHE: dict[tuple[tuple[str, ...], int], tuple[datetime, dict[str, Any]]] = {}
 
 FMCSA = {
     "id": "fmcsa-company-census",
@@ -37,6 +38,12 @@ USASPENDING = {
     "label": "USAspending federal contract activity",
     "api": "https://api.usaspending.gov/api/v2/search/spending_by_award/",
     "portal": "https://api.usaspending.gov/docs/intro-tutorial",
+}
+ECHO = {
+    "id": "epa-echo-monitoring-activity",
+    "label": "EPA ECHO compliance-monitoring activity",
+    "api": "https://echodata.epa.gov/echo",
+    "portal": "https://echo.epa.gov/tools/web-services",
 }
 
 FMCSA_SELECT = (
@@ -71,6 +78,20 @@ _NON_COMMERCIAL_TERMS = (
     " HOUSING AUTHORITY",
     " TRANSIT AUTHORITY",
     " DEPARTMENT OF ",
+)
+_FEDERAL_FACILITY_PREFIXES = (
+    "US AIR FORCE",
+    "US ARMY",
+    "US COAST GUARD",
+    "US DEPARTMENT",
+    "US MARINE CORPS",
+    "US NAVY",
+    "U.S. AIR FORCE",
+    "U.S. ARMY",
+    "U.S. COAST GUARD",
+    "U.S. DEPARTMENT",
+    "U.S. MARINE CORPS",
+    "U.S. NAVY",
 )
 
 
@@ -109,6 +130,13 @@ def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:
 def _date8(value: Any) -> str:
     try:
         return datetime.strptime(str(value), "%Y%m%d").date().isoformat()
+    except (TypeError, ValueError):
+        return ""
+
+
+def _date_us(value: Any) -> str:
+    try:
+        return datetime.strptime(str(value), "%m/%d/%Y").date().isoformat()
     except (TypeError, ValueError):
         return ""
 
@@ -268,6 +296,129 @@ def _commercial_recipient(name: str) -> bool:
     return not any(term in upper for term in _NON_COMMERCIAL_TERMS)
 
 
+def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+    """Return recent facility monitoring activity with adverse/risk fields omitted.
+
+    This is a small, on-demand query against EPA's documented ECHO web service.
+    Production-scale collection belongs on EPA's weekly bulk exporter instead.
+    """
+    state_list = _states(states)
+    page_size = max(1, min(int(limit), 50))
+    cache_key = (tuple(state_list), page_size)
+    cached = _ECHO_CACHE.get(cache_key)
+    if cached and cached[0] > _now():
+        return json.loads(json.dumps(cached[1]))
+    search_query = urllib.parse.urlencode({
+        "output": "JSON",
+        "p_st": ",".join(state_list),
+        "p_act": "Y",
+        "p_ysl": "W",
+        "p_ysly": "1",
+        "responseset": str(page_size),
+    })
+    search = _request_json(
+        f"{ECHO['api']}/echo_rest_services.get_facilities?{search_query}"
+    )
+    search_result = search.get("Results") if isinstance(search, dict) else None
+    qid = search_result.get("QueryID") if isinstance(search_result, dict) else None
+    if not qid:
+        raise ValueError("EPA ECHO search did not return a query identifier")
+    result_query = urllib.parse.urlencode({
+        "output": "JSON",
+        "qid": str(qid),
+        "pageno": "1",
+        "newsort": "43",
+        "descending": "Y",
+        "qcolumns": "1,2,3,4,5,6,16,42,43",
+    })
+    response = _request_json(
+        f"{ECHO['api']}/echo_rest_services.get_qid?{result_query}"
+    )
+    result = response.get("Results") if isinstance(response, dict) else None
+    rows = result.get("Facilities", []) if isinstance(result, dict) else []
+    if not isinstance(rows, list):
+        raise ValueError("EPA ECHO facilities were not an array")
+
+    records: list[dict[str, Any]] = []
+    for row in rows[:page_size]:
+        name = _clean(row.get("FacName"), 140)
+        state = _clean(row.get("FacState"), 2).upper()
+        registry_id = _clean(row.get("RegistryID"), 24)
+        observed = _date_us(row.get("FacDateLastInspection"))
+        if (
+            not name
+            or not registry_id
+            or state not in state_list
+            or not _commercial_recipient(name)
+            or name.upper().startswith(_FEDERAL_FACILITY_PREFIXES)
+            or re.match(r"^\d+\s+[A-Z]", name.upper())
+        ):
+            continue
+        street = _clean(row.get("FacStreet"), 120)
+        naics = _clean(row.get("FacNAICSCodes"), 80)
+        days = _nonnegative_int(row.get("FacDaysLastInspection"))
+        signal = (
+            f"EPA ECHO reported compliance-monitoring activity for facility registry "
+            f"{registry_id} on {observed or 'date unavailable'} ({days} days before the "
+            "ECHO query)."
+        )
+        record = {
+            "name": name,
+            "type": "facility",
+            "category": "EPA-regulated facility monitoring activity",
+            "credential": f"FRS {registry_id}",
+            "status": "MONITORING_ACTIVITY_OBSERVED",
+            "address": street,
+            "city": _clean(row.get("FacCity"), 80),
+            "state": state,
+            "zip": _clean(row.get("FacZip"), 12)[:5],
+            "license_or_issue_date": observed,
+            "observed_trigger": "EPA compliance-monitoring activity",
+            "trigger_date": observed,
+            "signal_summary": signal,
+            "operational_snapshot": {"naics_codes": naics, "days_since_activity": days},
+            "authoritative_entity_ids": [{"system": "EPA FRS", "value": registry_id}],
+            "product_angle": "Licensed environmental, property, and operational-continuity review",
+            "product": "BIZ",
+            "why": (
+                "A recent public monitoring event can justify a factual business review of "
+                "operational change and coverage administration. It does not establish a "
+                "violation, unsafe condition, loss likelihood, or insurability."
+            ),
+            "recommended_next_action": (
+                "Open the current ECHO facility report, confirm the business identity, then "
+                "research only a channel published on the business's own website."
+            ),
+            "contact_quality": "business address (public)" if street else "entity id only",
+            "citation": {
+                "label": f"EPA ECHO facility · FRS {registry_id}",
+                "url": f"https://echo.epa.gov/detailed-facility-report?fid={registry_id}",
+            },
+            "source_record": {"label": ECHO["label"], "url": ECHO["portal"]},
+            "source_frontier": "EPA_ECHO",
+            "source_class": "OFFICIAL_OPEN_DATA",
+            "purpose": "PROSPECTING_ONLY",
+            "not_for_underwriting": True,
+            "limitations": [
+                "Monitoring activity is not a violation, enforcement finding, or risk score.",
+                "Compliance status, penalties, demographics, and personal contact fields are not requested or stored.",
+                "ECHO data can lag or be incomplete; re-open the current facility report before outreach.",
+            ],
+        }
+        records.append(_attach_receipt(record, signal))
+
+    output = {
+        "source": ECHO["label"],
+        "source_id": ECHO["id"],
+        "mode": "LIVE",
+        "count": len(records),
+        "records": records,
+        "query_window": {"lookback": "within one year, newest results first"},
+        "citation": {"label": ECHO["label"], "url": ECHO["portal"]},
+        "privacy": "ENTITY_AND_FACILITY_FIELDS_ONLY",
+    }
+    _ECHO_CACHE[cache_key] = (_now() + timedelta(minutes=15), output)
+    return json.loads(json.dumps(output))
 def fetch_usaspending(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return federal contract activity as a research signal, never as a new-award claim."""
     state_list = _states(states)
@@ -396,7 +547,11 @@ def frontier_opportunities(
     state_list = _states(states)
     records: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
-    for source, fetcher in ((FMCSA, fetch_fmcsa), (USASPENDING, fetch_usaspending)):
+    for source, fetcher in (
+        (FMCSA, fetch_fmcsa),
+        (USASPENDING, fetch_usaspending),
+        (ECHO, fetch_echo),
+    ):
         try:
             result = fetcher(state_list, limit_per_source)
             records.extend(result.pop("records", []))
@@ -418,7 +573,8 @@ def frontier_opportunities(
         "count": len(records),
         "states": state_list,
         "doctrine": (
-            "Official entity-level observations only. No social scraping, no person-level "
-            "contact enrichment, no underwriting use, and no contact permission inferred."
+            "Official entity/facility observations only. No social scraping, no person-level "
+            "contact enrichment, no demographics, no underwriting use, and no contact "
+            "permission inferred."
         ),
     }
