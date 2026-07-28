@@ -12,7 +12,8 @@ name: Deploy to HuggingFace Space
 #
 # Requires only the narrowly scoped org/repo publisher secret HF_TOKEN. This
 # workflow is protected-main push-only: it must not be branch-selectable while
-# that publisher secret is available.
+# that publisher secret is available. No application or database credential is
+# available to this workflow.
 
 on:
   push:

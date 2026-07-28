@@ -23,70 +23,33 @@ from app import data_policy, dealdesk, frontier, receipts, scoring  # noqa: E402
 
 
 class PublicCredentialSafety(unittest.TestCase):
-    def test_neon_preflight_scopes_the_database_secret(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
-        ).read_text(encoding="utf-8")
-        job_configuration = workflow.split("    steps:", 1)[0]
-        reference = "DAVID_DATABASE_URL: ${{ secrets.DAVID_DATABASE_URL }}"
-        self.assertNotIn(reference, job_configuration)
-        self.assertEqual(workflow.count(reference), 2)
+    def test_github_actions_cannot_rotate_application_credentials(self):
+        rotation = ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        self.assertFalse(rotation.exists())
+        preflight = ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
+        self.assertFalse(preflight.exists())
+        migration = ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+        self.assertFalse(migration.exists())
 
-    def test_neon_preflight_validates_every_effective_host(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
-        ).read_text(encoding="utf-8")
-        self.assertIn('fields.get("hostaddr")', workflow)
-        self.assertIn('str(fields.get("host") or "").split(",")', workflow)
-        self.assertIn('hostname.endswith(".neon.tech")', workflow)
-
-    def test_neon_preflight_proves_application_reads_writes_and_rollback(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
-        ).read_text(encoding="utf-8")
-        self.assertIn(
-            "SELECT opportunity_id, payload FROM david_dealdesk_state LIMIT 1",
-            workflow,
+        deploy = (ROOT / ".github" / "workflows" / "hf-deploy.yml").read_text(
+            encoding="utf-8"
         )
-        self.assertIn("INSERT INTO david_dealdesk_state", workflow)
-        self.assertIn("INSERT INTO david_dealdesk_events", workflow)
-        self.assertIn("connection.rollback()", workflow)
-        self.assertIn("rollback_verified", workflow)
-        self.assertIn("NOT EXISTS", workflow)
-
-    def test_rotation_requires_the_named_protected_environment(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        job_configuration = workflow.split("    steps:", 1)[0]
-        guide = (ROOT / "ops" / "credential-rotation.md").read_text(encoding="utf-8")
-
-        self.assertIn(
-            "    environment:\n      name: david-space-credential-rotation",
-            job_configuration,
+        workflow_text = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((ROOT / ".github" / "workflows").glob("*.yml"))
         )
-        self.assertIn("deployment branches restricted to the protected `main` branch", guide)
-        self.assertIn("a required owner approval", guide)
-        self.assertIn("stored as\n  environment secrets", guide)
-        self.assertIn("Delete repository-scoped copies of the four `DAVID_*`", guide)
-        self.assertIn("Keep this pull request in draft", guide)
-
-    def test_secret_bearing_deploy_is_protected_main_push_only(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "hf-deploy.yml"
-        ).read_text(encoding="utf-8")
-        self.assertIn("branches: [main]", workflow)
-        self.assertNotIn("workflow_dispatch", workflow)
-        self.assertNotIn("rotate-app-secrets", workflow)
-        self.assertNotIn("secrets: inherit", workflow)
-        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", workflow)
         for name in (
             "DAVID_USER",
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
         ):
-            self.assertNotIn(f"secrets.{name}", workflow)
+            self.assertNotIn(name, deploy)
+            self.assertNotIn(name, workflow_text)
+        self.assertNotIn("workflow_dispatch", deploy)
+        self.assertNotIn("secrets: inherit", deploy)
+        self.assertNotIn("rotate-app-secrets", deploy)
+        self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy)
 
     def test_repository_has_no_credential_stdout_reader(self):
         self.assertFalse((ROOT / "ops" / "get_david_credentials.ps1").exists())
@@ -95,80 +58,6 @@ class PublicCredentialSafety(unittest.TestCase):
             "repository script reads credentials into terminal output",
             readme,
         )
-
-    def test_neon_preflight_is_main_only_and_environment_bound(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "verify-neon-persistence.yml"
-        ).read_text(encoding="utf-8")
-        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
-        self.assertIn("name: david-space-credential-rotation", workflow)
-        self.assertIn("SET TRANSACTION READ ONLY", workflow)
-        self.assertIn("david_dealdesk_schema", workflow)
-        self.assertIn("cursor.fetchone() != (1,)", workflow)
-        self.assertIn("credential_values_recorded", workflow)
-        self.assertNotIn("type(exc).__name__", workflow)
-
-    def test_neon_migration_uses_a_separate_protected_admin_credential(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
-        ).read_text(encoding="utf-8")
-        guide = (ROOT / "ops" / "neon-persistence.md").read_text(encoding="utf-8")
-        self.assertIn("if: github.ref == 'refs/heads/main'", workflow)
-        self.assertIn("name: david-space-credential-rotation", workflow)
-        self.assertIn("secrets.DAVID_DATABASE_ADMIN_URL", workflow)
-        self.assertNotIn("secrets.DAVID_DATABASE_URL", workflow)
-        self.assertIn("schema_sha256", workflow)
-        self.assertIn("least-privilege runtime secret", guide)
-        self.assertIn("never attempts `CREATE TABLE`", guide)
-
-    def test_rotation_secrets_are_scoped_to_the_steps_that_use_them(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        job_configuration = workflow.split("    steps:", 1)[0]
-        for name in (
-            "HF_TOKEN",
-            "DAVID_USER",
-            "DAVID_PASS",
-            "DAVID_ACCESS_KEY",
-            "DAVID_DATABASE_URL",
-        ):
-            reference = f"{name}: ${{{{ secrets.{name} }}}}"
-            self.assertNotIn(reference, job_configuration)
-            self.assertEqual(workflow.count(reference), 2)
-
-    def test_rotation_preserves_an_unexposed_factor_during_partial_writes(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        order = workflow.split("          rotation_order = (", 1)[1].split(
-            "          )", 1
-        )[0]
-        self.assertLess(order.index('"DAVID_ACCESS_KEY"'), order.index('"DAVID_USER"'))
-        self.assertIn("          for key in rotation_order:", workflow)
-
-    def test_restart_poll_waits_for_replacement_login(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        poll = workflow.split(
-            "          while time.monotonic() < deadline:", 1
-        )[1].split("          if health is None:", 1)[0]
-        self.assertIn('requests.post(', poll)
-        self.assertIn('f"{base_url}/api/login"', poll)
-        self.assertIn("if login.status_code == 200:", poll)
-        self.assertIn("session_token = candidate_token", poll)
-        self.assertIn("response.status_code in {200, 503}", poll)
-        login_prefix = poll.split("requests.post(", 1)[0]
-        self.assertNotIn("POSTGRES_READY", login_prefix)
-
-    def test_rotation_uses_secret_triggered_restarts_with_bounded_convergence(self):
-        workflow = (
-            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
-        ).read_text(encoding="utf-8")
-        self.assertNotIn("api.restart_space(", workflow)
-        self.assertIn("deadline = time.monotonic() + 900", workflow)
-        self.assertIn("timeout-minutes: 25", workflow)
 
     _REVOKED_VALUE_SHA256 = {
         "cbc2b2bf6496d7126045ae1948a1134f287623b8611ec3543e25ab6ce726ddf9",
