@@ -108,22 +108,26 @@ migration implementation into one checked-in script and removes the unused
 `workflow_call` entry point so the environment-only boundary cannot silently
 regress.
 
-The current Space is source-bound and reports healthy Postgres readiness, but
-that is not complete production proof. Protected rotation runs `30399789320`
-and `30402216427` submitted updates for the four named Space secrets without
-API error but timed out without a replacement login/logout receipt. The second
-run normalized only trailing CR/LF and observed a healthy configured runtime
-whose login endpoint returned HTTP 500. That status narrows the failure to the
-login path but does not prove a single cause. The live Space subsequently
-reported `RUNNING`, source
-`593a90b9b3621b6d31c4078d5e09dc566b21fc32`, authentication `CONFIGURED`,
-and `POSTGRES_READY`; those observations do not prove that the replacement
-triplet authenticates or that the runtime is bound to current protected main.
-This successor compares vault factors as UTF-8 bytes, adds a non-causal,
-secret-free failure receipt for the required rerun, and has not been merged or
-deployed.
-Application-credential replacement, effective Hugging Face token scope, and
-local administrator-vault custody remain `UNVERIFIED`.
+Protected rotation runs `30399789320` and `30402216427` submitted updates for
+the four named Space secrets without API error but timed out without a
+replacement login/logout receipt. The second run normalized only trailing CR/LF
+and observed a healthy configured runtime whose login endpoint returned HTTP
+500. That status narrowed the failure to the login path but did not prove a
+single cause.
+
+Protected main `41b322c9070886836e7dbdf0a1c371798851a641` subsequently deployed through
+successful migration run `30403410802` and immutable deployment run
+`30403452519`. Protected rotation run `30403607270` then emitted the secret-free
+v2 receipt with all four secret names, authentication `CONFIGURED`,
+`POSTGRES_READY`, replacement login and logout verified, and
+`credential_values_recorded=false`. Live public probes reported `RUNNING`,
+source `41b322c9070886836e7dbdf0a1c371798851a641`, healthy `/healthz` and
+`/readyz`, and `receipt_minted=false`. Application-credential replacement and
+the narrowly exercised publisher capability are `VERIFIED`; local
+administrator-vault custody remains `UNVERIFIED`.
+
+This successor preserves the UTF-8 fix, adds surrogate-safe rejection and a
+non-causal secret-free failure receipt, and has not been merged or deployed.
 
 If any current factor may have been disclosed, pause the Space, replace all
 application and database values from the approved vault, verify health,
