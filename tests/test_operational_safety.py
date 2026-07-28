@@ -625,6 +625,151 @@ class OpportunityDeskSafety(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot be reopened"):
             dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
 
+    def test_authoritative_id_suppression_survives_a_legal_name_change(self):
+        identified = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        opportunity = dealdesk.board([identified])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(
+            opportunity["opportunity_id"],
+            researched["channels"][0]["channel_id"],
+        )
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        renamed = {
+            **identified,
+            "name": "Renamed Carrier Holdings LLC",
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        observed = dealdesk.enrich(renamed)
+
+        self.assertTrue(
+            set(dealdesk.subject_ids(identified)).intersection(
+                dealdesk.subject_ids(renamed)
+            )
+        )
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertFalse(observed["call_ready"])
+
+    def test_authoritative_and_scalar_ids_normalize_to_the_same_alias(self):
+        emitted = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        scalar = {
+            **self.record,
+            "name": "Different Legal Name LLC",
+            "usdot_number": "1234567",
+        }
+
+        self.assertTrue(
+            set(dealdesk.subject_ids(emitted)).intersection(
+                dealdesk.subject_ids(scalar)
+            )
+        )
+
+    def test_legacy_do_not_call_row_is_persistently_backfilled(self):
+        identified = {
+            **self.record,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+        oid = dealdesk.opportunity_id(identified)
+        dealdesk._STATE[oid] = {
+            "stage": "BLOCKED",
+            "last_disposition": "DO_NOT_CALL",
+            "updated_at": "2026-07-25T12:00:00+00:00",
+        }
+
+        direct = dealdesk._active_suppression(identified)
+        self.assertIsNotNone(direct)
+        self.assertTrue(direct["active"])
+
+        with patch.object(dealdesk, "_persist") as persist:
+            observed = dealdesk.enrich(identified)
+
+        persist.assert_called_once()
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "BLOCKED")
+        saved = dealdesk._STATE[oid]
+        self.assertTrue(saved["suppression"]["active"])
+        self.assertEqual(saved["suppression"]["type"], "DO_NOT_CALL")
+        self.assertEqual(
+            saved["subject_identity"]["authoritative_entity_ids"],
+            [{"system": "usdot", "value": "1234567"}],
+        )
+        self.assertEqual(
+            saved["history"][-1]["type"],
+            "LEGACY_DO_NOT_CALL_BACKFILLED",
+        )
+
+        renamed = {
+            **identified,
+            "name": "Renamed Carrier Holdings LLC",
+            "license_or_issue_date": "2026-08-25",
+            "citation": {"url": "https://another.gov/new-signal/99"},
+        }
+        self.assertEqual(
+            dealdesk.enrich(renamed)["contact_gate"],
+            "DO_NOT_CONTACT_SUPPRESSED",
+        )
+
+    def test_legacy_unnamed_suppression_survives_when_official_id_appears(self):
+        original = {
+            **self.record,
+            "name": "",
+            "license_or_issue_date": "2026-07-25",
+            "citation": {"url": "https://example.gov/entity/legacy-blank"},
+        }
+        original_id = dealdesk.opportunity_id(original)
+        legacy_identity = {"name": "", "state": original["state"]}
+        legacy_raw = json.dumps(
+            legacy_identity,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        legacy_id = "subj_" + hashlib.sha256(legacy_raw).hexdigest()[:24]
+        dealdesk._STATE[original_id] = {
+            "stage": "BLOCKED",
+            "last_disposition": "DO_NOT_CALL",
+            "suppression": {
+                "subject_id": legacy_id,
+                "subject_ids": [legacy_id],
+                "type": "DO_NOT_CALL",
+                "active": True,
+                "recorded_at": "2026-07-25T12:00:00Z",
+                "actor": "David",
+            },
+        }
+        identified = {
+            **original,
+            "authoritative_entity_ids": [
+                {"system": "USDOT", "value": "1234567"},
+            ],
+        }
+
+        observed = dealdesk.enrich(identified)
+
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "BLOCKED")
+        self.assertIn(
+            dealdesk.subject_id(identified),
+            dealdesk._STATE[original_id]["suppression"]["subject_ids"],
+        )
+
     def test_unnamed_records_do_not_share_a_state_only_suppression_identity(self):
         first = {
             **self.record,

@@ -82,6 +82,24 @@ _PATH = os.environ.get("DAVID_DEAL_DESK_PATH")
 _DATABASE_URL = os.environ.get("DAVID_DATABASE_URL")
 _STATE: dict[str, dict[str, Any]] = {}
 _KNOWN: dict[str, dict[str, Any]] = {}
+_SUBJECT_IDENTIFIER_KEYS = {
+    "license_number": "license_number",
+    "usdot_number": "usdot",
+    "uei": "uei",
+    "cage_code": "cage",
+    "entity_number": "entity_number",
+}
+_AUTHORITATIVE_IDENTIFIER_SYSTEMS = {
+    "cage": "cage",
+    "cage code": "cage",
+    "epa frs": "epa_frs",
+    "epa_frs": "epa_frs",
+    "entity_number": "entity_number",
+    "frs": "epa_frs",
+    "license_number": "license_number",
+    "uei": "uei",
+    "usdot": "usdot",
+}
 _PERSISTENCE_PROBE_LOCK = threading.Lock()
 _PERSISTENCE_READY_PATH: str | None = None
 _PERSISTENCE_RETRY_SECONDS = max(
@@ -199,19 +217,43 @@ def opportunity_id(record: dict[str, Any]) -> str:
     return "opp_" + hashlib.sha256(raw).hexdigest()[:16]
 
 
+def _official_identifiers(record: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    """Normalize only identifier systems emitted by governed source producers."""
+    identifiers = [
+        (system, _clean(record.get(key), 160))
+        for key, system in _SUBJECT_IDENTIFIER_KEYS.items()
+        if _clean(record.get(key), 160)
+    ]
+    emitted = record.get("authoritative_entity_ids")
+    if isinstance(emitted, list):
+        for item in emitted:
+            if not isinstance(item, dict):
+                continue
+            system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS.get(
+                _clean(item.get("system"), 80).lower()
+            )
+            value = _clean(item.get("value"), 160)
+            if system and value:
+                identifiers.append((system, value))
+    credential = _clean(record.get("credential"), 200)
+    match = re.fullmatch(r"(USDOT|UEI|CAGE|FRS)\s+(.+)", credential, re.IGNORECASE)
+    if match:
+        system = _AUTHORITATIVE_IDENTIFIER_SYSTEMS[match.group(1).lower()]
+        identifiers.append((system, _clean(match.group(2), 160)))
+    return tuple(
+        dict.fromkeys(
+            (system, value.lower())
+            for system, value in identifiers
+            if value
+        )
+    )
+
+
 def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     """Stable business aliases used to carry suppression across new signals."""
-    official_keys = (
-        "license_number",
-        "usdot_number",
-        "uei",
-        "cage_code",
-        "entity_number",
-    )
     identities = [
-        {"official": f"{key}:{_clean(record.get(key), 160).lower()}"}
-        for key in official_keys
-        if _clean(record.get(key), 160)
+        {"official": f"{system}:{value}"}
+        for system, value in _official_identifiers(record)
     ]
     name = _clean(record.get("name"), 240).lower()
     state = _clean(record.get("state"), 16).upper()
@@ -229,18 +271,25 @@ def subject_id(record: dict[str, Any]) -> str:
     return subject_ids(record)[0]
 
 
+def _subject_identity(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Return the bounded identity fields required for durable suppression."""
+    identity: dict[str, Any] = {}
+    official = _official_identifiers(record)
+    if official:
+        identity["authoritative_entity_ids"] = [
+            {"system": system, "value": value}
+            for system, value in official
+        ]
+    name = _clean(record.get("name"), 240)
+    if name:
+        identity["name"] = name
+        identity["state"] = _clean(record.get("state"), 16).upper()
+    return identity or None
+
+
 def _legacy_unnamed_subject_id(record: dict[str, Any]) -> str | None:
     """Return the pre-scoping alias only for records that lacked an identity."""
-    official_keys = (
-        "license_number",
-        "usdot_number",
-        "uei",
-        "cage_code",
-        "entity_number",
-    )
-    if _clean(record.get("name"), 240) or any(
-        _clean(record.get(key), 160) for key in official_keys
-    ):
+    if _clean(record.get("name"), 240):
         return None
     identity = {
         "name": "",
@@ -250,6 +299,72 @@ def _legacy_unnamed_subject_id(record: dict[str, Any]) -> str | None:
     return "subj_" + hashlib.sha256(raw).hexdigest()[:24]
 
 
+def _backfill_legacy_suppression(record: dict[str, Any]) -> bool:
+    """Persist an idempotent suppression for an exact observed legacy DNC row."""
+    oid = opportunity_id(record)
+    saved = _STATE.get(oid)
+    if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
+        return False
+
+    suppression = saved.get("suppression")
+    existing_ids: list[str] = []
+    if isinstance(suppression, dict):
+        existing_ids.extend(
+            str(item)
+            for item in suppression.get("subject_ids") or ()
+            if item
+        )
+        if suppression.get("subject_id"):
+            existing_ids.append(str(suppression["subject_id"]))
+    aliases = tuple(dict.fromkeys((*existing_ids, *subject_ids(record))))
+    identity = _subject_identity(record)
+    clearance = saved.get("clearance")
+    if isinstance(clearance, dict) and not clearance.get("revoked_at"):
+        clearance = {**clearance, "revoked_at": _now()}
+
+    normalized_suppression = {
+        **(suppression if isinstance(suppression, dict) else {}),
+        "subject_id": aliases[0],
+        "subject_ids": list(aliases),
+        "type": "DO_NOT_CALL",
+        "active": True,
+        "recorded_at": (
+            suppression.get("recorded_at")
+            if isinstance(suppression, dict) and suppression.get("recorded_at")
+            else saved.get("updated_at") or "UNAVAILABLE"
+        ),
+        "actor": (
+            suppression.get("actor")
+            if isinstance(suppression, dict) and suppression.get("actor")
+            else "legacy-persistence-backfill"
+        ),
+    }
+    candidate = {
+        **saved,
+        "stage": "BLOCKED",
+        "next_action": "Suppressed: do not contact",
+        "suppression": normalized_suppression,
+    }
+    if identity:
+        candidate["subject_identity"] = identity
+    if isinstance(clearance, dict):
+        candidate["clearance"] = clearance
+    if candidate == saved:
+        return False
+
+    _commit(
+        oid,
+        candidate,
+        {
+            "at": _now(),
+            "opportunity_id": oid,
+            "type": "LEGACY_DO_NOT_CALL_BACKFILLED",
+            "actor": "system",
+        },
+    )
+    return True
+
+
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     stable_ids = set(subject_ids(record))
     current_opportunity_id = opportunity_id(record)
@@ -257,6 +372,19 @@ def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
     for saved_opportunity_id, saved in _STATE.items():
         suppression = saved.get("suppression")
         if not isinstance(suppression, dict) or suppression.get("active") is not True:
+            if (
+                saved_opportunity_id == current_opportunity_id
+                and saved.get("last_disposition") == "DO_NOT_CALL"
+            ):
+                aliases = subject_ids(record)
+                return {
+                    "subject_id": aliases[0],
+                    "subject_ids": list(aliases),
+                    "type": "DO_NOT_CALL",
+                    "active": True,
+                    "recorded_at": saved.get("updated_at") or "UNAVAILABLE",
+                    "actor": "legacy-persistence-backfill",
+                }
             continue
         suppressed_ids = set(suppression.get("subject_ids") or ())
         if suppression.get("subject_id"):
@@ -567,6 +695,7 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
     _KNOWN[oid] = dict(record)
+    _backfill_legacy_suppression(record)
     gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
     clearance = _current_clearance(saved)
@@ -683,6 +812,9 @@ def _saved(oid: str) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def _commit(oid: str, candidate: dict[str, Any], event: dict[str, Any]) -> None:
+    identity = _subject_identity(_KNOWN.get(oid) or {})
+    if identity:
+        candidate["subject_identity"] = identity
     event = {**event, "event_id": _event_id(event)}
     history = list(candidate.get("history") or [])
     history.append(event)
