@@ -253,7 +253,19 @@ class OpportunityDeskSafety(unittest.TestCase):
             replace.assert_called_once()
             self.assertEqual(Path(replace.call_args.args[1]), store)
             self.assertEqual(store.read_bytes(), original)
-            self.assertFalse(Path(str(store) + ".lock").exists())
+            self.assertTrue(Path(str(store) + ".lock").is_file())
+
+    def test_file_persistence_recovers_from_a_stale_lock_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Path(directory) / "dealdesk.json"
+            store.write_text("{}", encoding="utf-8")
+            Path(str(store) + ".lock").write_text("stale-owner", encoding="utf-8")
+            with (
+                patch.object(dealdesk, "_DATABASE_URL", None),
+                patch.object(dealdesk, "_PATH", str(store)),
+            ):
+                self.assertEqual(dealdesk.persistence_state(), "FILE_READY")
+                self.assertTrue(dealdesk.persistence_ready())
 
     def test_file_probe_never_replaces_malformed_store(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -467,7 +479,7 @@ class OpportunityDeskSafety(unittest.TestCase):
             dealdesk.update(observed["opportunity_id"], stage="RESEARCH")
 
     def test_do_not_call_alias_survives_when_later_source_omits_official_id(self):
-        identified = {**self.record, "credential": "USDOT 1234567"}
+        identified = {**self.record, "usdot_number": "1234567"}
         opportunity = dealdesk.board([identified])["opportunities"][0]
         researched = self._research(opportunity["opportunity_id"])
         self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
@@ -485,6 +497,47 @@ class OpportunityDeskSafety(unittest.TestCase):
         observed = dealdesk.board([later])["opportunities"][0]
         self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
         self.assertFalse(observed["call_ready"])
+
+    def test_non_unique_credential_category_does_not_suppress_another_business(self):
+        first = {
+            **self.record,
+            "name": "First Brokerage LLC",
+            "credential": "Real Estate Broker",
+        }
+        opportunity = dealdesk.board([first])["opportunities"][0]
+        researched = self._research(opportunity["opportunity_id"])
+        self._clear(opportunity["opportunity_id"], researched["channels"][0]["channel_id"])
+        dealdesk.record_disposition(
+            opportunity["opportunity_id"],
+            actor="David",
+            disposition="DO_NOT_CALL",
+        )
+
+        second = {
+            **self.record,
+            "name": "Second Brokerage LLC",
+            "credential": "Real Estate Broker",
+            "citation": {"url": "https://example.gov/entity/2"},
+        }
+        observed = dealdesk.board([second])["opportunities"][0]
+        self.assertNotEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        self.assertEqual(observed["stage"], "REVIEW")
+
+    def test_legacy_do_not_call_row_is_durably_backfilled_before_alias_match(self):
+        legacy_oid = dealdesk.opportunity_id(self.record)
+        dealdesk._STATE[legacy_oid] = {
+            "stage": "BLOCKED",
+            "last_disposition": "DO_NOT_CALL",
+            "updated_at": "2026-07-01T00:00:00+00:00",
+        }
+        with patch.object(dealdesk, "_persist", wraps=dealdesk._persist) as persist:
+            observed = dealdesk.board([self.record])["opportunities"][0]
+
+        suppression = dealdesk._STATE[legacy_oid]["suppression"]
+        self.assertTrue(suppression["active"])
+        self.assertEqual(suppression["type"], "DO_NOT_CALL")
+        self.assertEqual(observed["contact_gate"], "DO_NOT_CONTACT_SUPPRESSED")
+        persist.assert_called_once()
 
     def test_not_interested_revokes_clearance(self):
         opportunity = dealdesk.board([self.record])["opportunities"][0]
@@ -542,6 +595,17 @@ class PersistenceContractSafety(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_state", schema)
         self.assertIn("CREATE TABLE IF NOT EXISTS david_dealdesk_events", schema)
         self.assertIn("VALUES ('dealdesk', 1)", schema)
+        self.assertIn("CREATE ROLE david_dealdesk_runtime", schema)
+        self.assertIn(
+            "GRANT SELECT, INSERT, UPDATE ON david_dealdesk_state "
+            "TO david_dealdesk_runtime",
+            schema,
+        )
+        self.assertIn(
+            "GRANT SELECT, INSERT ON david_dealdesk_events TO david_dealdesk_runtime",
+            schema,
+        )
+        self.assertNotIn(" TO PUBLIC", schema)
         source = (ROOT / "app" / "dealdesk.py").read_text(encoding="utf-8")
         self.assertNotIn("CREATE TABLE", source)
         self.assertNotIn("CREATE INDEX", source)

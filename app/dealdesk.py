@@ -19,6 +19,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 
+try:  # POSIX advisory locks are released by the kernel when a process exits.
+    import fcntl
+except ImportError:  # pragma: no cover - Windows uses msvcrt below
+    fcntl = None
+
+try:  # Windows equivalent of an OS-released advisory byte-range lock.
+    import msvcrt
+except ImportError:  # pragma: no cover - production runs on POSIX
+    msvcrt = None
+
 try:  # Optional locally; required when DAVID_DATABASE_URL is configured.
     import psycopg
 except Exception:  # pragma: no cover - exercised in the production image
@@ -153,7 +163,6 @@ def opportunity_id(record: dict[str, Any]) -> str:
 def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
     """Stable business aliases used for irreversible contact suppression."""
     official_keys = (
-        "credential",
         "license_number",
         "usdot_number",
         "uei",
@@ -179,6 +188,58 @@ def subject_ids(record: dict[str, Any]) -> tuple[str, ...]:
 def subject_id(record: dict[str, Any]) -> str:
     """Primary stable identity; volatile trigger dates and URLs are excluded."""
     return subject_ids(record)[0]
+
+
+def _suppression_for(
+    record: dict[str, Any],
+    *,
+    actor: str,
+    recorded_at: str,
+) -> dict[str, Any]:
+    ids = list(subject_ids(record))
+    return {
+        "subject_id": ids[0],
+        "subject_ids": ids,
+        "type": "DO_NOT_CALL",
+        "active": True,
+        "recorded_at": recorded_at,
+        "actor": _clean(actor, 80) or "system",
+    }
+
+
+def _backfill_legacy_suppression(record: dict[str, Any]) -> None:
+    """Durably upgrade an exact legacy DO_NOT_CALL row before alias matching."""
+    oid = opportunity_id(record)
+    saved = _STATE.get(oid)
+    if not isinstance(saved, dict) or saved.get("last_disposition") != "DO_NOT_CALL":
+        return
+    suppression = saved.get("suppression")
+    if isinstance(suppression, dict) and suppression.get("active") is True:
+        return
+    event_at = _now()
+    candidate = {
+        **saved,
+        "stage": "BLOCKED",
+        "suppression": _suppression_for(
+            record,
+            actor="system",
+            recorded_at=str(saved.get("updated_at") or event_at),
+        ),
+        "next_action": "Suppressed: do not contact",
+    }
+    clearance = candidate.get("clearance")
+    if isinstance(clearance, dict) and not clearance.get("revoked_at"):
+        candidate["clearance"] = {**clearance, "revoked_at": event_at}
+    _commit(
+        oid,
+        candidate,
+        {
+            "at": event_at,
+            "opportunity_id": oid,
+            "type": "LEGACY_DO_NOT_CALL_SUPPRESSION_BACKFILLED",
+            "actor": "system",
+        },
+    )
 
 
 def _active_suppression(record: dict[str, Any]) -> dict[str, Any] | None:
@@ -331,26 +392,38 @@ def _file_store_lock():
         raise PersistenceUnavailable("file persistence is not configured")
     lock_path = _PATH + ".lock"
     deadline = time.monotonic() + 2.0
-    descriptor = None
-    while descriptor is None:
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    acquired = False
+    while not acquired:
         try:
-            descriptor = os.open(
-                lock_path,
-                os.O_CREAT | os.O_EXCL | os.O_WRONLY,
-                0o600,
-            )
-        except FileExistsError:
+            if fcntl is not None:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            elif msvcrt is not None:
+                if os.fstat(descriptor).st_size == 0:
+                    os.write(descriptor, b"\0")
+                    os.fsync(descriptor)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_NBLCK, 1)
+            else:  # pragma: no cover - supported runtimes provide one implementation
+                os.close(descriptor)
+                raise PersistenceUnavailable("file persistence locking is unsupported")
+            acquired = True
+        except (BlockingIOError, OSError):
             if time.monotonic() >= deadline:
+                os.close(descriptor)
                 raise PersistenceUnavailable("file persistence lock is unavailable") from None
             time.sleep(0.05)
     try:
         yield
     finally:
-        os.close(descriptor)
         try:
-            os.unlink(lock_path)
-        except FileNotFoundError:
-            pass
+            if fcntl is not None:
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+            elif msvcrt is not None:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+        finally:
+            os.close(descriptor)
 
 
 def _refresh_file_health() -> None:
@@ -578,6 +651,7 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
 def enrich(record: dict[str, Any]) -> dict[str, Any]:
     oid = opportunity_id(record)
     _KNOWN[oid] = dict(record)
+    _backfill_legacy_suppression(record)
     gate, checklist = _contact_gate(record)
     saved = _STATE.get(oid, {})
     clearance = _current_clearance(saved)
@@ -631,6 +705,10 @@ def enrich(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def board(records: list[dict[str, Any]]) -> dict[str, Any]:
+    for record in records:
+        oid = opportunity_id(record)
+        _KNOWN[oid] = dict(record)
+        _backfill_legacy_suppression(record)
     opportunities = [enrich(record) for record in records]
     opportunities.sort(
         key=lambda item: (
@@ -984,14 +1062,11 @@ def record_disposition(
     }
     if normalized == "DO_NOT_CALL":
         candidate["stage"] = "BLOCKED"
-        candidate["suppression"] = {
-            "subject_id": subject_id(record),
-            "subject_ids": list(subject_ids(record)),
-            "type": "DO_NOT_CALL",
-            "active": True,
-            "recorded_at": event_at,
-            "actor": _clean(actor, 80) or "David",
-        }
+        candidate["suppression"] = _suppression_for(
+            record,
+            actor=actor or "David",
+            recorded_at=event_at,
+        )
         candidate["next_action"] = "Suppressed: do not contact"
     elif normalized == "MEETING_BOOKED":
         candidate["stage"] = "MEETING"
