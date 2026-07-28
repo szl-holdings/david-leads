@@ -1,13 +1,14 @@
 # Public Revenue Frontier — Publication Readiness
 
-> Status: **PUBLIC · a177 SOURCE-BOUND · PRODUCTION READINESS WITHHELD**
+> Status: **PUBLIC · 593a SOURCE-BOUND · RUNTIME HEALTHY · PRODUCTION READINESS WITHHELD**
 >
 > Readiness gate: **WITHHELD**. Protected source
-> `a1774f38d61a255d9dd64ed4d8716d27b3d3aaf7` is source-bound to the live
-> Hugging Face Space, but `/healthz` and `/readyz` fail closed with
-> `SCHEMA_INCOMPATIBLE`. Replacement login/logout, credential custody, runtime
-> database convergence, and an exact-source successful deploy remain
-> `UNVERIFIED`. These are blocking evidence gaps, not operational exceptions.
+> `593a90b9b3621b6d31c4078d5e09dc566b21fc32` is source-bound to the live
+> Hugging Face Space. `/healthz` and `/readyz` now report `POSTGRES_READY` with
+> `persistence_diagnostic=OK`, and independent drift verification succeeded.
+> Replacement login/logout, administrator-vault custody, and an exact-source
+> deployment of this unmerged successor remain unproved. These are blocking
+> evidence gaps, not operational exceptions.
 >
 > Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
 > frontier in the nine-repository portfolio.
@@ -17,40 +18,44 @@
 The evidence below was observed on 2026-07-28. It is source-specific and is not
 an estate-wide claim.
 
-- Protected main `a1774f38d61a255d9dd64ed4d8716d27b3d3aaf7`
-  completed the operational-safety workflow in run `30399398550`.
-- Protected migration run `30399398519` completed successfully for that exact
+- Protected main `593a90b9b3621b6d31c4078d5e09dc566b21fc32`
+  completed the operational-safety workflow in run `30400860826`.
+- Protected migration run `30400860735` completed successfully for that exact
   source. It applied and verified schema version 2, the separate
   least-privilege runtime role, service-table ownership, schema/table
   privileges, and the governed legacy-suppression boundary without recording
-  credential values. Earlier direct migration run `30398626193` also succeeded
-  at source `c28fe240dba336eb4d0279a9d2d70f668472ac4a`.
+  credential values.
 - Push deployment run `30398321778` failed twice before deployment. Its
   reusable migration job did not receive the environment-scoped database
   secrets, even though the standalone protected-environment migration
   succeeded. Protected main `a177` replaced that broken transport with a
   migration-success `workflow_run` handoff that does not move database secrets
   into the deployer.
-- Exact-source deployment run `30399449769` published 53 verified files and
-  bound source `a1774f38d61a255d9dd64ed4d8716d27b3d3aaf7`, but its attestation
-  failed because `/healthz` and `/readyz` returned HTTP 503. The run is
-  `FAILURE`, not a successful production deployment.
+- Exact-source deployment run `30400902083` completed successfully. It
+  published and verified 53 files, resolved 51 Docker `COPY`-bound files,
+  observed Hugging Face commit
+  `3d4e61eda1e6df1877c7ac8c0d48e48cb6b1981e`, and matched the source-binding
+  variable and runtime probe to exact protected source
+  `593a90b9b3621b6d31c4078d5e09dc566b21fc32`.
 - Unauthenticated `/api/build-info` currently reports live revision
-  `a1774f38d61a255d9dd64ed4d8716d27b3d3aaf7`, bundle digest
-  `1d4ec5859e0ad9e2fe373ec49f04e6870aa597cc5c25f5a13dd3c8c274e22b6f`,
+  `593a90b9b3621b6d31c4078d5e09dc566b21fc32`, bundle digest
+  `732bf49c9c24e7fb65d2f42bb7c29bab99050910008ae4938878f0d8fc0fc4a5`,
   51 copied files, and `receipt_minted=false`.
-- The unauthenticated `/healthz` and `/readyz` probes return HTTP 503 with
-  `authentication=CONFIGURED`, `deal_desk_persistence=POSTGRES_UNAVAILABLE`,
-  and `persistence_diagnostic=SCHEMA_INCOMPATIBLE`. The surface is source-bound
-  but is not production-ready.
-- Earlier protected deployment run `30389823219` and drift-check run
-  `30389999202` succeeded for source
-  `cf59692307de7747cfa2c32401b5dda7ff21d0dd`. Those runs are historical
-  evidence, not proof for current main or the current live revision.
+- The unauthenticated `/healthz` and `/readyz` probes return HTTP 200 with
+  `status=ready`, `authentication=CONFIGURED`,
+  `deal_desk_persistence=POSTGRES_READY`, and
+  `persistence_diagnostic=OK`.
+- Independent manual HF Module Drift Check run `30401085226` completed
+  successfully for exact source
+  `593a90b9b3621b6d31c4078d5e09dc566b21fc32`.
 - Protected credential-rotation run `30399789320` was dispatched for exact
-  `a177` and remains pending the environment gate at this evidence snapshot.
+  `a177`, was externally approved, and remains in progress at this evidence
+  snapshot.
   Replacement production login, protected Frontier Radar access, logout, and
   administrator-vault custody therefore remain `UNVERIFIED`.
+- This successor's checked-in migration script and narrowed workflow are still
+  unmerged and have not been deployed. The successful `593a` runtime is
+  evidence for current protected main, not for this successor head.
 
 This readiness record is itself part of the Docker-copied governance bundle.
 A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
@@ -92,8 +97,8 @@ Environment-secret metadata for the protected
 `DAVID_PASS`, `DAVID_ACCESS_KEY`, `DAVID_DATABASE_URL`, and
 `DAVID_DATABASE_ADMIN_URL`. No value was read or recorded. The environment has
 an owner-review rule and a protected-main branch policy. Exact-source migration
-runs `30398626193` and `30399398519` proved that the two database credentials
-were available to directly dispatched protected-environment jobs.
+run `30400860735` proved that the two database credentials were available to
+the protected-environment job at source `593a`.
 
 The failed push deployment proves that the former reusable-workflow call did
 not receive those environment secrets. Protected main now runs migration
@@ -103,9 +108,10 @@ migration implementation into one checked-in script and removes the unused
 `workflow_call` entry point so the environment-only boundary cannot silently
 regress.
 
-That source correction is not production proof. The current Space reports
-`SCHEMA_INCOMPATIBLE`, and protected rotation run `30399789320` has not yet
-produced a secret-free login/logout receipt. Application-credential scope,
+The current Space is source-bound and reports healthy Postgres readiness, but
+that is not complete production proof. Protected rotation run `30399789320`
+has not yet produced a secret-free replacement login/logout receipt, and this
+successor has not been merged or deployed. Application-credential replacement,
 effective Hugging Face token scope, and local administrator-vault custody
 remain `UNVERIFIED`.
 
