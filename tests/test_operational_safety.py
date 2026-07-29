@@ -92,6 +92,18 @@ class PublicCredentialSafety(unittest.TestCase):
             'body.get("receipt_minted") is True',
             deploy_workflow,
         )
+        self.assertIn(
+            'body.get("build", {}).get("revision")',
+            deploy_workflow,
+        )
+        self.assertIn(
+            'body.get("source_revision")',
+            deploy_workflow,
+        )
+        self.assertNotIn(
+            'body.get("source_revision", {}).get("revision")',
+            deploy_workflow,
+        )
         for name in (
             "DAVID_USER",
             "DAVID_PASS",

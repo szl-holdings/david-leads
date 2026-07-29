@@ -166,7 +166,9 @@ jobs:
                       last_state = str(actual.get("state") or "UNAVAILABLE")
                       if (
                           body.get("receipt_minted") is True
-                          and body.get("source_revision", {}).get("revision")
+                          and body.get("build", {}).get("revision")
+                          == expected["source_revision"]
+                          and body.get("source_revision")
                           == expected["source_revision"]
                           and actual.get("source_revision")
                           == expected["source_revision"]
