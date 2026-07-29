@@ -98,11 +98,14 @@ _SUBJECT_IDENTIFIER_KEYS = {
 _AUTHORITATIVE_IDENTIFIER_SYSTEMS = {
     "cage": "cage",
     "cage code": "cage",
+    "chicago business license": "chicago_license",
+    "chicago license number": "chicago_license",
     "epa frs": "epa_frs",
     "epa_frs": "epa_frs",
     "entity_number": "entity_number",
     "frs": "epa_frs",
     "license_number": "license_number",
+    "sam uei": "uei",
     "uei": "uei",
     "usdot": "usdot",
 }

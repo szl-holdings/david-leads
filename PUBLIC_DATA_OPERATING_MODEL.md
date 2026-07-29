@@ -68,6 +68,24 @@ finding, unsafe condition, claim predictor, or underwriting fact. Production-
 scale collection must use EPA's weekly bulk exporter instead of robotic UI
 queries.
 
+Three additional frontiers now have fail-closed adapters:
+
+- [Chicago Business Licenses](https://data.cityofchicago.org/Community-Economic-Development/Business-Licenses/r5kz-chrr)
+  is queried only when Illinois is explicitly selected, data-reuse approval is
+  recorded, and a Socrata app token is configured. The adapter selects initial
+  active licenses and organization fields only. It never joins the Business
+  Owners dataset or emits exact street addresses, personal contacts, or
+  geolocation.
+- [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) is implemented with
+  the documented query-parameter API key, zero-based paging, public sensitivity,
+  and only `entityRegistration,coreData`. Missing credentials produce
+  `SAM_GOV_API_KEY_NOT_CONFIGURED`, not zero results. D&B-sourced, D&B-open,
+  non-public, person-like, and pre-2022 records fail closed.
+- [FCC ULS bulk data](https://data.fcc.gov/download/pub/uls/complete/) is
+  deliberately unavailable in the live request path. Its large mixed-person
+  archives require a durable baseline/delta parser, transactional watermarks,
+  checksums, and applicant-type filtering before the source can become live.
+
 Guardrails:
 
 - Hide full policy identifiers from the broker UI.
@@ -82,8 +100,9 @@ Guardrails:
 | Tier | Official source | Opportunity signal | Boundary |
 |---|---|---|---|
 | 1 | FMCSA | fleet growth, authority and filing events, operating status | Business entity only; suppress full policy numbers |
-| 1 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) and [Opportunities API](https://open.gsa.gov/api/get-opportunities-public-api/) | registrations, awards, solicitations, operating locations | Exclude restricted contacts and non-public records |
+| 1 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active public registration updates | Key-gated; public sensitivity and entity/core allowlist only; exclude POC, CUI, D&B and pre-2022 records |
 | 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | award activity and award periods | Activity may be a modification; not financial-health truth |
+| 1 | [Chicago Business Licenses](https://data.cityofchicago.org/Community-Economic-Development/Business-Licenses/r5kz-chrr) | newly issued active organization licenses | Illinois only; reuse-approval and app-token gated; never join Business Owners |
 | 1 | state Secretary of State open data | formations, status changes, mergers | Registered-agent/service address may not be an operating contact |
 | 1 | [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | 8-K events, financing, acquisitions, disclosed changes | Follow SEC fair-access guidance and declared User-Agent |
 | 1 | [EPA ECHO](https://echo.epa.gov/tools/web-services) | recent facility compliance-monitoring activity | Live, minimized facility fields; not a violation, risk judgment, or underwriting fact |
@@ -98,9 +117,10 @@ Guardrails:
 
 | Frontier | Potential signal | Decision |
 |---|---|---|
-| [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active registration, NAICS/PSC scope, address/name changes | `KEY_AND_TERMS_REVIEW_REQUIRED`; public-sensitivity responses only, no FOUO/CUI fields |
+| [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active registration and public entity updates | `ADAPTER_READY_KEY_REQUIRED`; approved key/system-account operations still required |
+| [Chicago Business Licenses](https://data.cityofchicago.org/Community-Economic-Development/Business-Licenses/r5kz-chrr) | initial active organization licenses | `ADAPTER_READY_REUSE_APPROVAL_AND_APP_TOKEN_REQUIRED`; Illinois must be explicitly selected |
 | [EPA ECHO weekly exporter](https://echo.epa.gov/tools/data-downloads) | restart-safe bulk facility refresh | On-demand adapter is live; bulk automation needs a durable incremental parser |
-| [FCC ULS public data](https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4/data) | new entity radio licenses and infrastructure operations | `SCHEMA_AND_REFRESH_REVIEW_REQUIRED`; entity licensees only |
+| [FCC ULS public data](https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4/data) | new entity radio licenses and infrastructure operations | `FCC_DURABLE_INGEST_NOT_CONFIGURED`; never download large mixed-person archives on the request path |
 | [FAA releasable aircraft database](https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download) | corporate aircraft registration/transfer | `PRIVACY_REVIEW_REQUIRED`; the bulk file mixes company and individual owners and supports owner-information withholding |
 | Company RSS/newsroom/job feeds | expansion, executive, location and hiring events | `ALLOWLIST_REVIEW_REQUIRED`; terms/robots check, low-rate retrieval, normalized fact only |
 
@@ -194,6 +214,10 @@ recommended_product_fit
 why_now_summary
 source_urls[]
 source_observed_at[]
+source_record_id
+normalized_record_sha256
+parser_version
+receipt_state = SIGNED | HASH_CHAINED_UNSIGNED | UNAVAILABLE
 evidence_freshness
 confidence_and_limitations
 broker_state_line_authority

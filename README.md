@@ -50,8 +50,11 @@ underwriting decision, consumer report, or permission to contact.
   explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
   is never treated as permission to contact.
 - **Frontier Radar** adds recent FMCSA carrier-entity additions, USAspending contract activity,
-  and EPA ECHO facility monitoring activity. It requests only minimized entity/facility fields,
-  never substitutes samples, and keeps every signal out of underwriting.
+  and EPA ECHO facility monitoring activity. A Chicago organization-license lane is implemented
+  but remains gated on documented reuse approval and a Socrata app token; SAM.gov remains
+  key-gated; FCC ULS remains unavailable until a durable bulk-ingestion lane exists. Every source
+  reports its true state, requests only minimized entity/facility fields, never substitutes
+  samples, and keeps every signal out of underwriting.
 - **Governed Broker Desk** records a business-published channel, issues a hashed 24-hour clearance
   receipt only after all licensing/suppression checks are affirmative, unlocks a manual call sheet,
   and captures factual outcomes including immediate do-not-call suppression.
@@ -114,6 +117,9 @@ finish successfully.
 
 The runtime exposes `/api/build-info` with an exact bundle digest and a source revision truth
 label. It intentionally reports parity as `UNVERIFIED` inside the process; the pinned deployment
-workflow performs the external GitHub-to-Hugging-Face attestation.
+workflow performs the external GitHub-to-Hugging-Face comparison. After a successful exact-source
+deployment, GitHub OIDC signs the deployment manifest and the workflow publishes only its
+non-secret attestation reference to the Space. `receipt_minted=true` is fail-closed and appears
+only when that reference matches the exact running source revision.
 
 © 2026 SZL Holdings · Apache-2.0

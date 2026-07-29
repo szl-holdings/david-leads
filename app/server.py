@@ -2,7 +2,7 @@
 # © 2026 SZL Holdings — David Leads Sovereign Insurance Intelligence
 """FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
 from __future__ import annotations
-import os, secrets, hashlib, io, csv, json, urllib.request, urllib.error, urllib.parse
+import os, secrets, hashlib, io, csv, json, re, urllib.request, urllib.error, urllib.parse
 import http.client, ipaddress, socket, ssl, time
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Header, Request
@@ -247,6 +247,53 @@ def readyz():
     return healthz()
 
 
+def _release_receipt(source_revision: str | None) -> dict:
+    """Validate the non-secret reference written only after GitHub OIDC attestation."""
+    unavailable = {
+        "state": "UNAVAILABLE",
+        "reason": "NO_MATCHED_GITHUB_OIDC_ATTESTATION",
+    }
+    raw = os.environ.get("RELEASE_ATTESTATION", "")
+    if not raw or len(raw) > 4096 or not source_revision:
+        return unavailable
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return unavailable
+    if not isinstance(value, dict):
+        return unavailable
+    revision = str(value.get("source_revision") or "")
+    digest = str(value.get("manifest_sha256") or "")
+    attestation_id = str(value.get("attestation_id") or "")
+    url = str(value.get("attestation_url") or "")
+    if (
+        value.get("schema") != "szl.github-oidc-release-attestation/v1"
+        or revision != source_revision
+        or not re.fullmatch(r"[0-9a-f]{40}", revision)
+        or not re.fullmatch(r"[0-9a-f]{64}", digest)
+        or not re.fullmatch(r"[0-9]+", attestation_id)
+        or url
+        != (
+            "https://github.com/szl-holdings/david-leads/attestations/"
+            + attestation_id
+        )
+    ):
+        return unavailable
+    return {
+        "state": "GITHUB_OIDC_ATTESTED",
+        "source_revision": revision,
+        "subject": "hf-deploy-manifest.json",
+        "subject_sha256": digest,
+        "attestation_id": attestation_id,
+        "attestation_url": url,
+        "verification": (
+            "Download hf-deploy-manifest.json from the matching deployment run and run "
+            "gh attestation verify hf-deploy-manifest.json "
+            "-R szl-holdings/david-leads"
+        ),
+    }
+
+
 def _runtime_bundle_manifest() -> dict:
     """Hash the exact runtime files Docker copies so live bytes can be compared to GitHub."""
     roots = [
@@ -290,6 +337,7 @@ def _runtime_bundle_manifest() -> dict:
         or os.environ.get("GITHUB_SHA")
         or os.environ.get("HF_SPACE_COMMIT_SHA")
     )
+    release_receipt = _release_receipt(revision)
     return {
         "service": "david-leads",
         "version": app.version,
@@ -297,7 +345,8 @@ def _runtime_bundle_manifest() -> dict:
             "state": "OBSERVED" if revision else "UNAVAILABLE",
             "revision": revision,
         },
-        "receipt_minted": False,
+        "receipt_minted": release_receipt["state"] == "GITHUB_OIDC_ATTESTED",
+        "release_receipt": release_receipt,
         "bundle_sha256": hashlib.sha256(canonical).hexdigest(),
         "file_count": len(files),
         "files": files,

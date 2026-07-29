@@ -64,6 +64,11 @@ without creating a self-referential deployment loop.
 - EPA ECHO data is limited to neutral facility identity and
   compliance-monitoring activity. No violation, penalty, demographic,
   individual, risk, or underwriting label is exposed.
+- Chicago business-license research is Illinois-only and remains unavailable
+  until both reuse approval and a Socrata app token are configured. SAM.gov
+  remains explicitly key-required. FCC ULS remains unavailable until a durable
+  baseline/delta ingestion lane exists; its large mixed-person archives are
+  never downloaded on the request path.
 - Social-profile scraping, personal/free-mail enrichment, purchased people
   data, automated voice, robotext, and autodialing are outside this release.
 
@@ -103,12 +108,20 @@ PostgreSQL-ready runtime above:
 - CRM webhooks require an explicit HTTPS hostname allowlist and pin connections
   to validated public addresses.
 
-## Explicit exception
+## Release receipt boundary
 
-`receipt_minted=false` remains the truthful release-receipt state. Exact GitHub
-revision, runtime byte manifest, protected deployment, live probes, and
-independent drift evidence prove source alignment; they are not a cryptographic
-release receipt.
+The last measured baseline above reported `receipt_minted=false`. Releases
+containing the current deployment workflow add a second, cryptographic step:
+after the reusable deployer verifies exact running bytes, GitHub OIDC signs the
+exact `hf-deploy-manifest.json` and stores the attestation in GitHub. The
+workflow then writes only the non-secret attestation reference to Hugging Face
+and waits for the restarted runtime to expose the matching source revision,
+manifest digest, attestation ID, and URL.
+
+The live `/api/build-info` result remains authoritative:
+`receipt_minted=true` means the reference matches the exact running revision;
+otherwise the receipt is `UNAVAILABLE`. A green deployment or HTTP 200 alone
+does not imply that a release receipt was minted.
 
 ## Operational caution
 
