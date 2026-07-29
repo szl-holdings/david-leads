@@ -1188,6 +1188,121 @@ def board(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Project public records without reading or mutating broker workflow state.
+
+    The public surface intentionally excludes saved notes, owners, business
+    channels, clearances, dispositions, suppression details, and event history.
+    It can create research tasks, but it can never make an opportunity call-ready.
+    """
+    opportunities: list[dict[str, Any]] = []
+    public_fields = {
+        "address",
+        "attribution",
+        "authoritative_entity_ids",
+        "award",
+        "category",
+        "citation",
+        "city",
+        "contact_quality",
+        "credential",
+        "dba",
+        "license_or_issue_date",
+        "limitations",
+        "name",
+        "normalized_record_sha256",
+        "observation_window",
+        "observed_at",
+        "observed_trigger",
+        "operational_snapshot",
+        "parser_version",
+        "product",
+        "product_angle",
+        "purpose",
+        "receipt_id",
+        "receipt_signed",
+        "receipt_state",
+        "receipt_witnessed",
+        "recommended_next_action",
+        "signal_summary",
+        "source_class",
+        "source_frontier",
+        "source_record",
+        "source_record_id",
+        "source_state",
+        "state",
+        "status",
+        "trigger_date",
+        "type",
+        "why",
+        "zip",
+    }
+    for source in records:
+        record = {
+            key: value
+            for key, value in dict(source).items()
+            if key in public_fields
+        }
+        oid = opportunity_id(record)
+        is_example = (
+            record.get("contact_quality") == "[SAMPLE]"
+            or str(record.get("name", "")).startswith("[SAMPLE]")
+        )
+        opportunities.append(
+            {
+                **record,
+                "opportunity_id": oid,
+                "subject_id": subject_id(record),
+                "priority": _priority(record),
+                "stage": "BLOCKED" if is_example else "REVIEW",
+                "next_action": (
+                    "Use for demonstration only"
+                    if is_example
+                    else "Open the official source and verify the organization. The public "
+                    "view does not store private research, clearance, or outreach work."
+                ),
+                "contact_gate": (
+                    "DO_NOT_CONTACT_SAMPLE" if is_example else "PUBLIC_RESEARCH_ONLY"
+                ),
+                "call_ready": False,
+                "phone_call_ready": False,
+                "clearance_checklist": [
+                    "Public view does not expose or grant outreach clearance.",
+                    "An authenticated operator must verify a first-party business channel.",
+                    "Suppression, licensing, and rules checks remain required before contact.",
+                ],
+                "truth_label": "EXAMPLE" if is_example else "LIVE",
+            }
+        )
+    opportunities.sort(
+        key=lambda item: (
+            item.get("priority", 0),
+            item.get("license_or_issue_date") or item.get("trigger_date") or "",
+        ),
+        reverse=True,
+    )
+    return {
+        "opportunities": opportunities,
+        "summary": {
+            "total": len(opportunities),
+            "live": sum(1 for item in opportunities if item["truth_label"] == "LIVE"),
+            "examples": sum(1 for item in opportunities if item["truth_label"] == "EXAMPLE"),
+            "call_ready": 0,
+            "needs_research": len(opportunities),
+            "stage_counts": {
+                "REVIEW": sum(1 for item in opportunities if item["stage"] == "REVIEW"),
+                "BLOCKED": sum(1 for item in opportunities if item["stage"] == "BLOCKED"),
+            },
+        },
+        "persistence": "PUBLIC_READONLY",
+        "access_mode": "PUBLIC_READONLY",
+        "doctrine": (
+            "Anonymous access is a sanitized public-record research view. "
+            "Broker workflow state and all outreach actions remain authenticated."
+        ),
+    }
+
+
 def _saved(oid: str) -> tuple[dict[str, Any], dict[str, Any]]:
     if oid not in _KNOWN:
         raise KeyError("unknown opportunity; refresh the opportunity desk first")
