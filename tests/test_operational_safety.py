@@ -1022,6 +1022,45 @@ class OpportunityDeskSafety(unittest.TestCase):
         self.assertFalse(observed["call_ready"])
         self.assertIsNone(observed["clearance"])
 
+    def test_persisted_non_phone_clearance_never_advertises_call_ready(self):
+        opportunity = dealdesk.board([self.record])["opportunities"][0]
+        oid = opportunity["opportunity_id"]
+        dealdesk._STATE[oid] = {
+            "stage": "READY",
+            "channels": [
+                {
+                    "channel_id": "chn_legacy_email",
+                    "type": "BUSINESS_EMAIL",
+                    "value": "sales@examplelogistics.com",
+                }
+            ],
+            "clearance": {
+                "channel_id": "chn_legacy_email",
+                "clearance_receipt": "clr_legacy_email",
+                "actor": "David",
+                "expires_at": "2099-01-01T00:00:00+00:00",
+                "federal_dnc_checked": True,
+                "state_dnc_checked": True,
+                "opt_out_checked": True,
+                "rules_reviewed": True,
+            },
+        }
+
+        observed = dealdesk.enrich(self.record)
+
+        self.assertFalse(observed["call_ready"])
+        self.assertEqual(observed["stage"], "RESEARCH")
+        self.assertEqual(
+            observed["contact_gate"],
+            "CLEARANCE_EXPIRED_OR_REVOKED",
+        )
+        self.assertIsNone(observed["clearance"])
+        with self.assertRaisesRegex(
+            ValueError,
+            "call sheet is locked",
+        ):
+            dealdesk.call_sheet(oid)
+
 
 class PersistenceContractSafety(unittest.TestCase):
     def setUp(self):

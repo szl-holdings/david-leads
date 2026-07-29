@@ -1064,10 +1064,19 @@ def _current_clearance(saved: dict[str, Any]) -> dict[str, Any] | None:
     expiry = _parse_time(clearance.get("expires_at"))
     channel_id = clearance.get("channel_id")
     channels = saved.get("channels") or []
+    channel = next(
+        (
+            item
+            for item in channels
+            if isinstance(item, dict) and item.get("channel_id") == channel_id
+        ),
+        None,
+    )
     if (
         expiry is None
         or expiry <= _now_dt()
-        or not any(item.get("channel_id") == channel_id for item in channels)
+        or not channel
+        or channel.get("type") != "BUSINESS_PHONE"
     ):
         return None
     required = (
