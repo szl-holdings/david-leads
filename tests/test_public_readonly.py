@@ -163,6 +163,17 @@ class PublicReadOnlyApiTests(unittest.TestCase):
             response = self.client.get("/api/frontier-desk?states=PA")
         self.assertEqual(response.status_code, 401)
 
+    def test_public_shell_and_live_routes_disable_stale_release_caching(self):
+        page = self.client.get("/")
+        script = self.client.get("/app.js")
+        with patch.object(server, "_PUBLIC_READONLY", True):
+            access = self.client.get("/api/access-mode")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("no-store", page.headers["cache-control"])
+        self.assertIn("no-cache", script.headers["cache-control"])
+        self.assertIn("no-store", access.headers["cache-control"])
+
     def test_frontend_bootstraps_directly_into_public_market_cockpit(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         script = (root / "app" / "static" / "app.js").read_text(encoding="utf-8")
@@ -173,7 +184,13 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertIn("EASTERN_REGIONS", script)
         self.assertIn("stateButtons", page)
         self.assertIn("stateAtlas", page)
+        self.assertIn("mobileStateSelect", page)
+        self.assertIn("broker-workflow", page)
+        self.assertIn("releaseBanner", page)
         self.assertIn("Investor view", page)
+        self.assertIn('selectOnlyState(button.dataset.state)', script)
+        self.assertIn('cache: "no-store"', script)
+        self.assertIn("checkForNewRelease", script)
         self.assertNotIn('id="login"', page)
         self.assertNotIn("Assigned username", page)
         self.assertNotIn("Password", page)
