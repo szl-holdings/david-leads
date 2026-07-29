@@ -13,7 +13,7 @@
     "process_health": "OBSERVED_BY_/healthz",
     "runtime_bytes": "OBSERVED_BY_/api/build-info",
     "github_huggingface_parity": "ATTESTED_EXTERNALLY_BY_DEPLOY_WORKFLOW",
-    "release_receipt": "UNAVAILABLE"
+    "release_receipt": "FAIL_CLOSED_RUNTIME_MATCH_OF_GITHUB_OIDC_ATTESTATION"
   },
-  "note": "HTTP 200 and a running Space are not source-parity proof. Use the pinned deploy attestation and exact runtime revision probe."
+  "note": "HTTP 200 and a running Space are not source-parity or release-receipt proof. Require the pinned deployment evidence and receipt_minted=true for the exact runtime revision."
 }

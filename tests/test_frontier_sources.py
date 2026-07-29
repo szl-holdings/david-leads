@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 import urllib.parse
@@ -13,7 +14,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from app import dealdesk, frontier_sources, receipts  # noqa: E402
-
 
 class FmcsaFrontierSafety(unittest.TestCase):
     def setUp(self):
@@ -188,6 +188,220 @@ class EchoFrontierSafety(unittest.TestCase):
         self.assertIn("not a violation", " ".join(record["limitations"]).lower())
 
 
+class FccFrontierSafety(unittest.TestCase):
+    def test_request_path_fails_closed_without_durable_ingestion(self):
+        with mock.patch.object(frontier_sources, "_request_json") as request:
+            with self.assertRaisesRegex(
+                frontier_sources.SourceConfigurationUnavailable,
+                "FCC_DURABLE_INGEST_NOT_CONFIGURED",
+            ):
+                frontier_sources.fetch_fcc_uls(["NY"], limit=4)
+        request.assert_not_called()
+
+
+class ChicagoLicenseSafety(unittest.TestCase):
+    def setUp(self):
+        receipts.reset_chain()
+        frontier_sources._CHICAGO_CACHE.clear()
+
+    def test_only_allowlisted_organization_license_fields_flow(self):
+        captured = {}
+
+        def fake_request(url, headers):
+            captured["url"] = url
+            captured["headers"] = headers
+            return [{
+                "id": "3095829-20260728",
+                "license_id": "3095829",
+                "license_number": "3095001",
+                "legal_name": "RISE ELECTRIC LLC",
+                "doing_business_as_name": "RISE ELECTRIC",
+                "address": "10 PRIVATE HOME ROAD",
+                "city": "CHICAGO",
+                "state": "IL",
+                "zip_code": "60601",
+                "license_description": "Limited Business License",
+                "application_type": "ISSUE",
+                "date_issued": "2026-07-28T00:00:00.000",
+                "license_status": "AAI",
+                "owner_name": "PRIVATE PERSON",
+            }]
+
+        with (
+            mock.patch.dict(
+                os.environ,
+                {
+                    "CHICAGO_PUBLIC_DATA_APPROVED": "1",
+                    "CHICAGO_SOCRATA_APP_TOKEN": "app-token",
+                },
+            ),
+            mock.patch.object(
+                frontier_sources,
+                "_request_json_headers",
+                side_effect=fake_request,
+            ),
+        ):
+            result = frontier_sources.fetch_chicago_licenses(["IL"], limit=4)
+
+        selected = urllib.parse.parse_qs(
+            urllib.parse.urlparse(captured["url"]).query
+        )["$select"][0].split(",")
+        self.assertNotIn("address", selected)
+        self.assertNotIn("owner_name", selected)
+        self.assertEqual(captured["headers"]["X-App-Token"], "app-token")
+        record = result["records"][0]
+        self.assertEqual(record["name"], "RISE ELECTRIC LLC")
+        self.assertEqual(record["address"], "")
+        self.assertRegex(record["normalized_record_sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(record["source_record_id"], "3095829")
+        self.assertIn(
+            ("chicago_license", "3095001"),
+            dealdesk._official_identifiers(record),
+        )
+        self.assertIn(record["receipt_state"], {"SIGNED", "HASH_CHAINED_UNSIGNED"})
+        serialized = str(record).lower()
+        self.assertNotIn("private person", serialized)
+        self.assertNotIn("10 private home road", serialized)
+        self.assertNotIn("60601", serialized)
+
+    def test_non_illinois_territory_does_not_query_chicago(self):
+        with mock.patch.object(frontier_sources, "_request_json_headers") as request:
+            result = frontier_sources.fetch_chicago_licenses(["NY"], limit=4)
+        request.assert_not_called()
+        self.assertEqual(result["mode"], "NOT_APPLICABLE")
+
+    def test_reuse_approval_and_app_token_are_both_required(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(
+                frontier_sources.SourceConfigurationUnavailable,
+                "CHICAGO_REUSE_APPROVAL_NOT_CONFIGURED",
+            ):
+                frontier_sources.fetch_chicago_licenses(["IL"], limit=4)
+        with mock.patch.dict(
+            os.environ,
+            {"CHICAGO_PUBLIC_DATA_APPROVED": "1"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(
+                frontier_sources.SourceConfigurationUnavailable,
+                "CHICAGO_SOCRATA_APP_TOKEN_NOT_CONFIGURED",
+            ):
+                frontier_sources.fetch_chicago_licenses(["IL"], limit=4)
+
+
+class SamEntitySafety(unittest.TestCase):
+    def setUp(self):
+        receipts.reset_chain()
+        frontier_sources._SAM_CACHE.clear()
+
+    def test_key_is_required_without_fabricating_records(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(
+                frontier_sources.SourceConfigurationUnavailable,
+                "SAM_GOV_API_KEY_NOT_CONFIGURED",
+            ):
+                frontier_sources.fetch_sam_entities(["NY"], limit=4)
+
+    def test_request_failure_redacts_query_parameter_key(self):
+        with (
+            mock.patch.dict(
+                os.environ,
+                {"SAM_GOV_API_KEY": "never-emit-this-key"},
+            ),
+            mock.patch.object(
+                frontier_sources,
+                "_request_json",
+                side_effect=RuntimeError("transport failed"),
+            ),
+        ):
+            with self.assertRaises(
+                frontier_sources.SourceConfigurationUnavailable
+            ) as raised:
+                frontier_sources.fetch_sam_entities(["NY"], limit=4)
+        self.assertEqual(str(raised.exception), "SAM_API_REQUEST_FAILED")
+        self.assertNotIn("never-emit-this-key", str(raised.exception))
+
+    def test_only_public_post_dnb_entity_fields_are_returned(self):
+        captured = {}
+
+        def fake_request(url, payload=None):
+            captured["url"] = url
+            self.assertIsNone(payload)
+            return {
+                "entityData": [
+                    {
+                        "entityRegistration": {
+                            "samRegistered": "Yes",
+                            "ueiSAM": "EXAMPLEUEI12",
+                            "legalBusinessName": "EXAMPLE FEDERAL SERVICES LLC",
+                            "registrationStatus": "Active",
+                            "lastUpdateDate": "2026-07-28",
+                            "publicDisplayFlag": "Y",
+                            "evsSource": "E&Y",
+                            "dnbOpenData": None,
+                            "entityTypeCode": "F",
+                            "registrationExpirationDate": "2027-07-28",
+                            "purposeOfRegistrationDesc": "All Awards",
+                        },
+                        "coreData": {
+                            "physicalAddress": {
+                                "addressLine1": "10 BUSINESS ROAD",
+                                "city": "ALBANY",
+                                "stateOrProvinceCode": "NY",
+                                "zipCode": "12207",
+                            },
+                            "pointsOfContact": {
+                                "email": "private@example.test",
+                                "phone": "555-0100",
+                            },
+                        },
+                    },
+                    {
+                        "entityRegistration": {
+                            "samRegistered": "Yes",
+                            "ueiSAM": "OLDDNBRECORD1",
+                            "legalBusinessName": "OLD DNB RECORD LLC",
+                            "lastUpdateDate": "2021-01-01",
+                            "publicDisplayFlag": "Y",
+                            "evsSource": "D&B",
+                        },
+                        "coreData": {
+                            "physicalAddress": {
+                                "city": "ALBANY",
+                                "stateOrProvinceCode": "NY",
+                            },
+                        },
+                    },
+                ],
+            }
+
+        with (
+            mock.patch.dict(os.environ, {"SAM_GOV_API_KEY": "secret-test-key"}),
+            mock.patch.object(
+                frontier_sources,
+                "_request_json",
+                side_effect=fake_request,
+            ),
+        ):
+            result = frontier_sources.fetch_sam_entities(["NY"], limit=4)
+
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(captured["url"]).query)
+        self.assertEqual(query["api_key"], ["secret-test-key"])
+        self.assertEqual(query["page"], ["0"])
+        self.assertEqual(query["size"], ["10"])
+        self.assertIn("sensitivity=public", captured["url"])
+        self.assertEqual(len(result["records"]), 1)
+        record = result["records"][0]
+        self.assertEqual(record["credential"], "UEI EXAMPLEUEI12")
+        self.assertEqual(record["address"], "")
+        serialized = str(record).lower()
+        self.assertNotIn("private@example.test", serialized)
+        self.assertNotIn("555-0100", serialized)
+        self.assertNotIn("10 business road", serialized)
+        self.assertNotIn("old dnb record", serialized)
+        self.assertNotIn("secret-test-key", str(result))
+
+
 class FrontierAggregationSafety(unittest.TestCase):
     def setUp(self):
         dealdesk.reset_for_tests()
@@ -213,10 +427,31 @@ class FrontierAggregationSafety(unittest.TestCase):
                 "source": "EPA ECHO",
                 "source_id": "epa-echo-monitoring-activity",
             }),
+            mock.patch.object(frontier_sources, "fetch_fcc_uls", return_value={
+                **live,
+                "source": "FCC ULS",
+                "source_id": "fcc-uls-organization-licenses",
+            }),
+            mock.patch.object(frontier_sources, "fetch_chicago_licenses", return_value={
+                **live,
+                "source": "Chicago licenses",
+                "source_id": "chicago-new-business-licenses",
+            }),
+            mock.patch.object(
+                frontier_sources,
+                "fetch_sam_entities",
+                side_effect=frontier_sources.SourceConfigurationUnavailable(
+                    "SAM_GOV_API_KEY_NOT_CONFIGURED"
+                ),
+            ),
         ):
             result = frontier_sources.frontier_opportunities(["NY"])
         self.assertEqual(result["leads"], [])
         self.assertEqual(result["sources"][0]["mode"], "UNAVAILABLE")
+        self.assertEqual(
+            result["sources"][-1]["reason"],
+            "SAM_GOV_API_KEY_NOT_CONFIGURED",
+        )
         self.assertNotIn("SAMPLE", str(result))
 
 

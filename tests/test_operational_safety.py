@@ -77,6 +77,21 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertNotIn("rotate-app-secrets", deploy_workflow)
         self.assertNotIn("secrets: inherit", deploy_workflow)
         self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy_workflow)
+        self.assertIn("id-token: write", deploy_workflow)
+        self.assertIn("attestations: write", deploy_workflow)
+        self.assertIn(
+            "actions/attest@36051bcae73b7c2a8a6945a48cbf80953c6baa35",
+            deploy_workflow,
+        )
+        self.assertIn(
+            "subject-path: release-evidence/hf-deploy-manifest.json",
+            deploy_workflow,
+        )
+        self.assertIn('key="RELEASE_ATTESTATION"', deploy_workflow)
+        self.assertIn(
+            'body.get("receipt_minted") is True',
+            deploy_workflow,
+        )
         for name in (
             "DAVID_USER",
             "DAVID_PASS",
@@ -1577,6 +1592,45 @@ class ApiSafety(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["github_huggingface_alignment"], "UNVERIFIED")
         self.assertRegex(body["bundle_sha256"], r"^[0-9a-f]{64}$")
+        self.assertFalse(body["receipt_minted"])
+
+    def test_build_info_accepts_only_exact_revision_github_oidc_receipt(self):
+        revision = "a" * 40
+        attestation_id = "123456"
+        receipt = json.dumps({
+            "schema": "szl.github-oidc-release-attestation/v1",
+            "source_revision": revision,
+            "manifest_sha256": "b" * 64,
+            "attestation_id": attestation_id,
+            "attestation_url": (
+                "https://github.com/szl-holdings/david-leads/attestations/"
+                + attestation_id
+            ),
+        })
+        with patch.dict(
+            os.environ,
+            {
+                "SOURCE_GITHUB_SHA": revision,
+                "RELEASE_ATTESTATION": receipt,
+            },
+        ):
+            body = self.server._runtime_bundle_manifest()
+        self.assertTrue(body["receipt_minted"])
+        self.assertEqual(body["release_receipt"]["state"], "GITHUB_OIDC_ATTESTED")
+        self.assertEqual(body["release_receipt"]["subject_sha256"], "b" * 64)
+
+        stale = json.loads(receipt)
+        stale["source_revision"] = "c" * 40
+        with patch.dict(
+            os.environ,
+            {
+                "SOURCE_GITHUB_SHA": revision,
+                "RELEASE_ATTESTATION": json.dumps(stale),
+            },
+        ):
+            body = self.server._runtime_bundle_manifest()
+        self.assertFalse(body["receipt_minted"])
+        self.assertEqual(body["release_receipt"]["state"], "UNAVAILABLE")
 
     def test_frontier_desk_requires_research_before_contact(self):
         record = {
