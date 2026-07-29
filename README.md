@@ -84,7 +84,16 @@ underwriting decision, consumer report, or permission to contact.
 
 ## Access configuration
 
-Configure these values in the approved secret store for the deployment:
+The default deployment mode is `DAVID_ACCESS_MODE=public_readonly`. Visitors can
+open a sanitized public-record research view without logging in. That view never
+reads or returns saved broker notes, owners, channels, clearances, dispositions,
+suppression details, exports, opt-in leads, or workflow history, and it cannot
+perform mutations. Set `DAVID_ACCESS_MODE=authenticated` to require login for
+the entire application.
+
+Operator credentials remain required for broker workflow changes, exports,
+outcomes, call sheets, webhook tests, and other protected actions. Configure
+these values in the approved secret store:
 
 - `DAVID_USER`
 - `DAVID_PASS`

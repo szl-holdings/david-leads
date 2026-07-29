@@ -1,5 +1,6 @@
 /* David Leads — frontend logic */
 let TOKEN = null;
+let ACCESS_MODE = "authenticated";
 const $ = (id) => document.getElementById(id);
 const money = (n) => "$" + Number(n).toLocaleString();
 
@@ -9,6 +10,46 @@ async function api(path, opts = {}) {
   const r = await fetch(path, Object.assign({}, opts, { headers }));
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || ("HTTP " + r.status));
   return r.json();
+}
+
+function isPublicReadOnly() {
+  return ACCESS_MODE === "public_readonly";
+}
+
+async function bootstrapAccess() {
+  let access;
+  try {
+    access = await api("/api/access-mode");
+    ACCESS_MODE = access.mode === "public_readonly" ? "public_readonly" : "authenticated";
+  } catch (_) {
+    ACCESS_MODE = "authenticated";
+  }
+  const boot = $("boot");
+  if (boot) boot.classList.add("hidden");
+  if (!isPublicReadOnly()) {
+    $("app").classList.add("hidden");
+    $("login").classList.remove("hidden");
+    $("bg3d").classList.remove("hidden");
+    return;
+  }
+  document.body.classList.add("public-readonly");
+  $("login").classList.add("hidden");
+  $("bg3d").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  $("who").textContent = "Public read-only";
+  const logout = document.querySelector(".logout-btn");
+  if (logout) logout.classList.add("hidden");
+  [
+    "runLive", "runSample", "btnPulse", "btnSurge", "btnTerr", "btnBench",
+    "btnRouting", "btnWarn", "btnTax", "btnOptin", "btnCsv", "btnCrm",
+  ].forEach(id => { const el = $(id); if (el) el.classList.add("hidden"); });
+  $("runHint").textContent =
+    "Public view: official organization-level records and sources. Operator workflow, exports, and outreach controls remain protected.";
+  $("frontierNote").textContent =
+    "Public read-only mode shows lawful official-source research signals. It never exposes broker notes, channels, clearances, or outcomes, and it never grants permission to contact.";
+  renderPublicKpis();
+  loadBuildInfo();
+  openFrontiers(false);
 }
 
 /* ---------- login ---------- */
@@ -35,6 +76,7 @@ async function doLogin() {
 document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("login").classList.contains("hidden")) doLogin(); });
 
 async function doLogout() {
+  if (isPublicReadOnly()) return;
   try { if (TOKEN) await api("/api/logout", { method: "POST" }); } catch (_) {}
   TOKEN = null;
   $("p").value = ""; $("k").value = "";
@@ -44,6 +86,7 @@ async function doLogout() {
   $("loginBtn").disabled = false;
   $("loginBtn").textContent = "Access Intelligence Console";
 }
+document.addEventListener("DOMContentLoaded", bootstrapAccess);
 
 async function loadBuildInfo() {
   const stamp = $("sourceStamp"); if (!stamp) return;
@@ -122,6 +165,32 @@ function renderKpis(k) {
       <div class="label">Average match score</div>
       <div class="val">${z(k && k.avg_score)}</div>
       <div class="sub">${k ? k.total_leads + " leads scored" : "run to populate"}</div>
+    </div>`;
+}
+
+function renderPublicKpis(summary = {}, sources = []) {
+  const liveSources = sources.filter(src => src.mode === "LIVE").length;
+  const notLiveSources = sources.filter(src => src.mode !== "LIVE").length;
+  $("kpis").innerHTML = `
+    <div class="kpi accent">
+      <div class="label">Official signals</div>
+      <div class="val">${Number(summary.live || 0).toLocaleString()}</div>
+      <div class="sub">organization-level public records</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Live sources</div>
+      <div class="val">${liveSources}</div>
+      <div class="sub">${notLiveSources} not live or not applicable; never replaced with fake data</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Research next</div>
+      <div class="val">${Number(summary.needs_research || 0).toLocaleString()}</div>
+      <div class="sub">open the official record and verify it</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Contact status</div>
+      <div class="val" style="font-size:25px">Read only</div>
+      <div class="sub">public records do not grant permission to contact</div>
     </div>`;
 }
 
@@ -934,11 +1003,17 @@ async function loadRealLeads() {
       const gateClass = l.call_ready ? "ready" : l.truth_label === "EXAMPLE" ? "blocked" : "review";
       const options = stages.map(stage =>
         `<option value="${stage}"${stage===l.stage?" selected":""}>${stage.replace("_"," ")}</option>`).join("");
-      const workflowButtons = `
+      const workflowButtons = isPublicReadOnly() ? "" : `
         <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','real')">Research channel</button>
         ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','real')">Clear 24h</button>` : ""}
         ${l.phone_call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>` : ""}
         ${l.call_ready ? `<button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','real')">Outcome</button>` : ""}`;
+      const stageControl = isPublicReadOnly()
+        ? `<span class="gate review">READ ONLY</span>`
+        : `<label class="real-sub" for="stage-${escHtml(l.opportunity_id)}">Stage</label>
+          <select class="opp-stage" id="stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this)">
+            ${options}
+          </select>`;
       return `<article class="opp-card">
         <div class="opp-head">
           <div><div class="real-name">${escHtml(l.name)}</div>
@@ -950,10 +1025,7 @@ async function loadRealLeads() {
         <div class="opp-next"><strong>Next action</strong><br>${escHtml(l.next_action || "")}</div>
         <div class="opp-actions">
           <span class="gate ${gateClass}">${escHtml(l.contact_gate || "NOT_EVALUATED")}</span>
-          <label class="real-sub" for="stage-${escHtml(l.opportunity_id)}">Stage</label>
-          <select class="opp-stage" id="stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this)">
-            ${options}
-          </select>
+          ${stageControl}
           ${verifyBtn}
           ${workflowButtons}
         </div>
@@ -969,10 +1041,10 @@ async function loadRealLeads() {
   }
 }
 
-function openFrontiers() {
+function openFrontiers(scroll = true) {
   const card = $("frontierCard"); if (!card) return;
   card.classList.add("show");
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) card.scrollIntoView({ behavior: "smooth", block: "start" });
   loadFrontiers();
 }
 
@@ -990,6 +1062,7 @@ async function loadFrontiers() {
     const s = d.summary || {};
     const sources = d.sources || [];
     const liveSources = sources.filter(src => src.mode === "LIVE").length;
+    if (isPublicReadOnly()) renderPublicKpis(s, sources);
     $("frontierSummary").innerHTML = [
       ["Official signals", s.live || 0],
       ["Live sources", liveSources],
@@ -1030,11 +1103,17 @@ async function loadFrontiers() {
       const verifyBtn = l.receipt_id
         ? `<button class="real-verify" onclick="openReceipt('${escHtml(l.receipt_id)}')">Proof</button>`
         : "";
-      const workflowButtons = `
+      const workflowButtons = isPublicReadOnly() ? "" : `
         <button class="real-verify workflow" onclick="openResearchModal('${escHtml(l.opportunity_id)}','frontier')">Research channel</button>
         ${(l.channels||[]).length ? `<button class="real-verify workflow" onclick="openClearanceModal('${escHtml(l.opportunity_id)}','frontier')">Clear 24h</button>` : ""}
         ${l.phone_call_ready ? `<button class="real-verify workflow ready" onclick="openCallSheet('${escHtml(l.opportunity_id)}')">Call sheet</button>` : ""}
         ${l.call_ready ? `<button class="real-verify workflow" onclick="openDispositionModal('${escHtml(l.opportunity_id)}','frontier')">Outcome</button>` : ""}`;
+      const stageControl = isPublicReadOnly()
+        ? `<span class="gate review">READ ONLY</span>`
+        : `<label class="real-sub" for="frontier-stage-${escHtml(l.opportunity_id)}">Stage</label>
+          <select class="opp-stage" id="frontier-stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this,'frontier')">
+            ${options}
+          </select>`;
       return `<article class="opp-card">
         <span class="frontier-badge">${escHtml(l.source_frontier || "OFFICIAL FRONTIER")}</span>
         <div class="opp-head">
@@ -1049,10 +1128,7 @@ async function loadFrontiers() {
         <div class="frontier-limit"><strong>Limit:</strong> ${escHtml((l.limitations||[]).join(" "))}</div>
         <div class="opp-actions">
           <span class="gate ${gateClass}">${escHtml(l.contact_gate || "NOT_EVALUATED")}</span>
-          <label class="real-sub" for="frontier-stage-${escHtml(l.opportunity_id)}">Stage</label>
-          <select class="opp-stage" id="frontier-stage-${escHtml(l.opportunity_id)}" data-prior="${escHtml(l.stage)}" onchange="updateOpportunity('${escHtml(l.opportunity_id)}',this,'frontier')">
-            ${options}
-          </select>
+          ${stageControl}
           ${verifyBtn}
           ${workflowButtons}
         </div>

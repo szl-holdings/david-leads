@@ -50,6 +50,13 @@ without creating a self-referential deployment loop.
 ## Public boundary
 
 - The repository is licensed under Apache-2.0.
+- The application opens without login in `PUBLIC_READONLY` mode. Anonymous
+  responses are rebuilt from organization-level public records and exclude
+  persisted broker notes, owners, channels, clearances, dispositions,
+  suppression details, exports, opt-in leads, and event history.
+- Anonymous opportunities are always `PUBLIC_RESEARCH_ONLY`, never call-ready,
+  and cannot be advanced or mutated. Operator credentials remain required for
+  workflow changes, exports, call sheets, outcomes, and external integrations.
 - Lead intelligence is limited to organization/entity-level public records and
   explicitly consented submissions.
 - Public records create research tasks; they never create contact permission.

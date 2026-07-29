@@ -104,8 +104,8 @@ except Exception:  # pragma: no cover
 
 APP_DIR = os.path.dirname(__file__)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
-# CORS: env-configurable allow-list (comma-separated). Default "*" is safe here because auth is a
-# bearer token in the Authorization header (not a cookie), so credentials are not sent cross-site.
+# CORS: env-configurable allow-list (comma-separated). The public projection is intentionally
+# readable cross-origin. Protected actions still require a bearer token and never use cookies.
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
@@ -155,8 +155,17 @@ _CREDS_ROTATION_REQUIRED = (
 )
 _CREDS_CONFIGURED = bool(_CREDS_PRESENT and not _CREDS_ROTATION_REQUIRED)
 USERS = {DAVID_USER: DAVID_PASS} if _CREDS_CONFIGURED else {}
+_ACCESS_MODE = os.environ.get("DAVID_ACCESS_MODE", "public_readonly").strip().lower()
+if _ACCESS_MODE not in {"authenticated", "public_readonly"}:
+    _ACCESS_MODE = "authenticated"
+_PUBLIC_READONLY = _ACCESS_MODE == "public_readonly"
 _TOKEN_TTL_SECONDS = max(300, int(os.environ.get("DAVID_SESSION_TTL_SECONDS", "28800")))
 _TOKENS: dict[str, float] = {}
+_PUBLIC_RECEIPTS: dict[str, dict] = {}
+_PUBLIC_RECEIPT_LIMIT = 500
+_PUBLIC_BOARD_CACHE: dict[tuple[str, tuple[str, ...]], tuple[float, dict]] = {}
+_PUBLIC_BOARD_CACHE_LIMIT = 32
+_PUBLIC_BOARD_CACHE_TTL_SECONDS = 300
 
 # session cache of last run
 _STATE: dict = {"leads": [], "signals": [], "meta": {}, "receipts": {}}
@@ -203,7 +212,13 @@ class RunReq(BaseModel):
     age_min: float = 0.0  # V8: demonstrate Λ time-decay live (minutes since trigger observed)
 
 
-def _auth(authorization: str | None):
+def _auth(
+    authorization: str | None,
+    *,
+    allow_public_readonly: bool = False,
+) -> str:
+    if not authorization and allow_public_readonly and _PUBLIC_READONLY:
+        return "public_readonly"
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
     token = authorization.split(" ", 1)[1]
@@ -213,6 +228,39 @@ def _auth(authorization: str | None):
     if expires_at <= time.time():
         _TOKENS.pop(token, None)
         raise HTTPException(401, "Session expired")
+    return "operator"
+
+
+def _store_public_receipt(receipt: dict) -> None:
+    """Keep a bounded proof cache for the anonymous public projection."""
+    rid = str(receipt.get("id") or "")
+    if not rid:
+        return
+    _PUBLIC_RECEIPTS[rid] = receipt
+    while len(_PUBLIC_RECEIPTS) > _PUBLIC_RECEIPT_LIMIT:
+        _PUBLIC_RECEIPTS.pop(next(iter(_PUBLIC_RECEIPTS)))
+
+
+def _cached_public_board(kind: str, states: list[str]) -> dict | None:
+    key = (kind, tuple(states))
+    cached = _PUBLIC_BOARD_CACHE.get(key)
+    if cached is None:
+        return None
+    expires_at, board = cached
+    if expires_at <= time.time():
+        _PUBLIC_BOARD_CACHE.pop(key, None)
+        return None
+    return json.loads(json.dumps(board))
+
+
+def _cache_public_board(kind: str, states: list[str], board: dict) -> None:
+    key = (kind, tuple(states))
+    _PUBLIC_BOARD_CACHE[key] = (
+        time.time() + _PUBLIC_BOARD_CACHE_TTL_SECONDS,
+        json.loads(json.dumps(board)),
+    )
+    while len(_PUBLIC_BOARD_CACHE) > _PUBLIC_BOARD_CACHE_LIMIT:
+        _PUBLIC_BOARD_CACHE.pop(next(iter(_PUBLIC_BOARD_CACHE)))
 
 
 @app.get("/healthz")
@@ -227,6 +275,7 @@ def healthz():
             if _CREDS_CONFIGURED
             else "NOT_CONFIGURED"
         ),
+        "access_mode": "PUBLIC_READONLY" if _PUBLIC_READONLY else "AUTHENTICATED",
         "doctrine": "SZL governed-AI · honest by design",
     }
     persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
@@ -363,6 +412,19 @@ def _runtime_bundle_manifest() -> dict:
 @app.get("/api/build-info")
 def build_info():
     return _runtime_bundle_manifest()
+
+
+@app.get("/api/access-mode")
+def access_mode():
+    return {
+        "mode": "public_readonly" if _PUBLIC_READONLY else "authenticated",
+        "login_required_for_viewing": not _PUBLIC_READONLY,
+        "operator_actions_require_login": True,
+        "public_boundary": (
+            "Sanitized organization-level public records only. Broker notes, channels, "
+            "clearances, dispositions, exports, and mutations are not public."
+        ),
+    }
 
 
 @app.post("/api/login")
@@ -576,7 +638,7 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
 @app.get("/api/model")
 def model(authorization: str | None = Header(default=None)):
     """Open the black box: full transparent scoring methodology."""
-    _auth(authorization)
+    _auth(authorization, allow_public_readonly=True)
     try:
         return sc.model_card()
     except Exception:
@@ -824,7 +886,12 @@ def get_leads(authorization: str | None = Header(default=None)):
 
 @app.get("/api/receipt/{rid}")
 def get_receipt(rid: str, authorization: str | None = Header(default=None)):
-    _auth(authorization)
+    principal = _auth(authorization, allow_public_readonly=True)
+    if principal == "public_readonly":
+        receipt = _PUBLIC_RECEIPTS.get(rid)
+        if receipt is None:
+            raise HTTPException(404, "Receipt not found")
+        return receipt
     for r in _STATE["receipts"].values():
         if r["id"] == rid:
             return r
@@ -833,7 +900,12 @@ def get_receipt(rid: str, authorization: str | None = Header(default=None)):
 
 @app.get("/api/verify/{rid}")
 def verify(rid: str, authorization: str | None = Header(default=None)):
-    _auth(authorization)
+    principal = _auth(authorization, allow_public_readonly=True)
+    if principal == "public_readonly":
+        receipt = _PUBLIC_RECEIPTS.get(rid)
+        if receipt is None:
+            raise HTTPException(404, "Receipt not found")
+        return rc.verify_receipt(receipt)
     for r in _STATE["receipts"].values():
         if r["id"] == rid:
             return rc.verify_receipt(r)
@@ -1286,10 +1358,10 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     A public record is a research signal, not permission to contact. Every row
     remains fail-closed until a human records execution-time outreach clearance.
     """
-    _auth(authorization)
+    principal = _auth(authorization, allow_public_readonly=True)
     if rl is None or dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
-    if not dd.persistence_ready():
+    if principal == "operator" and not dd.persistence_ready():
         raise HTTPException(
             503,
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
@@ -1297,6 +1369,10 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
     ]
+    if principal == "public_readonly":
+        cached = _cached_public_board("deal", state_list)
+        if cached is not None:
+            return cached
     try:
         source = rl.real_callable_leads(state_list, limit_per=12)
     except Exception:
@@ -1305,16 +1381,26 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
     for lead in source.get("leads", []):
         receipt = lead.pop("_receipt", None)
         if isinstance(receipt, dict) and receipt.get("id"):
-            _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+            if principal == "public_readonly":
+                _store_public_receipt(receipt)
+            else:
+                _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
         lead.pop("_account_id", None)
         clean.append(lead)
     try:
-        board = dd.board(clean)
+        board = (
+            dd.public_board(clean)
+            if principal == "public_readonly"
+            else dd.board(clean)
+        )
     except dd.PersistenceUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
-    _STATE["deal_desk"] = board
+    if principal == "operator":
+        _STATE["deal_desk"] = board
+    else:
+        _cache_public_board("deal", state_list, board)
     return board
 
 
@@ -1329,10 +1415,10 @@ def frontier_desk(
     exclude person-level contact, officer, safety, crash, insurance, and policy
     data and never infer permission to contact or an underwriting fact.
     """
-    _auth(authorization)
+    principal = _auth(authorization, allow_public_readonly=True)
     if frontier_data is None or dd is None:
         raise HTTPException(503, "frontier radar unavailable")
-    if not dd.persistence_ready():
+    if principal == "operator" and not dd.persistence_ready():
         raise HTTPException(
             503,
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
@@ -1340,22 +1426,36 @@ def frontier_desk(
     state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
         "NY", "NJ", "PA", "MD", "DE", "CT"
     ]
+    if principal == "public_readonly":
+        cached = _cached_public_board("frontier", state_list)
+        if cached is not None:
+            return cached
     source = frontier_data.frontier_opportunities(state_list, limit_per_source=18)
     clean: list[dict] = []
     for lead in source.get("leads", []):
         receipt = lead.pop("_receipt", None)
         if isinstance(receipt, dict) and receipt.get("id"):
-            _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
+            if principal == "public_readonly":
+                _store_public_receipt(receipt)
+            else:
+                _STATE.setdefault("receipts", {})[receipt["id"]] = receipt
         clean.append(lead)
     try:
-        board = dd.board(clean)
+        board = (
+            dd.public_board(clean)
+            if principal == "public_readonly"
+            else dd.board(clean)
+        )
     except dd.PersistenceUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
     board["states"] = source.get("states", state_list)
     board["frontier_doctrine"] = source.get("doctrine")
-    _STATE["frontier_desk"] = board
+    if principal == "operator":
+        _STATE["frontier_desk"] = board
+    else:
+        _cache_public_board("frontier", state_list, board)
     return board
 
 

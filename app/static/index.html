@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>David Leads — Operator Lead Command</title>
+<title>David Leads — Public Opportunity Desk</title>
 <meta name="description" content="A governed public-record opportunity desk that shows brokers what to research, why now, the next permitted action, and the evidence behind it.">
 <!-- Fonts self-hosted (SZL Doctrine v11: 0 runtime CDN). No fonts.googleapis.com/gstatic. -->
 <link href="fonts/fonts.css" rel="stylesheet">
@@ -27,9 +27,10 @@ button{font-family:inherit;cursor:pointer;border:none}
 .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn.ghost:hover{background:var(--card)}
 .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+body.public-readonly .operator-only{display:none!important}
 
 /* ===== LOGIN ===== */
-#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
+#login,#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
   radial-gradient(1200px 600px at 70% -10%,#143a5e 0%,#0a2540 45%,#071a2e 100%);z-index:50}
 #bg3d{position:fixed;inset:0;z-index:0;opacity:.55}
 .login-card{position:relative;z-index:2;width:min(420px,92vw);background:rgba(14,22,38,.94);
@@ -563,9 +564,23 @@ footer.legal a:hover{color:var(--ink, #ddd)}
 </head>
 <body>
 
+<div id="boot">
+  <div class="login-card">
+    <div class="brandrow">
+      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
+        <rect x="2" y="2" width="36" height="36" rx="9" fill="#0a2540"/>
+        <path d="M11 27V13l9 5 9-5v14" stroke="#c08f2f" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+      </svg>
+      <h1>David Leads</h1>
+    </div>
+    <div class="login-sub">Opening the governed public-record opportunity deskâ€¦</div>
+  </div>
+</div>
+
 <!-- ============ LOGIN ============ -->
 <canvas id="bg3d"></canvas>
-<div id="login">
+<div id="login" class="hidden">
   <div class="login-card">
     <div class="brandrow">
       <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
@@ -724,7 +739,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
         </label>
         <span class="real-state-pick" id="realStatePick"></span>
         <button class="btn ghost" id="realReload" onclick="loadRealLeads()">↻ Refresh</button>
-        <button class="btn ghost" onclick="exportBrokerDesk()">Export governed CSV</button>
+        <button class="btn ghost operator-only" onclick="exportBrokerDesk()">Export governed CSV</button>
         <span class="hint" id="realHint" style="margin-left:auto"></span>
       </div>
       <div class="desk-summary" id="deskSummary"></div>
@@ -747,7 +762,7 @@ footer.legal a:hover{color:var(--ink, #ddd)}
           <input type="text" id="frontierStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
         </label>
         <button class="btn ghost" id="frontierReload" onclick="loadFrontiers()">↻ Refresh</button>
-        <button class="btn ghost" onclick="exportBrokerDesk()">Export governed CSV</button>
+        <button class="btn ghost operator-only" onclick="exportBrokerDesk()">Export governed CSV</button>
         <span class="hint" id="frontierHint" style="margin-left:auto"></span>
       </div>
       <div class="desk-summary" id="frontierSummary"></div>
