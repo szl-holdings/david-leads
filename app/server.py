@@ -103,6 +103,12 @@ except Exception:  # pragma: no cover
     frontier_data = None
 
 APP_DIR = os.path.dirname(__file__)
+EASTERN_STATES = (
+    "AL", "CT", "DC", "DE", "FL", "GA", "IL", "IN", "KY", "ME", "MD", "MA",
+    "MI", "MS", "NH", "NJ", "NY", "NC", "OH", "PA", "RI", "SC", "TN", "VT",
+    "VA", "WV", "WI",
+)
+EASTERN_STATES_QUERY = ",".join(EASTERN_STATES)
 app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
 # CORS: env-configurable allow-list (comma-separated). The public projection is intentionally
 # readable cross-origin. Protected actions still require a bearer token and never use cookies.
@@ -1406,7 +1412,7 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
 
 @app.get("/api/frontier-desk")
 def frontier_desk(
-    states: str = "NY,NJ,PA,MD,DE,CT",
+    states: str = EASTERN_STATES_QUERY,
     authorization: str | None = Header(default=None),
 ):
     """Entity-level FMCSA and federal-contract activity for broker research.
@@ -1423,9 +1429,9 @@ def frontier_desk(
             503,
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
-        "NY", "NJ", "PA", "MD", "DE", "CT"
-    ]
+    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or list(
+        EASTERN_STATES
+    )
     if principal == "public_readonly":
         cached = _cached_public_board("frontier", state_list)
         if cached is not None:

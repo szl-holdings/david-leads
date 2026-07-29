@@ -103,20 +103,25 @@ class OperatorSurfaceCopyTests(unittest.TestCase):
         cls.js = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
         cls.readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-    def test_daily_toolbar_is_operator_first(self):
-        self.assertIn("More tools", self.html)
-        self.assertIn("Why leads rank", self.html)
+    def test_public_workspace_is_broker_first(self):
+        self.assertIn("Broker view", self.html)
+        self.assertIn("Lead explorer", self.html)
+        self.assertIn("Choose the market", self.html)
+        self.assertNotIn("More tools", self.html)
         self.assertNotIn("Ouroboros Director", self.html)
         self.assertNotIn("HOLO MODE", self.html)
 
-    def test_decision_trace_is_addressable_from_each_lead(self):
-        self.assertIn("openOperatorTrace('${l.id}')", self.js)
-        self.assertIn('/api/operator/trace/', self.js)
-        self.assertIn("Conflict check", self.js)
+    def test_public_lead_detail_is_addressable_without_operator_state(self):
+        self.assertIn("data-lead-id", self.js)
+        self.assertIn("/api/verify/", self.js)
+        self.assertIn("Open official record", self.js)
+        self.assertNotIn("/api/operator/trace/", self.js)
+        self.assertNotIn("Conflict check", self.js)
 
-    def test_methodology_modal_does_not_render_raw_formula(self):
+    def test_investor_truth_view_does_not_render_raw_formula(self):
         self.assertNotIn("${m.formula}", self.js)
-        self.assertIn("not a probability", self.js.lower())
+        self.assertIn("not company revenue", self.js.lower())
+        self.assertIn("Observed activity is not revenue", self.html)
 
     def test_public_card_is_operator_copy(self):
         self.assertIn("Operator Lead Command", self.readme)

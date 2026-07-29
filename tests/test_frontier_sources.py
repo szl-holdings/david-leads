@@ -15,6 +15,23 @@ if str(ROOT) not in sys.path:
 
 from app import dealdesk, frontier_sources, receipts  # noqa: E402
 
+
+class TerritoryNormalization(unittest.TestCase):
+    def test_all_eastern_markets_reach_the_source_adapters(self):
+        eastern = [
+            "AL", "CT", "DC", "DE", "FL", "GA", "IL", "IN", "KY", "ME", "MD",
+            "MA", "MI", "MS", "NH", "NJ", "NY", "NC", "OH", "PA", "RI", "SC",
+            "TN", "VT", "VA", "WV", "WI",
+        ]
+        self.assertEqual(frontier_sources._states(eastern), eastern)
+
+    def test_invalid_or_duplicate_state_codes_are_removed(self):
+        self.assertEqual(
+            frontier_sources._states(["ny", "NY", "XX", "PA", "123"]),
+            ["NY", "PA"],
+        )
+
+
 class FmcsaFrontierSafety(unittest.TestCase):
     def setUp(self):
         receipts.reset_chain()
