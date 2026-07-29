@@ -163,19 +163,22 @@ class PublicReadOnlyApiTests(unittest.TestCase):
             response = self.client.get("/api/frontier-desk?states=PA")
         self.assertEqual(response.status_code, 401)
 
-    def test_frontend_bootstraps_without_login_and_hides_operator_controls(self):
+    def test_frontend_bootstraps_directly_into_public_market_cockpit(self):
         root = pathlib.Path(__file__).resolve().parents[1]
         script = (root / "app" / "static" / "app.js").read_text(encoding="utf-8")
         page = (root / "app" / "static" / "index.html").read_text(encoding="utf-8")
 
         self.assertIn('await api("/api/access-mode")', script)
-        self.assertIn('"Public read-only"', script)
-        self.assertIn('"runLive", "runSample"', script)
-        self.assertIn("renderPublicKpis", script)
-        self.assertIn("openFrontiers(false)", script)
-        self.assertIn('id="login" class="hidden"', page)
+        self.assertIn('access.mode !== "public_readonly"', script)
+        self.assertIn("EASTERN_REGIONS", script)
+        self.assertIn("stateButtons", page)
+        self.assertIn("stateAtlas", page)
+        self.assertIn("Investor view", page)
+        self.assertNotIn('id="login"', page)
+        self.assertNotIn("Assigned username", page)
+        self.assertNotIn("Password", page)
         self.assertIn('id="boot"', page)
-        self.assertIn("operator-only", page)
+        self.assertNotIn("Export governed CSV", page)
 
 
 if __name__ == "__main__":

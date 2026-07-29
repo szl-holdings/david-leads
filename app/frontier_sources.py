@@ -23,6 +23,13 @@ from . import receipts as rc
 UA = {"User-Agent": "SZL-David-Leads/1.2 research@szlholdings.com"}
 TIMEOUT = 15
 DEFAULT_STATES = ("NY", "NJ", "PA", "MD", "DE", "CT")
+US_STATE_CODES = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
+    "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN",
+    "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+    "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
+    "WV", "WI", "WY",
+})
 _ECHO_CACHE: dict[tuple[tuple[str, ...], int], tuple[datetime, dict[str, Any]]] = {}
 _CHICAGO_CACHE: dict[tuple[int, str], tuple[datetime, dict[str, Any]]] = {}
 _SAM_CACHE: dict[tuple[tuple[str, ...], int, str], tuple[datetime, dict[str, Any]]] = {}
@@ -143,9 +150,11 @@ def _states(values: list[str] | tuple[str, ...] | None) -> list[str]:
     result: list[str] = []
     for value in values or DEFAULT_STATES:
         state = str(value).strip().upper()
-        if re.fullmatch(r"[A-Z]{2}", state) and state not in result:
+        if state in US_STATE_CODES and state not in result:
             result.append(state)
-    return result[:12] or list(DEFAULT_STATES)
+    # The public cockpit covers 27 Eastern markets. The former 12-state cap
+    # silently dropped valid selections before they reached the source APIs.
+    return result[:30] or list(DEFAULT_STATES)
 
 
 def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:

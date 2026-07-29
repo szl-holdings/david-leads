@@ -1,915 +1,331 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>David Leads — Public Opportunity Desk</title>
-<meta name="description" content="A governed public-record opportunity desk that shows brokers what to research, why now, the next permitted action, and the evidence behind it.">
-<!-- Fonts self-hosted (SZL Doctrine v11: 0 runtime CDN). No fonts.googleapis.com/gstatic. -->
-<link href="fonts/fonts.css" rel="stylesheet">
-<style>
-:root{
-  --navy:#1b3a63; --navy-700:#245084; --navy-800:#132741; --ink:#eef4fb;
-  --gold:#c08f2f; --gold-300:#d7b96b; --teal:#1fb8ad; --teal-300:#3af4c8;
-  --hot:#e8746e; --warm:#d7b96b; --nurture:#65788f;
-  --paper:#080c14; --card:#0e1626; --line:#1c2942; --muted:#8a99ad;
-  --shadow:0 1px 3px rgba(0,0,0,.45),0 8px 28px rgba(0,0,0,.38);
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Inter',system-ui,sans-serif;background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased;line-height:1.5;overflow-x:hidden}
-.wrap{overflow-x:clip}
-h1,h2,h3,.display{font-family:'Fraunces',Georgia,serif;font-weight:600;letter-spacing:-.01em}
-.hidden{display:none!important}
-button{font-family:inherit;cursor:pointer;border:none}
-.btn{background:var(--navy);color:#fff;padding:11px 20px;border-radius:9px;font-weight:600;font-size:14px;transition:transform .15s ease,background .15s ease}
-.btn:hover{background:var(--navy-700);transform:translateY(-1px)}
-.btn.gold{background:var(--gold)}.btn.gold:hover{background:var(--gold-300);color:#0b1a2b}
-.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
-.btn.ghost:hover{background:var(--card)}
-.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-body.public-readonly .operator-only{display:none!important}
-
-/* ===== LOGIN ===== */
-#login,#boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:
-  radial-gradient(1200px 600px at 70% -10%,#143a5e 0%,#0a2540 45%,#071a2e 100%);z-index:50}
-#bg3d{position:fixed;inset:0;z-index:0;opacity:.55}
-.login-card{position:relative;z-index:2;width:min(420px,92vw);background:rgba(14,22,38,.94);
-  border-radius:18px;padding:38px 34px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
-.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.logo{width:38px;height:38px;flex:none}
-.login-card h1{font-size:23px;color:var(--ink);line-height:1.15}
-.login-sub{color:var(--muted);font-size:13px;margin:8px 0 24px}
-.field{margin-bottom:14px}
-.field label{display:block;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
-.field input{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:10px;font-size:15px;background:var(--card)}
-.field input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.15)}
-.login-err{color:var(--hot);font-size:13px;margin-top:10px;min-height:18px}
-.trust-foot{margin-top:18px;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:7px;justify-content:center}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 0 3px rgba(22,143,137,.2)}
-
-/* ===== APP ===== */
-header.top{background:var(--navy);color:#fff;padding:14px 26px;display:flex;align-items:center;gap:14px;position:sticky;top:0;z-index:30}
-header.top .logo path{stroke:#fff}
-.top h2{font-size:17px;color:#fff;font-weight:600}
-.top .tag{font-size:11px;color:var(--gold-300);font-family:'Inter';font-weight:600;letter-spacing:.05em;text-transform:uppercase}
-.spacer{flex:1}
-.who{font-size:13px;color:#cdd9e6}
-.source-stamp{font-size:10px;color:#c7d4e4;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 9px;white-space:nowrap}
-.source-stamp.observed{color:#8af2d8;border-color:rgba(58,244,200,.35)}
-.source-stamp.unverified{color:#f0d694;border-color:rgba(215,185,107,.45)}
-.logout-btn{background:transparent;color:#cdd9e6;border:1px solid rgba(255,255,255,.18);border-radius:8px;padding:5px 9px;font-size:11px}
-.wrap{max-width:1180px;margin:0 auto;padding:26px 22px 70px}
-
-/* KPI cards */
-.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 18px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
-.kpi .label{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
-.kpi .val{font-family:'Fraunces';font-size:34px;color:var(--ink);line-height:1.05;margin-top:6px}
-.kpi .sub{font-size:12px;color:var(--muted);margin-top:4px}
-.kpi.accent{background:linear-gradient(160deg,#0a2540,#143a5e);color:#fff;border:none}
-.kpi.accent .label{color:var(--gold-300)}.kpi.accent .val{color:#fff}.kpi.accent .sub{color:#bcd}
-
-.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:18px;flex-wrap:wrap}
-.toolbar .hint{font-size:12px;color:var(--muted)}
-.tool-menu{position:relative}
-.tool-menu summary{list-style:none;background:transparent;color:var(--ink);border:1px solid var(--line);padding:10px 15px;border-radius:9px;font-weight:600;font-size:14px;cursor:pointer}
-.tool-menu summary::-webkit-details-marker{display:none}
-.tool-menu[open] summary{background:var(--card);border-color:var(--teal)}
-.tool-menu-panel{position:absolute;z-index:40;top:48px;right:0;width:min(620px,88vw);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding:12px;background:#0b1321;border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.55)}
-.tool-menu-panel .btn{text-align:left;width:100%}
-.trace-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0 18px}
-.trace-step{border:1px solid var(--line);border-radius:10px;padding:10px;background:rgba(255,255,255,.025)}
-.trace-step .state{font-size:10px;color:var(--teal-300);font-weight:800;letter-spacing:.05em}
-.trace-step .name{font-weight:700;margin:3px 0;font-size:12px}
-.trace-step .detail{font-size:11px;color:var(--muted);line-height:1.35}
-.trace-list{display:grid;gap:8px;margin:9px 0 16px}
-.trace-row{display:grid;grid-template-columns:130px 90px 1fr;gap:10px;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:12px;align-items:start}
-.trace-label{font-weight:700}.trace-level{font-size:10px;font-weight:800;color:var(--gold-300)}.trace-note{color:var(--muted)}
-.trace-caveat{padding:9px 11px;margin-top:7px;border-left:3px solid var(--gold);background:rgba(215,185,107,.10);border-radius:0 8px 8px 0;font-size:12px;color:#e7c987}
-
-.grid2{display:grid;grid-template-columns:1.6fr 1fr;gap:18px;align-items:start}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
-.card h3{font-size:15px;color:var(--ink);padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
-.card .body{padding:6px 0}
-.sec-title-meta{margin-left:auto;font-size:11px;font-weight:600;color:var(--muted);font-family:'Inter'}
-
-/* leads table */
-table{width:100%;border-collapse:collapse;font-size:14px}
-th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:10px 18px;font-weight:600}
-td{padding:12px 18px;border-top:1px solid var(--line);vertical-align:top}
-tr.lead-row:hover{background:var(--paper)}
-.score-pill{font-family:'Fraunces';font-weight:600;font-size:18px}
-.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:20px;letter-spacing:.03em}
-.badge.HOT{background:rgba(232,116,110,.14);color:var(--hot)}
-.badge.WARM{background:rgba(215,185,107,.13);color:#e7c987}
-.badge.NURTURE{background:rgba(255,255,255,.045);color:var(--nurture)}
-.lead-name{font-weight:600;color:var(--ink)}
-.lead-why{font-size:12px;color:var(--muted);margin-top:2px;max-width:280px}
-.prod{font-size:13px;color:var(--ink);font-weight:500}
-.prem{font-size:12px;color:var(--teal);font-weight:600;margin-top:2px}
-.verify-btn{font-size:12px;color:var(--ink);background:rgba(255,255,255,.05);padding:6px 11px;border-radius:8px;font-weight:600;border:1px solid rgba(255,255,255,.14)}
-.verify-btn:hover{background:rgba(255,255,255,.08)}
-
-/* signals + governance */
-.sig{padding:12px 18px;border-top:1px solid var(--line)}
-.sig:first-child{border-top:none}
-.sig .src{font-size:11px;font-weight:700;color:var(--teal);text-transform:uppercase;letter-spacing:.03em}
-.sig .live{font-size:9px;background:var(--teal);color:#fff;padding:1px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
-.fresh-badge{font-size:9px;background:rgba(255,255,255,.06);color:var(--muted);padding:1px 7px;border-radius:10px;margin-left:6px;vertical-align:middle;font-weight:600}
-.fresh-badge.hot{background:rgba(215,150,90,.16);color:#e7c987}
-.fresh-tag{font-size:9px;background:rgba(232,116,110,.14);color:var(--hot);padding:1px 6px;border-radius:10px;font-weight:700;vertical-align:middle;letter-spacing:.03em}
-.sig .smp{background:var(--gold)}
-.sig .txt{font-size:13px;color:var(--ink);margin-top:3px}
-.sig .det{font-size:12px;color:var(--muted);margin-top:2px}
-
-.gov{padding:16px 18px}
-.gov .line{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px}
-.gov .ok{color:var(--teal);font-weight:700}
-.gov .warn{color:var(--gold-300);font-weight:900}
-.gov .verdict{margin-top:10px;background:rgba(58,244,200,.10);border:1px solid rgba(58,244,200,.32);color:#6fe6cf;font-size:13px;font-weight:600;padding:10px 12px;border-radius:9px}
-
-/* modal */
-.modal-bg{position:fixed;inset:0;background:rgba(10,26,43,.55);display:flex;align-items:center;justify-content:center;z-index:60;padding:20px}
-.modal{background:var(--card);border-radius:16px;width:min(560px,96vw);max-height:88vh;overflow:auto;box-shadow:0 30px 90px rgba(0,0,0,.4)}
-.modal h3{font-size:17px;color:var(--ink);padding:20px 22px 14px;display:flex;align-items:center;gap:9px}
-.modal .mbody{padding:0 22px 22px}
-.vcheck{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
-.vcheck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex:none;color:#fff}
-.vcheck .ic.p{background:var(--teal)}.vcheck .ic.f{background:var(--hot)}
-.vverdict{margin:14px 0;padding:14px;border-radius:11px;text-align:center;font-family:'Fraunces';font-size:20px}
-.vverdict.ok{background:rgba(58,244,200,.10);color:#6fe6cf}.vverdict.bad{background:rgba(232,116,110,.14);color:var(--hot)}
-.codeblock{background:#0d2c4a;color:#bcd;font-family:ui-monospace,monospace;font-size:11.5px;padding:14px;border-radius:10px;overflow:auto;line-height:1.5;margin-top:10px;white-space:pre-wrap;word-break:break-all}
-.mclose{position:sticky;top:0;float:right;margin:14px 16px 0 0;background:rgba(255,255,255,.045);border-radius:8px;padding:6px 12px;font-weight:600;color:var(--ink)}
-footer.legal{text-align:center;font-size:11px;color:var(--muted);margin-top:34px;line-height:1.6}
-footer.legal a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
-footer.legal a:hover{color:var(--ink, #ddd)}
-/* ===== Responsive ===== */
-@media(max-width:980px){
-  #holoSection > div{grid-template-columns:1fr!important}
-}
-@media(max-width:880px){
-  .kpis{grid-template-columns:repeat(2,1fr)}
-  .grid2{grid-template-columns:1fr}
-  .lead-why{max-width:none}
-  .brief-items{grid-template-columns:1fr}
-  .detail-inner{grid-template-columns:1fr}
-  .wrap{padding:18px 14px 60px}
-}
-@media(max-width:600px){
-  header.top{padding:11px 14px;gap:9px;flex-wrap:wrap}
-  header.top h2{font-size:15px}
-  .top .tag{display:none}
-  .holo-toggle .holo-toggle-label{font-size:9px}
-  .who{font-size:11px;margin-left:8px!important}
-  .kpis{grid-template-columns:1fr 1fr;gap:10px}
-  .kpi .val{font-size:26px}
-  .kpi .val[style]{font-size:22px!important}
-  .toolbar{gap:8px}
-  .toolbar .btn{flex:1 1 100%;text-align:center}
-  .toolbar .hint{display:none}
-  .brief-head{font-size:14px;flex-wrap:wrap}
-  .card h3{font-size:14px;padding:13px 14px;flex-wrap:wrap}
-  th,td{padding:9px 10px;font-size:13px}
-  .leadsWrap-scroll, #leadsWrap{overflow-x:auto}
-  .modal{width:96vw}
-  .codeblock{font-size:10px}
-  .terr-grid{grid-template-columns:repeat(2,1fr)}
-  .ticker{font-size:11px}
-  .ask-msg{max-width:97%}
-  .holo-stage{height:280px!important}
-  .tool-menu{width:100%}.tool-menu summary{width:100%;text-align:center}.tool-menu-panel{position:static;width:100%;grid-template-columns:1fr;margin-top:8px}
-  .trace-grid{grid-template-columns:1fr 1fr}.trace-row{grid-template-columns:1fr}.trace-step:last-child{grid-column:1/-1}
-  .brief-score{font-size:15px}
-  footer.legal{font-size:10px}
-}
-@media(max-width:380px){
-  .kpis{grid-template-columns:1fr}
-  .terr-grid{grid-template-columns:1fr}
-}
-/* ===== V2 additions ===== */
-#briefBar{background:linear-gradient(135deg,#0a2540,#143a5e);color:#fff;border-radius:14px;padding:18px 22px;margin-bottom:18px;box-shadow:var(--shadow);display:none}
-#briefBar.show{display:block}
-.brief-head{display:flex;align-items:center;gap:10px;font-family:'Fraunces';font-size:17px;margin-bottom:12px}
-.brief-head .pulse{width:9px;height:9px;border-radius:50%;background:var(--gold-300);animation:pulse 2s infinite}
-@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(215,185,107,.5)}70%{box-shadow:0 0 0 9px rgba(215,185,107,0)}100%{box-shadow:0 0 0 0 rgba(215,185,107,0)}}
-.brief-items{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.brief-card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:12px 13px;cursor:pointer;transition:background .15s}
-.brief-card:hover{background:rgba(255,255,255,.16)}
-.brief-rank{font-size:11px;color:var(--gold-300);font-weight:700}
-.brief-name{font-weight:600;font-size:13px;margin:3px 0}
-.brief-act{font-size:12px;color:#bcd;line-height:1.4}
-.brief-score{float:right;font-family:'Fraunces';font-size:18px;color:#fff}
-.ticker{background:var(--navy-800);color:#cdd9e6;border-radius:10px;overflow:hidden;white-space:nowrap;margin-bottom:18px;padding:8px 0;position:relative;display:none}
-.ticker.show{display:block}
-.ticker-track{display:inline-block;animation:tick 30s linear infinite;will-change:transform}
-.ticker:hover .ticker-track{animation-play-state:paused}
-.tick{font-size:12px;margin:0 6px}.tick b{color:var(--gold-300)}
-.tick-sep{color:var(--teal-300);margin:0 4px}
-@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-.expander{cursor:pointer;color:var(--ink);font-weight:700;user-select:none;transition:transform .15s;display:inline-block}
-.lead-row.open .expander{transform:rotate(90deg)}
-.detail-row td{background:rgba(255,255,255,.03);padding:0!important}
-.detail-inner{padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.detail-sec h4{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:8px}
-.axis-row{display:flex;align-items:center;gap:8px;margin:5px 0;font-size:12px}
-.axis-lbl{width:130px;color:var(--ink)}
-.axis-track{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden}
-.axis-fill{height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-300))}
-.axis-val{width:34px;text-align:right;font-weight:600;color:var(--ink)}
-.moment{display:flex;gap:9px;margin:7px 0;font-size:12.5px}
-.moment .mdot{width:9px;height:9px;border-radius:50%;background:var(--gold);flex:none;margin-top:4px;box-shadow:0 0 0 3px rgba(192,143,47,.15)}
-.moment .msrc{font-weight:700;color:var(--teal)}
-.nba-box{grid-column:1/-1;background:var(--card);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:9px;padding:12px 14px}
-.nba-box .act{font-weight:600;color:var(--ink);font-size:13px}
-.nba-box .tt{font-size:13px;color:var(--ink);font-style:italic;margin-top:5px}
-.pipe-row{display:flex;align-items:center;gap:10px;margin:9px 0;font-size:12px}
-.pipe-lbl{width:64px;font-weight:700;color:var(--muted)}
-.pipe-track{flex:1;height:14px;background:rgba(255,255,255,.045);border-radius:7px;overflow:hidden}
-.pipe-fill{height:100%}.pipe-fill.HOT{background:var(--hot)}.pipe-fill.WARM{background:var(--gold)}.pipe-fill.NURTURE{background:var(--nurture)}
-.pipe-val{width:70px;text-align:right;font-family:'Fraunces';color:var(--ink)}
-.spark{display:block;margin-top:4px}
-.terr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;margin-top:14px}
-.terr-tile{border-radius:10px;padding:12px 11px;color:#fff;min-height:80px;display:flex;flex-direction:column;justify-content:space-between}
-.terr-name{font-size:12px;font-weight:600;line-height:1.2}
-.terr-idx{font-family:'Fraunces';font-size:21px}
-.terr-stat{font-size:10.5px;opacity:.92;margin-top:3px}
-/* ===== Ask the Territory ===== */
-.ask-card{background:linear-gradient(160deg,#0a2540,#102f4f);color:#fff;border:none}
-.ask-card h3{color:#fff;border-bottom:1px solid rgba(255,255,255,.12)}
-.ask-body{padding:16px 18px}
-.ask-log{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
-.ask-msg{font-size:13.5px;line-height:1.5;border-radius:12px;padding:11px 14px;max-width:92%;white-space:pre-wrap;word-wrap:break-word}
-.ask-msg.user{align-self:flex-end;background:var(--gold);color:#0b1a2b;font-weight:500}
-.ask-msg.bot{align-self:flex-start;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12)}
-.ask-cites{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
-.ask-cite{font-size:10.5px;background:rgba(22,143,137,.25);color:var(--teal-300);border:1px solid rgba(92,196,191,.3);padding:2px 8px;border-radius:20px}
-.ask-receipt{font-size:10.5px;color:var(--gold-300);margin-top:7px;cursor:pointer;text-decoration:underline}
-.ask-form{display:flex;gap:8px}
-.ask-input{flex:1;padding:11px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:14px;font-family:inherit}
-.ask-input::placeholder{color:#8fa6bd}
-.ask-input:focus{outline:none;border-color:var(--teal-300)}
-.ask-send{background:var(--teal);color:#fff;border-radius:10px;padding:0 18px;font-weight:600}
-.ask-send:hover{background:var(--teal-300);color:var(--ink)}
-.ask-chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:12px}
-.ask-chip{font-size:11.5px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#cdd9e6;padding:5px 11px;border-radius:18px;cursor:pointer;transition:background .15s}
-.ask-chip:hover{background:rgba(22,143,137,.3);color:#fff}
-.loader{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
-.btn.gold .loader{border-color:rgba(11,26,43,.3);border-top-color:#0b1a2b}
-@keyframes spin{to{transform:rotate(360deg)}}
-.skeleton{background:linear-gradient(90deg,rgba(255,255,255,.045) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.045) 75%);background-size:200% 100%;animation:sk 1.3s infinite;border-radius:6px;height:14px}
-@keyframes sk{to{background-position:-200% 0}}
-
-/* ===== V8 Genius Seaboard ===== */
-#pulseCard{display:none;margin-bottom:22px}
-#pulseCard.show{display:block}
-#surgeCard{display:none;margin-bottom:22px}
-#surgeCard.show{display:block}
-.surge-row{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:9px}
-.surge-row .area{font-weight:700;color:var(--ink);min-width:150px}
-.surge-row .note{font-size:12px;color:var(--muted);flex:1}
-.surge-row .src{font-size:10px;color:var(--muted)}
-.surge-pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 11px;border-radius:20px;letter-spacing:.02em}
-.surge-pill.rising{background:rgba(58,244,200,.10);color:#7fe6a6;border:1px solid rgba(58,244,200,.32)}
-.surge-pill.steady{background:rgba(215,185,107,.13);color:#e7c987;border:1px solid rgba(215,185,107,.4)}
-.surge-pill.quiet{background:rgba(255,255,255,.045);color:#9aa9bd;border:1px solid rgba(255,255,255,.14)}
-@media(max-width:720px){.surge-row{flex-wrap:wrap}.surge-row .area{min-width:0}}
-.trust-strip{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:center;justify-content:center;padding:11px 14px;margin-bottom:18px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:11px;font-size:12.5px;font-weight:600;color:var(--ink)}
-.trust-strip span{white-space:nowrap}
-.welcome{padding:30px 22px;text-align:center}
-.welcome-hero{font-size:20px;font-weight:800;color:var(--ink);max-width:620px;margin:0 auto 22px;line-height:1.35}
-.welcome-steps{display:grid;gap:13px;max-width:560px;margin:0 auto 20px;text-align:left}
-.welcome-step{display:flex;gap:13px;align-items:flex-start;font-size:14px;color:var(--ink)}
-.welcome-step .num{flex:none;width:26px;height:26px;border-radius:50%;background:var(--navy);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:13px}
-.welcome-cta{font-size:13px;color:var(--muted)}
-@media(max-width:720px){.welcome-hero{font-size:17px}}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card)}
-.seg button{background:var(--card);color:var(--ink);font-size:12.5px;font-weight:600;padding:7px 13px;border-right:1px solid var(--line)}
-.seg button:last-child{border-right:none}
-.seg button.active{background:var(--navy);color:#fff}
-.pulse-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:14px 18px;border-bottom:1px solid var(--line)}
-.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink);font-weight:600;cursor:pointer}
-.pulse-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;padding:16px 18px}
-.pulse-tile{border-radius:12px;padding:13px 13px;color:#fff;min-height:104px;display:flex;flex-direction:column;justify-content:space-between;cursor:default;position:relative;overflow:hidden}
-.pulse-tile.SURGING{background:linear-gradient(160deg,#0b7d77,#168f89)}
-.pulse-tile.ACTIVE{background:linear-gradient(160deg,#b07f1f,#c08f2f)}
-.pulse-tile.QUIET{background:linear-gradient(160deg,#52647a,#9aa9bd)}
-.pulse-tile.GAP{background:repeating-linear-gradient(45deg,#3b4a5c,#3b4a5c 8px,#43536a 8px,#43536a 16px);color:#cdd9e6}
-.pt-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
-.pt-state{font-family:'Fraunces';font-size:18px;line-height:1}
-.pt-name{font-size:10.5px;opacity:.9;margin-top:3px}
-.pt-pulse{font-family:'Fraunces';font-size:24px}
-.pt-bucket{font-size:9px;font-weight:700;letter-spacing:.04em;background:rgba(255,255,255,.22);padding:2px 7px;border-radius:10px}
-.pt-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
-.pt-badge{font-size:8.5px;font-weight:700;letter-spacing:.03em;padding:1px 6px;border-radius:9px;background:rgba(255,255,255,.18)}
-.pt-badge.live{background:var(--teal-300);color:#04141a}
-.pt-badge.sample{background:rgba(255,255,255,.28)}
-.pt-count{font-size:10px;opacity:.92;margin-top:4px}
-.pulse-legend{display:flex;gap:14px;flex-wrap:wrap;padding:0 18px 16px;font-size:11px;color:var(--muted)}
-.pulse-legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
-/* signed brief modal parts */
-.bp{border-top:1px solid var(--line);padding:13px 0}
-.bp:first-child{border-top:none}
-.bp-title{font-family:'Fraunces';font-size:15px;color:var(--ink);display:flex;align-items:center;gap:8px}
-.bp-body{font-size:13px;color:var(--ink);margin:5px 0 7px;line-height:1.5}
-.vchip{font-size:10.5px;font-weight:700;padding:2px 9px;border-radius:20px}
-.vchip.allow{background:rgba(58,244,200,.10);color:#6fe6cf}
-.vchip.deny{background:rgba(232,116,110,.14);color:var(--hot)}
-.bp-formula{font-size:11px;color:var(--muted)}
-.bp-formula code{color:var(--teal)}
-.consensus-bar{margin-top:12px;background:#0d2c4a;color:#bcd;border-radius:10px;padding:11px 13px;font-size:12px;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-.consensus-bar .k{font-family:'Fraunces';color:var(--gold-300);font-size:15px}
-
-/* ===== V8.1 P0 gap-fill — chips, tiers, badges, angles, outcomes ===== */
-.lead-chips{display:flex;flex-wrap:wrap;gap:5px;margin:5px 0 2px}
-.urg-chip{font-size:9.5px;font-weight:700;letter-spacing:.03em;padding:2px 8px;border-radius:20px;white-space:nowrap}
-.urg-chip.act-now{background:rgba(232,116,110,.14);color:var(--hot);box-shadow:0 0 0 1px rgba(192,57,43,.25)}
-.urg-chip.warm{background:rgba(215,185,107,.13);color:#e7c987}
-.urg-chip.cold{background:rgba(255,255,255,.045);color:var(--nurture)}
-.evt-tag{font-size:9.5px;font-weight:600;background:rgba(255,255,255,.06);color:var(--ink);padding:2px 8px;border-radius:20px;white-space:nowrap}
-.evt-tag.unsourced{background:rgba(215,185,107,.10);color:#c9bd9a;text-decoration:line-through dotted}
-.wealth-tag{font-size:9.5px;font-weight:700;background:rgba(58,244,200,.10);color:#6fe6cf;padding:2px 8px;border-radius:20px;border:1px solid rgba(58,244,200,.32);white-space:nowrap}
-.lapse-badge{font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
-.lapse-badge.low{background:rgba(58,244,200,.10);color:#6fe6cf}
-.lapse-badge.mid{background:rgba(215,185,107,.13);color:#e7c987}
-.lapse-badge.high{background:rgba(232,116,110,.14);color:var(--hot)}
-.outcome-row{display:flex;gap:5px;margin-top:8px;flex-wrap:wrap}
-.oc-btn{font-size:11px;font-weight:600;padding:5px 9px;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
-.oc-btn.sold:hover{background:rgba(58,244,200,.10);border-color:rgba(58,244,200,.32)}
-.oc-btn.meet:hover{background:rgba(215,185,107,.13);border-color:rgba(215,185,107,.4)}
-.oc-btn.no:hover{background:rgba(232,116,110,.14);border-color:rgba(232,116,110,.4)}
-.oc-btn.logged{background:var(--navy);color:#fff;border-color:var(--ink)}
-.oc-btn:disabled{opacity:.55;cursor:default}
-.learn-badge{margin-left:auto;font-size:11px;font-weight:600;color:#6fe6cf;background:rgba(58,244,200,.10);border:1px solid rgba(58,244,200,.32);padding:3px 9px;border-radius:20px}
-/* expanded-row advisory tiers */
-.adv-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.adv-box{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
-.adv-h{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
-.adv-v{font-family:'Fraunces';font-size:20px;color:var(--ink);margin:2px 0}
-.adv-note{font-size:10.5px;color:var(--muted);font-style:italic}
-.adv-list{margin:6px 0 0;padding-left:15px;font-size:11px;color:var(--ink)}
-.adv-list li{margin:2px 0}
-.adv-foot{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin-top:8px}
-/* 3 ranked copyable angles in the signed brief */
-.angles{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
-.angle{background:rgba(255,255,255,.03);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:8px;padding:9px 11px}
-.angle-head{display:flex;align-items:center;gap:8px}
-.angle-rank{font-family:'Fraunces';color:var(--gold);font-weight:600;font-size:13px}
-.angle-label{font-size:11.5px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.03em}
-.copy-btn{margin-left:auto;font-size:10.5px;font-weight:600;background:rgba(255,255,255,.05);color:var(--ink);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:3px 9px}
-.copy-btn:hover{background:rgba(255,255,255,.08)}
-.copy-btn.copied{background:var(--teal);color:#fff;border-color:var(--teal)}
-.angle-line{font-size:12.5px;color:var(--ink);line-height:1.5;margin-top:5px}
-.brief-tiers{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
-/* black-box advisory cards */
-.adv-cards{display:flex;flex-direction:column;gap:10px;margin-top:12px}
-.adv-card{border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--card)}
-.adv-card-h{font-size:12.5px;font-weight:700;color:var(--ink)}
-.adv-card-b{font-size:11.5px;color:var(--ink);margin-top:4px;line-height:1.5}
-.adv-card-b a{color:var(--teal)}
-.adv-card-b .evt-tag{margin:2px 3px 2px 0;display:inline-block}
-
-@media(max-width:380px){
-  .pulse-grid{grid-template-columns:1fr 1fr}
-  .seg button{padding:6px 9px;font-size:11px}
-  .adv-grid{grid-template-columns:1fr}
-  .learn-badge{margin-left:0;flex-basis:100%}
-}
-
-/* ===== V8.2 P1 gap-fill — receptivity meter · likely-gap chip · liquidity flag · benchmark ===== */
-.recept-meter{display:inline-flex;align-items:center;gap:6px;margin:5px 0 2px}
-.recept-lbl{font-size:9.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
-.recept-track{width:78px;height:7px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden}
-.recept-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--teal))}
-.recept-val{font-size:10px;font-weight:700;color:var(--ink);font-family:'Fraunces'}
-.gap-chip{font-size:9.5px;font-weight:700;background:rgba(215,185,107,.13);color:#e7c987;border:1px solid rgba(215,185,107,.4);padding:2px 8px;border-radius:20px;white-space:nowrap}
-.gap-chip.covered{background:rgba(58,244,200,.10);color:#6fe6cf;border-color:rgba(58,244,200,.32)}
-.liq-flag{font-size:9.5px;font-weight:700;background:rgba(255,255,255,.05);color:var(--ink);border:1px solid rgba(91,141,238,.35);padding:2px 8px;border-radius:20px;white-space:nowrap}
-.liq-flag.live{background:rgba(215,150,90,.14);color:#f0a878;border-color:rgba(215,150,90,.4)}
-/* Producer Benchmark panel */
-#benchCard{display:none;margin-bottom:22px}
-#benchCard.show{display:block}
-.bench-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;padding:16px 18px}
-.bench-stat{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px 13px}
-.bench-stat .bh{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
-.bench-stat .bv{font-family:'Fraunces';font-size:24px;color:var(--ink);margin-top:3px}
-.bench-table{width:100%;border-collapse:collapse;font-size:13px}
-.bench-table th{padding:9px 18px}.bench-table td{padding:9px 18px;border-top:1px solid var(--line)}
-.bench-bar{height:8px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden;min-width:70px}
-.bench-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--teal-300))}
-.bench-note{padding:12px 18px;font-size:11.5px;color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
-/* V8.3 P2-3 wealth ladder */
-.wladder{display:flex;gap:3px;margin:5px 0 2px;max-width:100%}
-.wladder.compact{gap:2px}
-.wseg{flex:1 1 0;min-width:0;border-radius:5px;background:rgba(255,255,255,.045);border:1px solid var(--line);padding:3px 4px;text-align:center;font-size:8.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wladder.compact .wseg{font-size:0;padding:4px 2px;height:8px}
-.wseg.on{background:linear-gradient(90deg,var(--teal),var(--teal-300));color:#fff;border-color:var(--teal)}
-.wladder.compact .wseg.on{background:linear-gradient(90deg,var(--gold),var(--gold-300))}
-.wladder-wrap{margin:4px 0}
-.wladder-cap{font-size:10px;color:var(--muted);font-weight:600;margin-bottom:3px}
-.proxy-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-.proxy-chip{font-size:10px;font-weight:600;background:rgba(215,185,107,.12);color:var(--ink);border:1px solid rgba(215,185,107,.4);padding:3px 9px;border-radius:20px}
-.proxy-chip .est{color:var(--gold);font-weight:700}
-/* V8.3 P2-2 Liquidity Watch */
-.liqwatch{background:rgba(255,255,255,.035);border:1px solid rgba(91,141,238,.35);border-radius:11px;padding:11px 13px;margin-top:8px}
-.liqwatch .lw-h{font-size:11px;font-weight:700;color:var(--ink);text-transform:uppercase;letter-spacing:.03em;display:flex;align-items:center;gap:6px}
-.liqwatch .lw-mode{margin-left:auto;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(255,255,255,.05);color:var(--ink);border:1px solid rgba(91,141,238,.35)}
-.liqwatch .lw-mode.live{background:rgba(58,244,200,.10);color:#6fe6cf;border-color:rgba(58,244,200,.32)}
-.liqwatch .lw-mode.sample{background:rgba(232,116,110,.12);color:#ff9b8f;border-color:rgba(232,116,110,.4)}
-.liqwatch .lw-grid{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink)}
-.liqwatch .lw-grid b{font-family:'Fraunces';font-size:16px;display:block;color:var(--ink)}
-.liqwatch .lw-foot{font-size:10.5px;color:var(--muted);margin-top:8px;font-style:italic}
-/* V8.3 P2-1 Lead Routing */
-#routingCard{display:none;margin-bottom:22px}
-#routingCard.show{display:block}
-.route-roster{display:flex;flex-wrap:wrap;gap:8px;padding:14px 18px}
-.route-agent{font-size:11.5px;font-weight:600;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--ink)}
-.route-agent.real{background:rgba(58,244,200,.10);border-color:rgba(58,244,200,.32);color:#6fe6cf}
-.route-agent .illus{color:var(--gold);font-weight:700;font-size:10px}
-.route-table{width:100%;border-collapse:collapse;font-size:13px}
-.route-table th{padding:9px 18px}.route-table td{padding:10px 18px;border-top:1px solid var(--line)}
-.route-rec{font-weight:700;color:var(--ink)}
-.route-rec .illus{color:var(--gold);font-size:10px;font-weight:700;margin-left:5px}
-.route-rec .realtag{color:#6fe6cf;font-size:10px;font-weight:700;margin-left:5px}
-.route-score{font-family:'Fraunces';font-size:17px;color:var(--teal)}
-.route-basis{font-size:11px;color:var(--muted);margin-top:2px}
-.route-note{padding:12px 18px;font-size:11.5px;color:var(--muted);font-style:italic;border-top:1px solid var(--line)}
-/* Real Prospects panel — public B2B records (separate from illustrative leads) */
-#realCard{display:none;margin-bottom:22px}
-#realCard.show{display:block}
-#frontierCard{display:none;margin-bottom:22px}
-#frontierCard.show{display:block}
-.frontier-badge{display:inline-flex;align-items:center;width:max-content;border-radius:999px;padding:3px 8px;
-  font-size:9px;font-weight:900;letter-spacing:.06em;background:rgba(92,196,191,.12);color:#6fe6cf;
-  border:1px solid rgba(92,196,191,.28)}
-.frontier-signal{font-size:11px;line-height:1.45;color:var(--ink);padding:9px 10px;
-  border:1px solid rgba(92,196,191,.18);background:rgba(92,196,191,.05);border-radius:8px}
-.frontier-limit{font-size:10.5px;line-height:1.4;color:var(--muted);padding-top:8px;border-top:1px solid var(--line)}
-.real-banner{margin:0 18px 12px;padding:11px 14px;background:rgba(215,185,107,.12);border:1px solid rgba(215,185,107,.4);border-left:4px solid var(--gold);border-radius:10px;font-size:12px;color:#e7c987;line-height:1.5}
-.real-tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 18px 12px}
-.real-states{font-size:12px;color:var(--muted);font-weight:600;display:inline-flex;align-items:center;gap:6px}
-.real-states input{width:90px;font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;color:var(--ink)}
-.real-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
-.real-table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:680px}
-.real-table th{padding:9px 14px;text-align:left;font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);white-space:nowrap}
-.real-table td{padding:11px 14px;border-top:1px solid var(--line);vertical-align:top}
-.real-name{font-weight:700;color:var(--ink)}
-.real-sub{font-size:11px;color:var(--muted);margin-top:2px}
-.real-angle{color:#6fe6cf;font-weight:600}
-.real-why{font-size:11px;color:var(--muted);margin-top:3px;max-width:260px}
-.real-cq{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap}
-.real-cq.addr{background:rgba(58,244,200,.10);color:#6fe6cf;border:1px solid rgba(58,244,200,.32)}
-.real-cq.entity{background:rgba(255,255,255,.045);color:#46566b;border:1px solid var(--line)}
-.real-cq.sample{background:rgba(232,116,110,.14);color:#ff9b8f;border:1px solid rgba(232,116,110,.4)}
-.real-cite{font-size:11px;color:var(--teal);text-decoration:none}
-.real-cite:hover{text-decoration:underline}
-.real-verify{font-size:11px;font-weight:700;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:7px;padding:5px 10px;cursor:pointer;white-space:nowrap}
-.real-verify:hover{background:rgba(255,255,255,.05)}
-.real-mode{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px}
-.real-mode.live{background:rgba(58,244,200,.10);color:#6fe6cf}
-.real-mode.sample{background:rgba(232,116,110,.14);color:#ff9b8f}
-.real-num{font-variant-numeric:tabular-nums;font-weight:700;color:var(--ink);white-space:nowrap}
-.real-zip{font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
-/* Tax Territories + Opt-In + WARN panels (start hidden; reuse real-table styling) */
-#taxCard,#optinCard,#warnCard{display:none;margin-bottom:22px}
-#taxCard.show,#optinCard.show,#warnCard.show{display:block}
-/* Momentum chip · confidence line · cannot-contact badge · demo note */
-.trend-chip{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;font-weight:800;
-  letter-spacing:.02em;white-space:nowrap}
-.trend-chip.heating{background:rgba(232,116,110,.14);color:#ff9b8f}
-.trend-chip.cooling{background:rgba(91,141,238,.16);color:#9fbef0}
-.trend-chip.steady{background:rgba(255,255,255,.06);color:#aebccf}
-.conf-line{margin:5px 0 2px;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
-.est-tag{display:inline-block;padding:1px 6px;border-radius:8px;background:rgba(215,185,107,.16);color:#e7c987;
-  font-weight:800;font-size:10px;letter-spacing:.05em}
-.blocked-badge{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:900;
-  letter-spacing:.03em;background:#7a0d0d;color:#fff;white-space:nowrap}
-.contact-review{display:inline-block;padding:2px 9px;border-radius:11px;font-size:11px;font-weight:800;
-  letter-spacing:.02em;background:rgba(215,185,107,.13);color:#e7c987;border:1px solid rgba(215,185,107,.4);white-space:nowrap}
-.score-pill.blocked{color:#7a0d0d;font-weight:900}
-.score-pill.blocked s{color:var(--muted);font-weight:600;margin-right:3px}
-.badge.BLOCKED{background:#7a0d0d;color:#fff}
-.lead-row.blocked-row{opacity:.78}
-.demo-note{margin:5px 0;font-size:11px;color:#e7c987;background:rgba(215,185,107,.13);border-left:3px solid var(--gold);
-  padding:5px 9px;border-radius:0 6px 6px 0;line-height:1.35}
-.frontier-note{margin:0 0 16px;padding:11px 15px;border-radius:10px;background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.12);color:#aebccf;font-size:12.5px;line-height:1.5}
-.frontier-note strong{color:var(--teal)}
-.frontier-note .est-tag{margin:0 2px}
-.tax-sub-h{margin:4px 18px 6px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--teal)}
-.optin-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;padding:0 18px 18px}
-.optin-form{display:flex;flex-direction:column;gap:11px}
-.optin-row{display:grid;grid-template-columns:1fr 1fr;gap:11px}
-.optin-form label{font-size:11px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:5px}
-.optin-form input,.optin-form select{font:inherit;font-size:13px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--card);width:100%;box-sizing:border-box}
-.optin-consent{flex-direction:row!important;align-items:flex-start;gap:9px;font-size:12px;color:var(--ink);font-weight:600;background:rgba(215,185,107,.12);border:1px solid rgba(215,185,107,.4);border-radius:9px;padding:11px 13px}
-.optin-consent input{width:17px;height:17px;margin-top:1px;flex:0 0 auto}
-.optin-result{font-size:12px;min-height:18px;line-height:1.5}
-.optin-result.ok{color:#6fe6cf}
-.optin-result.err{color:#ff9b8f}
-.optin-list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.optin-lead{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:9px}
-.optin-lead .nm{font-weight:700;color:var(--ink)}
-.optin-lead .meta{font-size:11px;color:var(--muted);margin-top:3px}
-.optin-consent-badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:rgba(58,244,200,.10);color:#6fe6cf;border:1px solid rgba(58,244,200,.32);margin-top:5px}
-.desk-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;padding:0 18px 14px}
-.desk-stat{border:1px solid var(--line);border-radius:11px;padding:12px;background:rgba(255,255,255,.025)}
-.desk-stat b{display:block;font-family:'Fraunces';font-size:24px;color:var(--ink)}
-.desk-stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.opp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 18px 18px}
-.opp-card{border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.025);padding:14px;display:grid;gap:10px}
-.opp-head{display:flex;gap:10px;align-items:flex-start}.opp-head .real-name{font-size:14px}
-.opp-priority{margin-left:auto;font-family:'Fraunces';font-size:22px;color:var(--gold-300)}
-.opp-meta,.opp-source{font-size:11px;color:var(--muted)}
-.opp-angle{font-size:12px;color:var(--ink);line-height:1.45}
-.opp-next{font-size:12px;padding:9px 10px;border-left:3px solid var(--teal);background:rgba(58,244,200,.07);border-radius:0 8px 8px 0}
-.opp-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
-.opp-stage{font:inherit;font-size:11px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
-.gate{font-size:10px;font-weight:800;border-radius:999px;padding:3px 8px}
-.gate.review{color:#e7c987;background:rgba(215,185,107,.13)}.gate.ready{color:#6fe6cf;background:rgba(58,244,200,.10)}
-.gate.blocked{color:#ff9b8f;background:rgba(232,116,110,.14)}
-.real-verify.workflow{border-color:rgba(58,244,200,.24);color:var(--ink)}
-.real-verify.workflow.ready{background:rgba(58,244,200,.12);border-color:rgba(58,244,200,.45);color:#6fe6cf}
-.workflow-modal{width:min(760px,96vw)}
-.workflow-guard{font-size:12px;line-height:1.55;color:var(--muted);background:rgba(215,185,107,.09);border:1px solid rgba(215,185,107,.28);border-radius:10px;padding:11px 13px;margin-bottom:14px}
-.workflow-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.workflow-field{font-size:11px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:5px}
-.workflow-field.wide{grid-column:1/-1}
-.workflow-field input,.workflow-field select{font:inherit;font-size:13px;padding:9px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--card);width:100%;box-sizing:border-box}
-.workflow-field small{font-size:10px;font-weight:500;line-height:1.35}
-.workflow-checks{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
-.workflow-checks label{font-size:12px;color:var(--ink);display:flex;gap:8px;align-items:flex-start;padding:9px;border:1px solid var(--line);border-radius:8px}
-.workflow-checks input{width:16px;height:16px;flex:none}
-.workflow-actions{display:flex;gap:9px;justify-content:flex-end;margin-top:16px}
-.workflow-result{font-size:12px;color:#ff9b8f;margin-top:10px;min-height:18px}
-.call-sheet-head{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px;gap:12px}
-.call-sheet-head span{font-size:10px;font-weight:900;letter-spacing:.08em;color:#6fe6cf;background:rgba(58,244,200,.1);border-radius:999px;padding:5px 9px}
-.call-sheet-head b{font-size:11px;color:var(--muted)}
-.call-sheet-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0 14px}
-.call-sheet-grid>div{display:flex;flex-direction:column;gap:4px;padding:11px;border:1px solid var(--line);border-radius:10px}
-.call-sheet-grid small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
-.call-sheet-grid strong{font-size:12px;color:var(--ink);word-break:break-word}
-.call-sheet-grid a,.call-sheet-grid span{font-size:11px;color:var(--teal)}
-.call-script{font-family:'Fraunces';font-size:17px;line-height:1.5;color:var(--ink);border-left:3px solid var(--teal);padding:12px 14px;background:rgba(58,244,200,.06)}
-.workflow-modal h4{margin:16px 0 8px;color:var(--ink)}
-.workflow-modal li{font-size:12px;color:var(--muted);margin:6px 0;line-height:1.45}
-.policy-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:0 18px 18px}
-.policy-item{border:1px solid var(--line);border-radius:11px;padding:12px}.policy-item h4{font-size:12px}.policy-item p{font-size:11px;color:var(--muted);margin-top:4px}
-@media(max-width:820px){.desk-summary,.opp-grid,.policy-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:560px){.desk-summary,.opp-grid,.policy-grid{grid-template-columns:1fr}.source-stamp{display:none}}
-@media(max-width:620px){.workflow-form,.workflow-checks,.call-sheet-grid{grid-template-columns:1fr}}
-@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
-@media(max-width:720px){.optin-grid{grid-template-columns:1fr}.optin-row{grid-template-columns:1fr}}
-</style>
-<link rel="stylesheet" href="holo.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07101d">
+  <meta name="description" content="David Leads turns official public business signals into a clear, source-linked Eastern U.S. research workspace.">
+  <title>David Leads | Eastern Market Cockpit</title>
+  <link rel="stylesheet" href="fonts/fonts.css">
+  <link rel="stylesheet" href="holo.css">
 </head>
 <body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
 
-<div id="boot">
-  <div class="login-card">
-    <div class="brandrow">
-      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
-        <rect x="2" y="2" width="36" height="36" rx="9" fill="#0a2540"/>
-        <path d="M11 27V13l9 5 9-5v14" stroke="#c08f2f" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-        <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
-      </svg>
-      <h1>David Leads</h1>
+  <div id="boot" class="boot" role="status" aria-live="polite">
+    <div class="boot-mark" aria-hidden="true">
+      <span></span><span></span><span></span>
     </div>
-    <div class="login-sub">Opening the governed public-record opportunity deskâ€¦</div>
+    <p>Opening the live Eastern Market Cockpit</p>
   </div>
-</div>
 
-<!-- ============ LOGIN ============ -->
-<canvas id="bg3d"></canvas>
-<div id="login" class="hidden">
-  <div class="login-card">
-    <div class="brandrow">
-      <svg class="logo" viewBox="0 0 40 40" fill="none" aria-label="David Leads">
-        <rect x="2" y="2" width="36" height="36" rx="9" fill="#0a2540"/>
-        <path d="M11 27V13l9 5 9-5v14" stroke="#c08f2f" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-        <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
+  <header class="app-header">
+    <a class="brand" href="/" aria-label="David Leads home">
+      <svg class="brand-mark" viewBox="0 0 42 42" aria-hidden="true">
+        <rect x="1" y="1" width="40" height="40" rx="12" fill="currentColor"></rect>
+        <path d="M11.5 28.5v-15l9.5 5.3 9.5-5.3v15" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+        <circle cx="21" cy="24" r="3.2" fill="#76f2d1"></circle>
       </svg>
-      <h1>David Leads</h1>
-    </div>
-    <div class="login-sub">Your governed territory desk: what to research, why now, the next permitted action, and the public evidence behind every opportunity.</div>
-    <div class="field"><label for="u">Username</label><input id="u" autocomplete="username" placeholder="Assigned username"></div>
-    <div class="field"><label for="p">Password</label><input id="p" type="password" autocomplete="current-password" placeholder="Password"></div>
-    <div class="field"><label for="k">Secure Access Key</label><input id="k" type="password" autocomplete="off" placeholder="Access key from your secret store"></div>
-    <button class="btn gold" style="width:100%;margin-top:6px" id="loginBtn" onclick="doLogin()">Access Intelligence Console</button>
-    <div class="login-err" id="loginErr"></div>
-    <div class="trust-foot"><span class="dot"></span> Private session · source-classified evidence · honest by design</div>
-  </div>
-</div>
+      <span class="brand-copy">
+        <strong>David Leads</strong>
+        <small>Eastern Market Cockpit</small>
+      </span>
+    </a>
 
-<!-- ============ APP ============ -->
-<div id="app" class="hidden">
-  <header class="top">
-    <svg class="logo" viewBox="0 0 40 40" fill="none" style="width:30px;height:30px">
-      <rect x="2" y="2" width="36" height="36" rx="9" fill="#143a5e"/>
-      <path d="M11 27V13l9 5 9-5v14" stroke="#d7b96b" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>
-      <circle cx="20" cy="23" r="3" fill="#5cc4bf"/>
-    </svg>
-    <h2>David Leads</h2>
-    <span class="tag">Lead Operations</span>
-    <div class="spacer"></div>
-    <span class="source-stamp unverified" id="sourceStamp">Runtime source · checking</span>
-    <span class="who" id="who" style="margin-left:14px"></span>
-    <button class="logout-btn" type="button" onclick="doLogout()">Sign out</button>
+    <nav class="role-switch" aria-label="Workspace view">
+      <button class="role-button active" data-view-target="leads" type="button">Broker view</button>
+      <button class="role-button" data-view-target="investors" type="button">Investor view</button>
+    </nav>
+
+    <div class="header-status">
+      <span class="live-pill"><i></i>Live public data</span>
+      <span id="sourceStamp" class="source-stamp">Checking release</span>
+    </div>
   </header>
 
-  <div class="wrap">
-    <div id="briefBar"></div>
+  <main id="workspace" class="workspace">
+    <aside class="territory-panel" aria-label="Eastern U.S. territory selector">
+      <div class="territory-heading">
+        <span class="eyebrow">Territory</span>
+        <h2>Choose the market</h2>
+        <p>Select the entire East, a region, or a single state. Results update from official sources.</p>
+      </div>
 
-    <div class="kpis" id="kpis"></div>
+      <div id="regionButtons" class="region-buttons" aria-label="Choose a region"></div>
 
-    <div class="toolbar">
-      <button class="btn" id="runLive" onclick="runIntel(true)">⚡ Find Leads (live public records)</button>
-      <button class="btn ghost" id="runSample" onclick="runIntel(false)">See an Example (offline)</button>
-      <button class="btn ghost" id="btnPulse" onclick="openPulse()">🌊 Coverage Map</button>
-      <button class="btn ghost" id="btnSurge" onclick="openSurge()">📈 Rising Areas</button>
-      <button class="btn ghost" id="btnReal" onclick="openRealLeads()">Opportunity Desk</button>
-      <button class="btn ghost" id="btnFrontier" onclick="openFrontiers()">Frontier Radar</button>
-      <details class="tool-menu">
-        <summary>More tools ▾</summary>
-        <div class="tool-menu-panel">
-          <button class="btn ghost" id="btnTerr" onclick="openTerritory()">🗺️ Territory Map</button>
-          <button class="btn ghost" id="btnModel" onclick="openModel()">🔓 Why leads rank</button>
-          <button class="btn ghost" id="btnBench" onclick="openBenchmark()">📊 Results</button>
-          <button class="btn ghost" id="btnRouting" onclick="openRouting()">🧭 Best-fit Advisor</button>
-          <button class="btn ghost" id="btnWarn" onclick="openWarn()">⚠️ Layoff Alerts</button>
-          <button class="btn ghost" id="btnTax" onclick="openTax()">🏦 Wealth Map</button>
-          <button class="btn ghost" id="btnOptin" onclick="openOptin()">✍️ Opt-In</button>
-          <button class="btn ghost" id="btnCsv" onclick="exportCSV()">⬇️ Export CSV</button>
-          <button class="btn ghost" id="btnCrm" onclick="pushToCRM()">🔗 Push to CRM</button>
-          <button class="btn ghost" id="btnPolicy" onclick="openDataPolicy()">Data &amp; Outreach Policy</button>
+      <div class="state-heading">
+        <span>States</span>
+        <button id="clearStates" class="text-button" type="button">Clear</button>
+      </div>
+      <div id="stateButtons" class="state-buttons" aria-label="Choose states"></div>
+
+      <div class="territory-summary" aria-live="polite">
+        <span class="territory-orbit" aria-hidden="true"></span>
+        <div>
+          <strong id="territoryCount">27 markets selected</strong>
+          <small id="territoryLabel">Eastern United States</small>
         </div>
-      </details>
-      <span class="hint" id="runHint">Ranks public business and territory signals for broker research; it does not grant permission to contact.</span>
-    </div>
+      </div>
 
-    <div class="ticker" id="tickerBar"></div>
+      <div class="sidebar-proof">
+        <span class="proof-kicker">Public-data boundary</span>
+        <p>Company and facility records only. No personal profiles, hidden contacts, or automatic permission to call.</p>
+        <button id="openPolicy" class="link-button" type="button">How the contact gate works</button>
+      </div>
+    </aside>
 
-    <div class="frontier-note" id="frontierNote">
-      Modeled lead segments show public evidence and uncertainty. Named public businesses enter
-      the Opportunity Desk as research-only until a human records outreach clearance.
-    </div>
-
-    <div class="trust-strip" id="trustStrip">
-      <span>✅ Public records only</span>
-      <span>🔒 No purchased personal profiles</span>
-      <span>🚫 Nothing invented</span>
-      <span>🛡️ Contact gate shown explicitly</span>
-    </div>
-
-    <!-- V8 Territory Pulse — color-coded seaboard coverage map -->
-    <div class="card" id="pulseCard">
-      <h3>🌊 Coverage Map — Atlantic Seaboard <span class="sec-title-meta" id="pulseMeta"></span></h3>
-      <div class="pulse-tools">
-        <div class="seg" id="regionSeg">
-          <button data-region="ALL" class="active" onclick="selRegion('ALL')">All</button>
-          <button data-region="NE" onclick="selRegion('NE')">Northeast</button>
-          <button data-region="MID" onclick="selRegion('MID')">Mid-Atlantic</button>
-          <button data-region="SE" onclick="selRegion('SE')">Southeast</button>
+    <section class="content-shell">
+      <section class="hero" aria-labelledby="pageTitle">
+        <div>
+          <span class="eyebrow">Official signals. Human judgment.</span>
+          <h1 id="pageTitle">See where business is moving.</h1>
+          <p id="scopeSummary">Loading the latest official records across the Eastern United States.</p>
         </div>
-        <label class="chk"><input type="checkbox" id="pulseLive" onchange="loadPulse()"> Live counts (real-time)</label>
-        <span class="hint" id="pulseHint" style="margin-left:auto">Ranked by how active each area's public records are · tick Live for real-time counts.</span>
-      </div>
-      <div class="pulse-grid" id="pulseGrid"></div>
-      <div class="pulse-legend">
-        <span><i style="background:#168f89"></i>Very active</span>
-        <span><i style="background:#c08f2f"></i>Active</span>
-        <span><i style="background:#9aa9bd"></i>Quiet</span>
-        <span><i style="background:#43536a"></i>Not yet covered</span>
-      </div>
-    </div>
+        <div class="hero-actions">
+          <span id="freshness" class="freshness">Waiting for live sources</span>
+          <button id="refreshData" class="primary-button" type="button">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M16.5 6.2A7 7 0 1 0 17 12M16.5 6.2V2.5m0 3.7h-3.7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            Refresh live data
+          </button>
+        </div>
+      </section>
 
-    <!-- Where Need Is Rising — plain-English surge readout -->
-    <div class="card" id="surgeCard">
-      <h3>📈 Where Need Is Rising <span class="sec-title-meta" id="surgeMeta"></span></h3>
-      <div class="real-tools">
-        <label class="real-states">Areas:
-          <input type="text" id="surgeStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
-        </label>
-        <button class="btn ghost" id="surgeReload" onclick="loadSurge()">↻ Refresh</button>
-        <span class="hint" id="surgeHint" style="margin-left:auto">Areas with more new public records than usual this month.</span>
-      </div>
-      <div id="surgeBody"><div style="padding:20px;color:var(--muted)">Finding where need is rising…</div></div>
-    </div>
+      <section class="metric-grid" aria-label="Live market summary">
+        <article class="metric-card metric-primary">
+          <span class="metric-label">Live organizations</span>
+          <strong id="metricOrganizations">--</strong>
+          <small id="metricOrganizationsSub">Official records in this view</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Markets represented</span>
+          <strong id="metricStates">--</strong>
+          <small id="metricStatesSub">Select one state for a deeper pull</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Official sources live</span>
+          <strong id="metricSources">--</strong>
+          <small id="metricSourcesSub">Unavailable sources stay visible</small>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">Research next</span>
+          <strong id="metricResearch">--</strong>
+          <small>Each record links to its source</small>
+        </article>
+        <article class="metric-card metric-gated">
+          <span class="metric-label">Cleared to contact</span>
+          <strong id="metricCleared">0</strong>
+          <small>Public data never creates consent</small>
+        </article>
+      </section>
 
-    <!-- V8.2 P1-F Producer Benchmark — conversion funnel from logged outcomes -->
-    <div class="card" id="benchCard">
-      <h3>📊 Producer Benchmark — Conversion Funnel <span class="sec-title-meta" id="benchMeta"></span></h3>
-      <div id="benchBody"><div style="padding:20px;color:var(--muted)">Loading funnel…</div></div>
-    </div>
+      <nav class="workspace-tabs" aria-label="Market cockpit sections">
+        <button class="workspace-tab active" data-view-target="leads" type="button">
+          <span>01</span> Lead explorer
+        </button>
+        <button class="workspace-tab" data-view-target="markets" type="button">
+          <span>02</span> Market coverage
+        </button>
+        <button class="workspace-tab" data-view-target="investors" type="button">
+          <span>03</span> Investor proof
+        </button>
+      </nav>
 
-    <!-- V8.3 P2-1 Lead Routing — best-fit advisor matching -->
-    <div class="card" id="routingCard">
-      <h3>🧭 Lead Routing — Best-Fit Advisor <span class="sec-title-meta" id="routingMeta"></span></h3>
-      <div id="routingBody"><div style="padding:20px;color:var(--muted)">Loading routing table…</div></div>
-    </div>
-
-    <!-- Tax-Territory Intelligence — aggregate IRS public statistics (territory targeting, not individuals) -->
-    <div class="card" id="taxCard">
-      <h3>🏦 Wealth Map — Affluent ZIPs &amp; Money-in-Motion <span class="sec-title-meta" id="taxMeta"></span></h3>
-      <div class="real-banner" id="taxBanner">
-        Aggregate IRS public statistics — <strong>territory targeting, not individuals</strong>.
-        Affluent ZIPs (share of $200k+ returns) and high-AGI inflow counties from IRS SOI tables.
-        Names no person; use to decide <em>where</em> to prospect. Verify each via the IRS source.
-      </div>
-      <div class="real-tools">
-        <label class="real-states">States:
-          <input type="text" id="taxStates" value="NY,NJ,CT,PA,MD,DE" spellcheck="false" autocomplete="off">
-        </label>
-        <button class="btn ghost" id="taxReload" onclick="loadTax()">↻ Refresh</button>
-        <span class="hint" id="taxHint" style="margin-left:auto"></span>
-      </div>
-      <div id="taxBody"><div style="padding:20px;color:var(--muted)">Loading IRS tax-territory data…</div></div>
-    </div>
-
-    <!-- Public B2B research records (separate from illustrative modeled leads) -->
-    <div class="card" id="realCard">
-      <h3>Opportunity Desk — Public B2B Research Queue <span class="sec-title-meta" id="realMeta"></span></h3>
-      <div class="real-banner" id="realBanner">
-        A broker-ready queue built from official business and license records. Public visibility is
-        <strong>not permission to contact</strong>: verify the current source, find a business-published
-        contact channel, check suppression and state rules, then record manual clearance.
-      </div>
-      <div class="real-tools">
-        <label class="real-states">States:
-          <input type="text" id="realStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
-        </label>
-        <span class="real-state-pick" id="realStatePick"></span>
-        <button class="btn ghost" id="realReload" onclick="loadRealLeads()">↻ Refresh</button>
-        <button class="btn ghost operator-only" onclick="exportBrokerDesk()">Export governed CSV</button>
-        <span class="hint" id="realHint" style="margin-left:auto"></span>
-      </div>
-      <div class="desk-summary" id="deskSummary"></div>
-      <div id="realBody"><div style="padding:20px;color:var(--muted)">Loading real public records…</div></div>
-    </div>
-
-    <div class="card" id="frontierCard">
-      <h3>Frontier Radar — Official Growth &amp; Operations Signals <span class="sec-title-meta" id="frontierMeta"></span></h3>
-      <div class="real-banner">
-        FMCSA carrier additions, USAspending contract activity, and EPA ECHO
-        compliance-monitoring activity are converted into
-        <strong>entity-level research packets</strong>. David Leads does not request or retain
-        phone, email, named officer, crash, safety-rating, compliance-status, penalty,
-        demographic, insurance, or policy fields. Contract
-        activity may be a modification to an existing award and is never labeled a new deal
-        without a verified action history.
-      </div>
-      <div class="real-tools">
-        <label class="real-states">States:
-          <input type="text" id="frontierStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
-        </label>
-        <button class="btn ghost" id="frontierReload" onclick="loadFrontiers()">↻ Refresh</button>
-        <button class="btn ghost operator-only" onclick="exportBrokerDesk()">Export governed CSV</button>
-        <span class="hint" id="frontierHint" style="margin-left:auto"></span>
-      </div>
-      <div class="desk-summary" id="frontierSummary"></div>
-      <div id="frontierBody"><div style="padding:20px;color:var(--muted)">Loading official frontier signals…</div></div>
-    </div>
-
-    <div class="card" id="policyCard" style="display:none;margin-bottom:22px">
-      <h3>Data &amp; Outreach Policy <span class="sec-title-meta" id="policyMeta"></span></h3>
-      <div class="real-banner">Official APIs and public registries are allowed only with provenance,
-        rate limits, and purpose controls. Social-profile scraping and consumer-data enrichment are
-        blocked by default.</div>
-      <div id="policyBody"><div style="padding:20px;color:var(--muted)">Loading policy…</div></div>
-    </div>
-
-    <!-- WARN Act Layoffs — public state DOL records (coverage-cliff trigger) -->
-    <div class="card" id="warnCard">
-      <h3>⚠️ Layoff Alerts — Coverage-Cliff Prospects <span class="sec-title-meta" id="warnMeta"></span></h3>
-      <div class="real-banner" id="warnBanner">
-        Public layoff notices that employers must file with the state at least 60 days ahead. That
-        notice is a known <strong>coverage-cliff date</strong> — a chance to offer ACA / short-term /
-        COBRA-alternative coverage before workplace benefits end. Rows labelled <strong>Example</strong>
-        use illustrative placeholder employers on the real public-notice format (no live feed available
-        here) and are never shown as confirmed. Each links its official state labor-department source.
-        Public records only.
-      </div>
-      <div class="real-tools">
-        <label class="real-states">States:
-          <input type="text" id="warnStates" value="NY,NJ,PA,MD,DE,CT" spellcheck="false" autocomplete="off">
-        </label>
-        <button class="btn ghost" id="warnReload" onclick="loadWarn()">↻ Refresh</button>
-        <span class="hint" id="warnHint" style="margin-left:auto"></span>
-      </div>
-      <div id="warnBody"><div style="padding:20px;color:var(--muted)">Loading layoff notices…</div></div>
-    </div>
-
-    <!-- Opt-In Capture — TCPA-safe express-consent form + consented-leads list -->
-    <div class="card" id="optinCard">
-      <h3>✍️ Opt-In — Express-Consent Capture <span class="sec-title-meta" id="optinMeta"></span></h3>
-      <div class="real-banner" id="optinBanner">
-        The only place personal contact details are accepted — because the person submits them
-        themselves <strong>with explicit consent</strong>. This is the embeddable public capture form.
-        Every submission signs a consent receipt (consent + timestamp). No consent → no record.
-      </div>
-      <div class="optin-grid">
-        <form id="optinForm" class="optin-form" onsubmit="return submitOptin(event)">
-          <div class="optin-row">
-            <label>Name*<input type="text" id="optName" required autocomplete="off"></label>
-            <label>Email<input type="email" id="optEmail" autocomplete="off"></label>
+      <section id="leadsView" class="view-panel active" aria-labelledby="leadsHeading">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Live research queue</span>
+            <h2 id="leadsHeading">Organizations to investigate now</h2>
           </div>
-          <div class="optin-row">
-            <label>Phone<input type="text" id="optPhone" autocomplete="off"></label>
-            <label>ZIP<input type="text" id="optZip" autocomplete="off"></label>
-          </div>
-          <label>Interest
-            <select id="optInterest">
-              <option value="">— select —</option>
-              <option>Life insurance</option>
-              <option>Retirement annuity</option>
-              <option>Disability income</option>
-              <option>Estate / legacy planning</option>
-              <option>Business / key-person</option>
+          <span id="resultCount" class="result-count">Loading</span>
+        </div>
+
+        <div class="filter-bar">
+          <label class="search-field">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.7" fill="none" stroke="currentColor" stroke-width="1.7"></circle><path d="m13 13 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path></svg>
+            <span class="sr-only">Search organizations</span>
+            <input id="searchInput" type="search" placeholder="Search company, city, state, or signal" autocomplete="off">
+            <kbd>/</kbd>
+          </label>
+          <label class="select-field">
+            <span class="sr-only">Filter by source</span>
+            <select id="sourceFilter">
+              <option value="all">All official sources</option>
             </select>
           </label>
-          <label class="optin-consent">
-            <input type="checkbox" id="optConsent">
-            <span>I agree to be contacted about insurance options. (required)</span>
+          <label class="select-field">
+            <span class="sr-only">Sort leads</span>
+            <select id="sortFilter">
+              <option value="priority">Highest priority</option>
+              <option value="newest">Newest observed</option>
+              <option value="value">Largest observed award</option>
+              <option value="name">Company name</option>
+            </select>
           </label>
-          <button class="btn primary" type="submit" id="optSubmit">Submit consent</button>
-          <div id="optResult" class="optin-result"></div>
-        </form>
-        <div class="optin-list">
-          <div class="optin-list-head">
-            <strong>Consented leads</strong>
-            <button class="btn ghost" onclick="loadOptinLeads()" id="optReload">↻ Refresh</button>
-          </div>
-          <div id="optinBody"><div style="padding:14px;color:var(--muted)">No consented leads yet.</div></div>
         </div>
-      </div>
-    </div>
 
-    <!-- Ask the Territory -->
-    <div class="card ask-card" id="askCard" style="display:none;margin-bottom:22px">
-      <h3>💬 Ask the Territory <span class="sec-title-meta" style="color:var(--teal-300)">conversational · public-data · cited · signed</span></h3>
-      <div class="ask-body">
-        <div class="ask-chips" id="askChips"></div>
-        <div class="ask-log" id="askLog"></div>
-        <form class="ask-form" onsubmit="sendAsk(event)">
-          <input class="ask-input" id="askInput" placeholder="Ask: who to call, where to prospect, rates, new businesses, compliance…" autocomplete="off">
-          <button type="submit" class="ask-send" id="askSend">Ask</button>
-        </form>
-      </div>
-    </div>
+        <div id="scopeNotice" class="scope-notice"></div>
 
-    <div class="grid2" id="grid2">
-      <div class="card">
-        <h3>🎯 Ranked Leads <span class="sec-title-meta" id="leadMeta"></span><span class="learn-badge" id="learnBadge" style="display:none"></span></h3>
-        <div class="body" id="leadsWrap">
-          <div class="welcome">
-            <div class="welcome-hero">Find the right person, at the right moment, with proof you can stand behind.</div>
-            <div class="welcome-steps">
-              <div class="welcome-step"><span class="num">1</span><div><strong>We scan public records</strong> for life events that create insurance needs.</div></div>
-              <div class="welcome-step"><span class="num">2</span><div><strong>We rank who to research first</strong> using evidence-completeness signals.</div></div>
-              <div class="welcome-step"><span class="num">3</span><div><strong>Every lead keeps its sources visible</strong>, while contact permission stays NOT_EVALUATED until a broker records clearance.</div></div>
+        <div class="lead-table-wrap">
+          <table class="lead-table">
+            <thead>
+              <tr>
+                <th scope="col">Organization</th>
+                <th scope="col">Market</th>
+                <th scope="col">Why it surfaced</th>
+                <th scope="col">Observed value</th>
+                <th scope="col">Next move</th>
+                <th scope="col"><span class="sr-only">Open lead</span></th>
+              </tr>
+            </thead>
+            <tbody id="leadRows"></tbody>
+          </table>
+          <div id="leadCards" class="lead-cards"></div>
+          <div id="loadingState" class="loading-state" role="status">
+            <div class="loading-line wide"></div>
+            <div class="loading-line"></div>
+            <div class="loading-line wide"></div>
+            <p>Gathering official records</p>
+          </div>
+          <div id="emptyState" class="empty-state hidden">
+            <div class="empty-orbit" aria-hidden="true"></div>
+            <h3>No records match these filters</h3>
+            <p>Try another state, clear the search, or refresh the official sources.</p>
+            <button id="resetFilters" class="secondary-button" type="button">Reset filters</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="marketsView" class="view-panel" aria-labelledby="marketsHeading">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">Territory intelligence</span>
+            <h2 id="marketsHeading">The Eastern market atlas</h2>
+            <p>Every state is selectable. Counts show the records represented in the current live pull.</p>
+          </div>
+        </div>
+        <div class="market-layout">
+          <div>
+            <div id="stateAtlas" class="state-atlas" aria-label="Eastern state coverage"></div>
+            <p class="atlas-note">A zero means the latest cross-territory pull did not return that state. Select the state to run a deeper state-specific query.</p>
+          </div>
+          <div class="source-stack">
+            <div class="source-stack-heading">
+              <span class="eyebrow">Source status</span>
+              <h3>Truth stays visible</h3>
+              <p>A source outage is never replaced with fake data.</p>
             </div>
-            <div class="welcome-cta">Press <strong>Find Leads</strong> above to start, or <strong>See an Example</strong> to preview.</div>
+            <div id="sourceCards"></div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div style="display:flex;flex-direction:column;gap:18px">
-        <div class="card">
-          <h3>🛡️ Contact &amp; Evidence Check</h3>
-          <div class="gov" id="gov">
-            <div style="color:var(--muted);font-size:13px;padding:8px 0">Awaiting a search — every lead is checked to confirm it comes from public records and nothing is invented.</div>
+      <section id="investorsView" class="view-panel" aria-labelledby="investorsHeading">
+        <div class="panel-heading investor-heading">
+          <div>
+            <span class="eyebrow">Operational proof</span>
+            <h2 id="investorsHeading">A governed data product, not a list of names.</h2>
+            <p>Live source coverage, deployment identity, operating boundary, and product scale are separated from forecasts and claims.</p>
           </div>
+          <a id="attestationLink" class="secondary-button disabled" href="#" target="_blank" rel="noopener">Release receipt</a>
         </div>
-        <div class="card" id="pipelineCard" style="display:none">
-          <h3>📈 Premium Pipeline <span class="sec-title-meta" id="pipeTotal"></span></h3>
-          <div class="body" id="pipeBody" style="padding:14px 18px"></div>
+
+        <div class="investor-proof-grid">
+          <article class="proof-card">
+            <span class="proof-index">01</span>
+            <h3>Source-grounded</h3>
+            <strong id="proofLiveSources">--</strong>
+            <p>Official sources live in the current run, each with its own citation and availability state.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-index">02</span>
+            <h3>Eastern footprint</h3>
+            <strong>27</strong>
+            <p>Queryable Eastern U.S. markets across New England, Mid-Atlantic, Great Lakes, and Southeast.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-index">03</span>
+            <h3>Verified release</h3>
+            <strong id="proofRelease">Checking</strong>
+            <p id="proofReleaseCopy">Confirming the exact GitHub revision and deployment receipt.</p>
+          </article>
+          <article class="proof-card">
+            <span class="proof-index">04</span>
+            <h3>Contact boundary</h3>
+            <strong>Fail closed</strong>
+            <p>Research records remain non-contactable until an authenticated operator completes the required checks.</p>
+          </article>
         </div>
-        <div class="card">
-          <h3>📡 Source Signals <span class="sec-title-meta" id="sigMeta"></span></h3>
-          <div class="body" id="signals">
-            <div style="padding:18px;color:var(--muted);font-size:13px">No signals yet.</div>
+
+        <div class="investor-story-grid">
+          <article class="story-card">
+            <span class="eyebrow">What is real now</span>
+            <h3>Live operating evidence</h3>
+            <dl id="operatingFacts" class="fact-list"></dl>
+          </article>
+          <article class="story-card signal-flow-card">
+            <span class="eyebrow">Governed path</span>
+            <h3>From signal to permitted action</h3>
+            <ol class="signal-flow">
+              <li><span>Observe</span><p>An official system reports organization-level activity.</p></li>
+              <li><span>Verify</span><p>The broker opens the cited source and confirms the entity.</p></li>
+              <li><span>Research</span><p>Product fit and a first-party business channel are documented privately.</p></li>
+              <li><span>Clear</span><p>Suppression, licensing, state rules, and purpose checks must pass.</p></li>
+            </ol>
+          </article>
+        </div>
+
+        <div class="truth-banner">
+          <div>
+            <span class="eyebrow">Investor truth label</span>
+            <h3>Observed activity is not revenue, intent, insurability, or permission to contact.</h3>
           </div>
+          <p id="largestAward">No financial field is being treated as company revenue.</p>
         </div>
+      </section>
+
+      <footer class="app-footer">
+        <p>David Leads uses public organization-level records for prospecting research only.</p>
+        <div>
+          <a href="https://huggingface.co/spaces/SZLHOLDINGS/david-leads" target="_blank" rel="noopener">Hugging Face source</a>
+          <a href="https://github.com/szl-holdings/david-leads" target="_blank" rel="noopener">GitHub</a>
+        </div>
+      </footer>
+    </section>
+  </main>
+
+  <div id="drawerBackdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
+  <aside id="leadDrawer" class="lead-drawer" aria-labelledby="drawerTitle" aria-hidden="true">
+    <div class="drawer-header">
+      <div>
+        <span id="drawerSource" class="source-chip">Official source</span>
+        <h2 id="drawerTitle">Organization</h2>
+        <p id="drawerLocation"></p>
       </div>
+      <button id="closeDrawer" class="icon-button" type="button" aria-label="Close lead details">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+      </button>
     </div>
+    <div id="drawerBody" class="drawer-body"></div>
+  </aside>
 
-    <footer class="legal">
-      Prospecting evidence uses <strong>official public business and aggregate sources</strong>; first-party opt-ins and broker outcomes are separately classified.<br>
-      Every proof record exposes its hash and signature state; unsigned evidence remains UNSIGNED. Honest by design — no fabricated signals declared.<br>
-      © 2026 SZL Holdings · Sovereign Governed AI · Apache-2.0<br>
-      <a href="https://a-11-oy.com" target="_blank" rel="noopener">a-11-oy.com</a> ·
-      <a href="https://szlholdings-szl-estate-live.static.hf.space" target="_blank" rel="noopener">SZL estate hub</a> ·
-      <a href="https://github.com/szl-holdings" target="_blank" rel="noopener">GitHub</a> ·
-      <a href="https://huggingface.co/SZLHOLDINGS" target="_blank" rel="noopener">Hugging Face</a> ·
-      <a href="https://huggingface.co/spaces/SZLHOLDINGS/immune" target="_blank" rel="noopener">immune</a> ·
-      <a href="https://huggingface.co/spaces/SZLHOLDINGS/governed-receipt-verifier" target="_blank" rel="noopener">receipt verifier</a> ·
-      <a href="https://huggingface.co/spaces/SZLHOLDINGS/cosmos" target="_blank" rel="noopener">cosmos</a>
-    </footer>
-  </div>
-</div>
+  <dialog id="policyDialog" class="policy-dialog">
+    <form method="dialog">
+      <button class="icon-button dialog-close" aria-label="Close policy">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>
+      </button>
+      <span class="eyebrow">Public-data operating boundary</span>
+      <h2>Research first. Contact only after clearance.</h2>
+      <div class="policy-steps">
+        <p><strong>1. Open the evidence.</strong> Confirm the company and event in the linked official source.</p>
+        <p><strong>2. Find a first-party channel.</strong> Use a current business website or another business-published channel.</p>
+        <p><strong>3. Complete required checks.</strong> Suppression, licensing, state rules, product fit, and purpose checks remain mandatory.</p>
+        <p><strong>4. Record clearance privately.</strong> The public workspace never exposes notes, contact data, or outreach decisions.</p>
+      </div>
+      <button class="primary-button dialog-action" value="close">Understood</button>
+    </form>
+  </dialog>
 
-<div id="modalMount"></div>
-
-<!-- app.js loads FIRST and synchronously so login/API never depend on the CDN. -->
-<script src="app.js"></script>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" defer></script>
 </body>
 </html>
