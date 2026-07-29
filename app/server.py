@@ -116,6 +116,20 @@ _CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").sp
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 
+
+@app.middleware("http")
+async def release_cache_policy(request: Request, call_next):
+    """Keep the broker shell and live truth routes from remaining on stale releases."""
+    response = await call_next(request)
+    path = request.url.path
+    if path in {"/", "/index.html", "/healthz"} or path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+    elif path.endswith((".js", ".css")):
+        response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+    return response
+
+
 if dd is not None:
     @app.exception_handler(dd.PersistenceUnavailable)
     async def persistence_unavailable(

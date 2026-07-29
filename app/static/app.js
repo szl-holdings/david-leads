@@ -40,10 +40,13 @@ const state = {
   activeView: "leads",
   controller: null,
   toastTimer: null,
+  currentRevision: "",
+  releaseCheckTimer: null,
 };
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
+    cache: "no-store",
     ...options,
     headers: {
       Accept: "application/json",
@@ -164,8 +167,26 @@ function renderRegionButtons() {
 
 function renderStateButtons() {
   $("stateButtons").innerHTML = EASTERN_REGIONS["All East"]
-    .map((code) => `<button class="state-button${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-state="${code}" aria-pressed="${state.selectedStates.has(code)}" title="${esc(STATE_NAMES[code])}">${code}</button>`)
+    .map((code) => `<button class="state-button${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-state="${code}" aria-pressed="${state.selectedStates.has(code)}" title="Focus ${esc(STATE_NAMES[code])}">${code}</button>`)
     .join("");
+}
+
+function renderMobileTerritoryControls() {
+  const select = $("mobileStateSelect");
+  if (!select.dataset.ready) {
+    select.innerHTML = [
+      `<option value="">Choose a state</option>`,
+      `<option value="__ALL__">All East (27 markets)</option>`,
+      ...EASTERN_REGIONS["All East"].map((code) => `<option value="${code}">${esc(STATE_NAMES[code])} (${code})</option>`),
+    ].join("");
+    select.dataset.ready = "true";
+  }
+  const selected = [...state.selectedStates];
+  const isAllEast = selected.length === EASTERN_REGIONS["All East"].length
+    && EASTERN_REGIONS["All East"].every((code) => state.selectedStates.has(code));
+  select.value = selected.length === 1 ? selected[0] : isAllEast ? "__ALL__" : "";
+  $("mobileTerritoryLabel").textContent = selectedRegionName();
+  $("mobileTerritoryCount").textContent = `${selected.length} market${selected.length === 1 ? "" : "s"} selected`;
 }
 
 function selectedRegionName() {
@@ -184,6 +205,7 @@ function renderTerritorySummary() {
   const count = state.selectedStates.size;
   $("territoryCount").textContent = `${count} market${count === 1 ? "" : "s"} selected`;
   $("territoryLabel").textContent = selectedRegionName();
+  renderMobileTerritoryControls();
 }
 
 function syncTerritoryControls() {
@@ -201,20 +223,8 @@ function chooseRegion(name) {
   loadLeads();
 }
 
-function toggleState(code) {
-  if (!STATE_NAMES[code]) return;
-  if (state.selectedStates.has(code)) {
-    state.selectedStates.delete(code);
-  } else {
-    state.selectedStates.add(code);
-  }
-  if (!state.selectedStates.size) state.selectedStates.add(code);
-  syncTerritoryControls();
-  updateUrl();
-  loadLeads();
-}
-
 function selectOnlyState(code) {
+  if (!STATE_NAMES[code]) return;
   state.selectedStates = new Set([code]);
   syncTerritoryControls();
   updateUrl();
@@ -243,6 +253,7 @@ function showLoading(show) {
   $("loadingState").classList.toggle("hidden", !show);
   $("refreshData").classList.toggle("loading", show);
   $("refreshData").disabled = show;
+  $("workspace").setAttribute("aria-busy", String(show));
   if (show) {
     $("emptyState").classList.add("hidden");
     $("resultCount").textContent = "Loading live records";
@@ -389,6 +400,7 @@ function leadCard(lead) {
     <div class="lead-card-footer">
       <span class="lead-card-value">${esc(value.value)} - ${esc(value.label)}</span>
       <button class="lead-open" type="button" data-lead-id="${esc(lead.opportunity_id)}" aria-label="Open ${esc(lead.name)} details">
+        <span>Review lead</span>
         <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
       </button>
     </div>
@@ -581,7 +593,9 @@ async function loadBuildAndHealth() {
   ]);
   if (build.status === "fulfilled") {
     state.build = build.value;
-    const revision = String(state.build.source_revision || state.build.build?.revision || "").slice(0, 8);
+    const fullRevision = String(state.build.source_revision || state.build.build?.revision || "");
+    const revision = fullRevision.slice(0, 8);
+    state.currentRevision = fullRevision;
     $("sourceStamp").textContent = revision ? `Release ${revision}` : "Release observed";
     $("sourceStamp").classList.add("observed");
     const receipt = state.build.release_receipt || {};
@@ -605,6 +619,19 @@ async function loadBuildAndHealth() {
   renderInvestorProof();
 }
 
+async function checkForNewRelease() {
+  if (document.visibilityState !== "visible" || !state.currentRevision) return;
+  try {
+    const build = await api(`/api/build-info?release_check=${Date.now()}`);
+    const nextRevision = String(build.source_revision || build.build?.revision || "");
+    if (nextRevision && nextRevision !== state.currentRevision) {
+      $("releaseBanner").classList.remove("hidden");
+    }
+  } catch (_) {
+    // A release check is advisory. Live-source errors remain visible elsewhere.
+  }
+}
+
 async function bootstrap() {
   restoreTerritoryFromUrl();
   syncTerritoryControls();
@@ -616,6 +643,7 @@ async function bootstrap() {
       throw new Error("The public workspace is not enabled.");
     }
     await Promise.all([loadLeads(), loadBuildAndHealth()]);
+    state.releaseCheckTimer = window.setInterval(checkForNewRelease, 120000);
   } catch (error) {
     $("scopeSummary").textContent = `The live workspace could not open: ${error.message}`;
     showToast("The live workspace could not open.");
@@ -631,16 +659,19 @@ function bindEvents() {
   });
   $("stateButtons").addEventListener("click", (event) => {
     const button = event.target.closest("[data-state]");
-    if (button) toggleState(button.dataset.state);
+    if (button) selectOnlyState(button.dataset.state);
+  });
+  $("mobileStateSelect").addEventListener("change", (event) => {
+    const code = event.target.value;
+    if (code === "__ALL__") {
+      chooseRegion("All East");
+    } else if (STATE_NAMES[code]) {
+      selectOnlyState(code);
+    }
   });
   $("stateAtlas").addEventListener("click", (event) => {
     const button = event.target.closest("[data-atlas-state]");
     if (button) selectOnlyState(button.dataset.atlasState);
-  });
-  $("clearStates").addEventListener("click", () => {
-    state.selectedStates = new Set();
-    syncTerritoryControls();
-    showToast("Choose at least one state.");
   });
   $("refreshData").addEventListener("click", () => loadLeads());
   $("searchInput").addEventListener("input", applyFilters);
@@ -668,6 +699,8 @@ function bindEvents() {
   $("closeDrawer").addEventListener("click", closeLead);
   $("drawerBackdrop").addEventListener("click", closeLead);
   $("openPolicy").addEventListener("click", () => $("policyDialog").showModal());
+  $("openPolicyMobile").addEventListener("click", () => $("policyDialog").showModal());
+  $("reloadRelease").addEventListener("click", () => window.location.reload());
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
       event.preventDefault();

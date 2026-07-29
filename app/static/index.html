@@ -7,7 +7,7 @@
   <meta name="description" content="David Leads turns official public business signals into a clear, source-linked Eastern U.S. research workspace.">
   <title>David Leads | Eastern Market Cockpit</title>
   <link rel="stylesheet" href="fonts/fonts.css">
-  <link rel="stylesheet" href="holo.css">
+  <link rel="stylesheet" href="holo.css?v=broker-polish-20260729">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -43,6 +43,14 @@
     </div>
   </header>
 
+  <div id="releaseBanner" class="release-banner hidden" role="status" aria-live="polite">
+    <div>
+      <strong>A newer David Leads release is ready.</strong>
+      <span>Update now to keep the market data and broker tools aligned.</span>
+    </div>
+    <button id="reloadRelease" type="button">Update application</button>
+  </div>
+
   <main id="workspace" class="workspace">
     <aside class="territory-panel" aria-label="Eastern U.S. territory selector">
       <div class="territory-heading">
@@ -53,9 +61,23 @@
 
       <div id="regionButtons" class="region-buttons" aria-label="Choose a region"></div>
 
+      <div class="mobile-territory-tools">
+        <label class="mobile-state-field" for="mobileStateSelect">
+          <span>Focus one state</span>
+          <select id="mobileStateSelect" data-testid="mobile-state-select">
+            <option value="">Choose a state</option>
+          </select>
+        </label>
+        <div class="mobile-territory-summary" aria-live="polite">
+          <strong id="mobileTerritoryLabel">Eastern United States</strong>
+          <small id="mobileTerritoryCount">27 markets selected</small>
+        </div>
+        <button id="openPolicyMobile" class="mobile-policy-button" type="button">Public-data contact rules</button>
+      </div>
+
       <div class="state-heading">
         <span>States</span>
-        <button id="clearStates" class="text-button" type="button">Clear</button>
+        <span>Click a state to focus</span>
       </div>
       <div id="stateButtons" class="state-buttons" aria-label="Choose states"></div>
 
@@ -138,6 +160,21 @@
           </div>
           <span id="resultCount" class="result-count">Loading</span>
         </div>
+
+        <ol class="broker-workflow" aria-label="Broker research workflow">
+          <li>
+            <span>1</span>
+            <div><strong>Choose a market</strong><small>Region or single state</small></div>
+          </li>
+          <li>
+            <span>2</span>
+            <div><strong>Review the signal</strong><small>Open the official record</small></div>
+          </li>
+          <li>
+            <span>3</span>
+            <div><strong>Confirm permission</strong><small>Then prepare outreach</small></div>
+          </li>
+        </ol>
 
         <div class="filter-bar">
           <label class="search-field">
@@ -326,6 +363,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=broker-polish-20260729" defer></script>
 </body>
 </html>
