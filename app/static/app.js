@@ -25,6 +25,7 @@ const SOURCE_NAMES = {
   CHICAGO_BUSINESS_LICENSE: "Business license activity",
   SAM_ENTITY: "Federal entity registration",
   FCC_ULS: "Organization license activity",
+  BENEFIT_PLAN_TIMING: "Employer life-plan filing",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -38,6 +39,7 @@ const state = {
   build: null,
   health: null,
   activeView: "leads",
+  activeLane: "all",
   controller: null,
   toastTimer: null,
   currentRevision: "",
@@ -97,7 +99,9 @@ function formatDate(value) {
   const normalized = /^\d{8}$/.test(String(value))
     ? `${String(value).slice(0, 4)}-${String(value).slice(4, 6)}-${String(value).slice(6, 8)}`
     : value;
-  const date = new Date(normalized);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(normalized))
+    ? new Date(`${normalized}T12:00:00`)
+    : new Date(normalized);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -124,6 +128,14 @@ function observedDate(lead) {
 }
 
 function observedValue(lead) {
+  const participants = Number(lead.operational_snapshot?.participants_reported);
+  if (Number.isFinite(participants) && participants > 0) {
+    return {
+      value: formatNumber(participants),
+      label: "Participants reported",
+      raw: participants,
+    };
+  }
   if (lead.award && Number.isFinite(Number(lead.award.amount))) {
     return {
       value: formatMoney(lead.award.amount),
@@ -169,6 +181,49 @@ function renderStateButtons() {
   $("stateButtons").innerHTML = EASTERN_REGIONS["All East"]
     .map((code) => `<button class="state-button${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-state="${code}" aria-pressed="${state.selectedStates.has(code)}" title="Focus ${esc(STATE_NAMES[code])}">${code}</button>`)
     .join("");
+}
+
+function timingSummary(lead) {
+  const timing = lead.timing || {};
+  const days = Number(timing.days_to_anniversary);
+  if (Number.isFinite(days) && timing.next_anniversary) {
+    return {
+      label: `${formatNumber(days)} days`,
+      detail: `Anniversary ${formatDate(timing.next_anniversary)}`,
+      urgent: days <= 180,
+    };
+  }
+  return {
+    label: formatDate(observedDate(lead)),
+    detail: "Official observation",
+    urgent: false,
+  };
+}
+
+function productFit(lead) {
+  const fit = Array.isArray(lead.product_fit) ? lead.product_fit.filter(Boolean) : [];
+  if (fit.length) return fit.slice(0, 3);
+  return [lead.product_angle || lead.product || "Business insurance review"];
+}
+
+function evidenceSummary(lead) {
+  const evidence = lead.evidence || {};
+  const sourceCount = Number(evidence.source_count || 1);
+  return {
+    label: sourceCount > 1
+      ? `${sourceCount}-source match`
+      : (evidence.strength === "DIRECT_FILING" ? "Direct filing" : "Official record"),
+    detail: sourceCount > 1
+      ? "Independent official signals"
+      : (lead.receipt_signed ? "Signed source receipt" : (lead.receipt_id ? "Source receipt linked" : "Citation linked")),
+  };
+}
+
+function dealLane(lead) {
+  if (lead.source_frontier === "BENEFIT_PLAN_TIMING") return "timing";
+  if (lead.source_frontier === "FEDERAL_CONTRACT" || lead.source_frontier === "SAM_ENTITY") return "growth";
+  if (["FMCSA", "EPA_ECHO", "FCC_ULS", "CHICAGO_BUSINESS_LICENSE"].includes(lead.source_frontier)) return "operations";
+  return "research";
 }
 
 function renderMobileTerritoryControls() {
@@ -292,6 +347,7 @@ async function loadLeads() {
 function renderEverything() {
   renderMetrics();
   renderFilters();
+  renderDailyBrief();
   applyFilters();
   renderAtlas();
   renderSources();
@@ -313,7 +369,36 @@ function renderMetrics() {
   $("metricSourcesSub").textContent = `${state.sources.length - liveSources.length} unavailable or not applicable`;
   $("metricResearch").textContent = formatNumber(summary.needs_research ?? state.leads.length);
   $("metricCleared").textContent = formatNumber(summary.call_ready ?? 0);
+  const timingWindows = state.leads.filter((lead) => {
+    const days = Number(lead.timing?.days_to_anniversary);
+    return Number.isFinite(days) && days >= 0 && days <= 180;
+  });
+  $("metricWindows").textContent = formatNumber(timingWindows.length);
+  $("metricWindowsSub").textContent = timingWindows.length
+    ? `${formatNumber(timingWindows.reduce((sum, lead) => sum + Number(lead.operational_snapshot?.participants_reported || 0), 0))} reported participants represented`
+    : "No reported anniversaries in this pull";
   $("proofLiveSources").textContent = `${liveSources.length} live`;
+}
+
+function renderDailyBrief() {
+  const timing = state.leads
+    .filter((lead) => Number.isFinite(Number(lead.timing?.days_to_anniversary)))
+    .sort((a, b) => Number(a.timing.days_to_anniversary) - Number(b.timing.days_to_anniversary));
+  const top = [...state.leads].sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))[0];
+  const brief = $("dailyBrief");
+  if (!state.board) return;
+  const strong = timing[0] || top;
+  if (!strong) {
+    brief.querySelector("strong").textContent = "No deal moments returned for this territory";
+    brief.querySelector("small").textContent = "Choose one state for a deeper pull or refresh the official sources.";
+    return;
+  }
+  brief.querySelector("strong").textContent = timing.length
+    ? `${timing.length} employer life-plan anniversary watches surfaced`
+    : `${strong.name} is the highest evidence-ranked account`;
+  brief.querySelector("small").textContent = timing.length
+    ? `Nearest reported anniversary: ${timingSummary(timing[0]).label}. Open the filing before starting contact-clearance research.`
+    : `${sourceName(strong)} — ${strong.observed_trigger || "official activity observed"}.`;
 }
 
 function renderFilters() {
@@ -331,6 +416,7 @@ function searchableText(lead) {
   return [
     lead.name, lead.dba, lead.city, lead.state, lead.zip, lead.category,
     lead.observed_trigger, lead.signal_summary, lead.why, sourceName(lead),
+    ...(Array.isArray(lead.product_fit) ? lead.product_fit : []),
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -341,7 +427,9 @@ function applyFilters() {
   let leads = state.leads.filter((lead) => {
     const matchesSearch = !query || searchableText(lead).includes(query);
     const matchesSource = source === "all" || lead.source_frontier === source;
-    return matchesSearch && matchesSource;
+    const matchesLane = state.activeLane === "all"
+      || (state.activeLane === "research" ? !lead.call_ready : dealLane(lead) === state.activeLane);
+    return matchesSearch && matchesSource && matchesLane;
   });
 
   leads = [...leads].sort((a, b) => {
@@ -357,23 +445,30 @@ function applyFilters() {
 }
 
 function leadRow(lead) {
-  const value = observedValue(lead);
+  const timing = timingSummary(lead);
+  const fit = productFit(lead);
+  const evidence = evidenceSummary(lead);
   return `<tr>
     <td>
       <span class="company-name">${esc(lead.name || "Unnamed organization")}</span>
-      <span class="company-meta">${esc(lead.city || "City unavailable")}${lead.zip ? `, ${esc(lead.zip)}` : ""}</span>
-    </td>
-    <td><span class="market-badge">${esc(lead.state || "--")}</span></td>
-    <td>
-      <span class="signal-name">${esc(sourceName(lead))}</span>
-      <span class="signal-detail">${esc(lead.observed_trigger || lead.category || "Official activity observed")}</span>
+      <span class="company-meta">${esc(lead.city || "City unavailable")}${lead.state ? `, ${esc(lead.state)}` : ""}${lead.zip ? ` ${esc(lead.zip)}` : ""}</span>
     </td>
     <td>
-      <span class="observed-value">${esc(value.value)}</span>
-      <span class="observed-value-label">${esc(value.label)}</span>
+      <span class="signal-name">${esc(lead.observed_trigger || sourceName(lead))}</span>
+      <span class="signal-detail">${esc(lead.signal_summary || lead.category || "Official activity observed")}</span>
+      <span class="source-inline">${esc(sourceName(lead))}</span>
     </td>
     <td>
-      <span class="next-detail">${esc(lead.recommended_next_action || lead.next_action || "Open the official source and verify the organization.")}</span>
+      <span class="timing-badge${timing.urgent ? " urgent" : ""}">${esc(timing.label)}</span>
+      <span class="observed-value-label">${esc(timing.detail)}</span>
+    </td>
+    <td>
+      <span class="fit-primary">${esc(fit[0])}</span>
+      <span class="fit-more">${esc(fit.slice(1).join(" · ") || lead.product || "Broker review")}</span>
+    </td>
+    <td>
+      <span class="evidence-label"><i></i>${esc(evidence.label)}</span>
+      <span class="evidence-detail">${esc(evidence.detail)}</span>
     </td>
     <td>
       <button class="lead-open" type="button" data-lead-id="${esc(lead.opportunity_id)}" aria-label="Open ${esc(lead.name)} details">
@@ -385,6 +480,8 @@ function leadRow(lead) {
 
 function leadCard(lead) {
   const value = observedValue(lead);
+  const timing = timingSummary(lead);
+  const fit = productFit(lead);
   return `<article class="lead-card">
     <div class="lead-card-head">
       <div>
@@ -394,8 +491,12 @@ function leadCard(lead) {
       <span class="market-badge">${esc(lead.state || "--")}</span>
     </div>
     <div class="lead-card-signal">
-      <span class="signal-name">${esc(sourceName(lead))}</span>
-      <span class="signal-detail">${esc(lead.observed_trigger || "Official activity observed")}</span>
+      <span class="signal-name">${esc(lead.observed_trigger || sourceName(lead))}</span>
+      <span class="signal-detail">${esc(sourceName(lead))}</span>
+    </div>
+    <div class="lead-card-intel">
+      <span><small>Timing</small><strong>${esc(timing.label)}</strong></span>
+      <span><small>Likely fit</small><strong>${esc(fit[0])}</strong></span>
     </div>
     <div class="lead-card-footer">
       <span class="lead-card-value">${esc(value.value)} - ${esc(value.label)}</span>
@@ -515,6 +616,19 @@ function openLead(id) {
   const receiptLink = lead.receipt_id
     ? `<button class="drawer-link" type="button" data-proof-id="${esc(lead.receipt_id)}">Verify source receipt</button>`
     : "";
+  const timing = timingSummary(lead);
+  const fit = productFit(lead);
+  const evidence = evidenceSummary(lead);
+  const carriers = Array.isArray(lead.operational_snapshot?.reported_carriers)
+    ? lead.operational_snapshot.reported_carriers
+    : [];
+  const corroboration = Array.isArray(lead.corroborating_signals)
+    ? lead.corroborating_signals
+    : [];
+  const corroborationList = corroboration.length > 1
+    ? `<ul>${corroboration.map((item) => `<li>${esc(SOURCE_NAMES[item.source_frontier] || item.source_frontier || "Official source")}: ${esc(item.observed_trigger || "official activity observed")}</li>`).join("")}</ul>`
+    : "";
+  const fitChips = fit.map((item) => `<span class="fit-chip">${esc(item)}</span>`).join("");
 
   $("drawerBody").innerHTML = `
     <div class="drawer-alert">Research only. This public record is not permission to call, email, market, or make an underwriting decision.</div>
@@ -524,24 +638,30 @@ function openLead(id) {
       <p>${esc(lead.signal_summary || lead.why || "Open the official source to understand the observed activity.")}</p>
     </section>
     <section class="drawer-section">
-      <span class="drawer-section-label">Observed facts</span>
+      <span class="drawer-section-label">Deal moment</span>
       <div class="drawer-facts">
         <div class="drawer-fact"><span>State</span><strong>${esc(lead.state || "--")}</strong></div>
         <div class="drawer-fact"><span>Observed</span><strong>${esc(formatDate(observedDate(lead)))}</strong></div>
+        <div class="drawer-fact"><span>Timing</span><strong>${esc(timing.label)}</strong></div>
+        <div class="drawer-fact"><span>Evidence</span><strong>${esc(evidence.label)}</strong></div>
         <div class="drawer-fact"><span>${esc(value.label)}</span><strong>${esc(value.value)}</strong></div>
-        <div class="drawer-fact"><span>Truth label</span><strong>${esc(lead.truth_label || "LIVE")}</strong></div>
+        <div class="drawer-fact"><span>Source state</span><strong>${esc(lead.truth_label || "LIVE")}</strong></div>
         ${idFacts}
       </div>
     </section>
     <section class="drawer-section">
-      <span class="drawer-section-label">Broker opportunity</span>
-      <h3>${esc(lead.product_angle || lead.product || "Business needs review")}</h3>
+      <span class="drawer-section-label">Likely product fit</span>
+      <div class="fit-chips">${fitChips}</div>
       <p>${esc(lead.why || "The observed activity may justify a licensed broker review after the organization is verified.")}</p>
+      ${carriers.length ? `<p class="supporting-detail"><strong>Carriers named in the filing:</strong> ${esc(carriers.join(", "))}. This is context, not evidence of dissatisfaction or availability.</p>` : ""}
     </section>
     <section class="drawer-section">
-      <span class="drawer-section-label">Next permitted move</span>
-      <h3>Verify before outreach</h3>
-      <p>${esc(lead.recommended_next_action || lead.next_action || "Open the official record, verify the organization, and document a business-published channel before contact.")}</p>
+      <span class="drawer-section-label">Three-step broker action</span>
+      <ol class="action-path">
+        <li><span>1</span><p><strong>Verify the moment.</strong> Open the cited official record and confirm the organization, date, and reported field.</p></li>
+        <li><span>2</span><p><strong>Qualify the fit.</strong> Use the organization’s own website to confirm operations, current needs, and a first-party business channel.</p></li>
+        <li><span>3</span><p><strong>Clear outreach.</strong> Complete suppression, licensing, state-rule, and purpose checks in the authenticated workspace.</p></li>
+      </ol>
     </section>
     <section class="drawer-section">
       <span class="drawer-section-label">Source limitations</span>
@@ -550,6 +670,7 @@ function openLead(id) {
     <section class="drawer-section">
       <span class="drawer-section-label">Proof and sources</span>
       <p>Open the source record first. The receipt confirms the normalized public observation that created this research card.</p>
+      ${corroborationList}
       <div class="drawer-links">
         <a class="drawer-link" href="${safeUrl(lead.citation?.url)}" target="_blank" rel="noopener">Open official record</a>
         <a class="drawer-link" href="${safeUrl(lead.source_record?.url)}" target="_blank" rel="noopener">Source documentation</a>
@@ -681,6 +802,19 @@ function bindEvents() {
     $("searchInput").value = "";
     $("sourceFilter").value = "all";
     $("sortFilter").value = "priority";
+    state.activeLane = "all";
+    document.querySelectorAll("[data-lane]").forEach((item) => {
+      item.classList.toggle("active", item.dataset.lane === "all");
+    });
+    applyFilters();
+  });
+  $("laneFilters").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-lane]");
+    if (!button) return;
+    state.activeLane = button.dataset.lane;
+    document.querySelectorAll("[data-lane]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
     applyFilters();
   });
   document.querySelectorAll("[data-view-target]").forEach((button) => {

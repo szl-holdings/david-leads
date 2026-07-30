@@ -157,6 +157,16 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         with patch.object(server, "_PUBLIC_READONLY", True):
             response = self.client.get("/api/model")
         self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["decision_unit"], "organization")
+        self.assertEqual(body["contact_boundary"]["default"], "PUBLIC_RESEARCH_ONLY")
+        self.assertIn("Social-profile scraping", body["excluded_inputs"])
+        self.assertNotIn("wealth_tier", body)
+
+    def test_legacy_household_scoring_endpoint_is_retired(self):
+        response = self.client.post("/api/run", json={"live": False})
+        self.assertEqual(response.status_code, 410)
+        self.assertIn("Legacy household archetype scoring is retired", response.json()["detail"])
 
     def test_authenticated_mode_still_gates_public_projection_routes(self):
         with patch.object(server, "_PUBLIC_READONLY", False):
@@ -186,11 +196,16 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertIn("stateAtlas", page)
         self.assertIn("mobileStateSelect", page)
         self.assertIn("broker-workflow", page)
+        self.assertIn("laneFilters", page)
+        self.assertIn("Life-plan timing", page)
+        self.assertIn("metricWindows", page)
         self.assertIn("releaseBanner", page)
         self.assertIn("Investor view", page)
         self.assertIn('selectOnlyState(button.dataset.state)', script)
         self.assertIn('cache: "no-store"', script)
         self.assertIn("checkForNewRelease", script)
+        self.assertIn("T12:00:00", script)
+        self.assertIn("corroborating_signals", script)
         self.assertNotIn('id="login"', page)
         self.assertNotIn("Assigned username", page)
         self.assertNotIn("Password", page)

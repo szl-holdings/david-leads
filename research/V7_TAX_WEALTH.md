@@ -1,3 +1,10 @@
+> **RETIRED — NOT AN AUTHORIZED LEAD-SOURCE PLAN.** Named executives, insiders,
+> donors, tax-return geography, migration wealth, and other person-level or
+> affluence proxies are excluded from the production lead path. This file is
+> retained only as historical research. See
+> `FRONTIER_PRODUCT_RESEARCH_20260730.md` for the current organization-level
+> operating model.
+
 # V7 — Tax & Wealth Public Data Sources
 
 **For:** David Abraham (New York Life agent) — lead-intelligence app, East Coast affluent prospecting & money-in-motion
