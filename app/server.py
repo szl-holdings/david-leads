@@ -54,14 +54,6 @@ except Exception:  # pragma: no cover
     ev = None
 # V8.2 P1 gap-fill modules — defensive imports so /api/run never breaks on a missing optional
 try:
-    from . import liquidity as liq
-except Exception:  # pragma: no cover
-    liq = None
-try:
-    from . import wealth990 as w990
-except Exception:  # pragma: no cover
-    w990 = None
-try:
     from . import benchmark as bench
 except Exception:  # pragma: no cover
     bench = None
@@ -481,6 +473,11 @@ def logout(authorization: str | None = Header(default=None)):
 
 @app.post("/api/run")
 def run(req: RunReq, authorization: str | None = Header(default=None)):
+    raise HTTPException(
+        410,
+        "Legacy household archetype scoring is retired. Use /api/frontier-desk for "
+        "organization-level, source-cited deal moments.",
+    )
     _auth(authorization)
     try:
         rc.reset_chain()
@@ -525,7 +522,7 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         meta["fresh_daily"] = sum(1 for s in sigs if s.get("freshness") == "updated daily" and s.get("live"))
     except Exception:
         sigs6, meta6 = [], {}
-    # V7: tax/wealth + multi-state East Coast expansion
+    # V7: organization-level East Coast formation and licensing pulses
     try:
         sigs7, meta7 = sig7.gather_v7(live=req.live, state=getattr(req, "state", "NY"))
         sigs = sigs + sigs7
@@ -540,51 +537,6 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
         leads = sc.build_leads(meta, age_minutes=getattr(req, "age_min", 0.0))
     except Exception:
         leads = []
-    # V8.2 P1-A: optional SEC Form 4 insider-sell liquidity flag — only on live runs, only for
-    # leads whose event_type implies a liquidity moment AND where a public employer is known.
-    # Defensive: any failure leaves the lead untouched so /api/run never breaks.
-    # V8.3 P2-2: attempt the real SEC Form 4 check for employer-bearing archetypes on BOTH live and
-    # sample runs so the demo can surface a "Liquidity event" flag. The employer is a representative
-    # public company (Form 4 proxy), clearly labelled illustrative; liquidity_signal() returns an
-    # honest [SAMPLE] if SEC is unreachable so /api/run never breaks.
-    if liq is not None:
-        _LIQ_EVENTS = {"job_change", "promotion", "near_retirement"}
-        for lead in leads:
-            try:
-                employer = lead.get("employer")
-                if employer and (lead.get("event_type") in _LIQ_EVENTS):
-                    sig_liq = liq.liquidity_signal(employer)
-                    if isinstance(sig_liq, dict):
-                        sig_liq["employer"] = employer
-                        sig_liq["employer_illustrative"] = True  # representative public employer, labelled
-                    lead["liquidity"] = sig_liq
-            except Exception:
-                pass
-    # V8.2 P1-B: OPTIONAL 990 philanthropy/HNW supporting signal. Only fires for a lead that
-    # carries an explicit individual `name_token` (the demo segment archetypes don't — so this is
-    # an honest no-op in the deterministic demo, never spamming ProPublica with segment labels).
-    if w990 is not None and getattr(req, "live", False):
-        for lead in leads:
-            try:
-                tok = lead.get("name_token")
-                if tok:
-                    sig990 = w990.wealth990_signal(tok)
-                    lead["wealth990"] = sig990
-                    wt = lead.get("wealth_tier")
-                    cur_tier = wt.get("tier", "Mass") if isinstance(wt, dict) else (wt or "Mass")
-                    nud = w990.nudge_wealth_tier(cur_tier, sig990)
-                    if nud.get("nudged"):
-                        if isinstance(wt, dict) and ev is not None:
-                            wt["tier"] = nud["tier"]
-                            try:
-                                wt["ladder_index"] = ev.WEALTH_LADDER.index(nud["tier"])
-                            except Exception:
-                                pass
-                        else:
-                            lead["wealth_tier"] = nud["tier"]
-                        lead["wealth_tier_nudge"] = nud
-            except Exception:
-                pass
     receipts = {}
     for lead in leads:
         # each lead's receipt binds the signals that justify its segment
@@ -657,12 +609,42 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
 
 @app.get("/api/model")
 def model(authorization: str | None = Header(default=None)):
-    """Open the black box: full transparent scoring methodology."""
+    """Open the black box for the active organization-level public-data product."""
     _auth(authorization, allow_public_readonly=True)
-    try:
-        return sc.model_card()
-    except Exception:
-        raise HTTPException(503, "model card temporarily unavailable")
+    return {
+        "schema": "szl.public-deal-moment-model/v1",
+        "name": "David Leads organization deal-moment model",
+        "status": "ACTIVE",
+        "decision_unit": "organization",
+        "purpose": (
+            "Prioritize source-cited public business events for broker research. "
+            "It does not establish contact permission, product eligibility, or buying intent."
+        ),
+        "inputs": [
+            "Official public organization filings and registrations",
+            "Federal award notices",
+            "Employer benefit-plan filings with life-benefit timing context",
+        ],
+        "excluded_inputs": [
+            "Social-profile scraping",
+            "Personal contact details",
+            "Named filer, signer, preparer, or executive details",
+            "Household wealth, age, family-status, or demographic proxies",
+            "Consumer-report, health, or protected-class data",
+        ],
+        "ranking": {
+            "method": "transparent rules over filing recency, organization scale, and source corroboration",
+            "labels": ["OBSERVED", "HYPOTHESIS", "UNAVAILABLE"],
+            "no_hidden_model": True,
+        },
+        "contact_boundary": {
+            "default": "PUBLIC_RESEARCH_ONLY",
+            "call_ready": False,
+            "rule": "A public record is evidence for research, never evidence of consent to contact.",
+        },
+        "active_endpoint": "/api/frontier-desk",
+        "retired_endpoint": "/api/run",
+    }
 
 
 _OPERATOR_DRIVER_LABELS = {
@@ -1471,6 +1453,7 @@ def frontier_desk(
     board["sources"] = source.get("sources", [])
     board["generated_at"] = source.get("generated_at")
     board["states"] = source.get("states", state_list)
+    board["multi_source_accounts"] = source.get("multi_source_accounts", 0)
     board["frontier_doctrine"] = source.get("doctrine")
     if principal == "operator":
         _STATE["frontier_desk"] = board

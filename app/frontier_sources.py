@@ -17,6 +17,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from . import benefit_frontier
 from . import receipts as rc
 
 
@@ -75,6 +76,12 @@ SAM = {
     "label": "SAM.gov active entity updates",
     "api": "https://api.sam.gov/entity-information/v4/entities",
     "portal": "https://open.gsa.gov/api/entity-api/",
+}
+FORM5500 = {
+    "id": "dol-form5500-benefit-timing",
+    "label": "DOL Form 5500 benefit-plan filings",
+    "api": "https://askebsa.dol.gov/FOIA%20Files/",
+    "portal": benefit_frontier.PORTAL,
 }
 
 _ORG_SUFFIX = re.compile(
@@ -979,6 +986,62 @@ def fetch_sam_entities(
     return json.loads(json.dumps(output))
 
 
+def fetch_form5500(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+    """Return organization-level plan anniversary observations from DOL filings."""
+    output = benefit_frontier.collect(_states(states), limit)
+    records: list[dict[str, Any]] = []
+    for record in output.pop("records", []):
+        records.append(_attach_receipt(record, record["signal_summary"]))
+    output["records"] = records
+    return output
+
+
+def _entity_key(record: dict[str, Any]) -> str:
+    name = _clean(record.get("name"), 180).upper()
+    name = _ORG_SUFFIX.sub("", name)
+    name = re.sub(r"[^A-Z0-9]+", "", name)
+    return f"{record.get('state', '')}|{name}" if name else ""
+
+
+def triangulate(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Annotate organization matches across independent official sources."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        key = _entity_key(record)
+        if key:
+            groups.setdefault(key, []).append(record)
+
+    multi_source_accounts = 0
+    for group in groups.values():
+        source_names = sorted({
+            _clean(item.get("source_frontier"), 60)
+            for item in group
+            if item.get("source_frontier")
+        })
+        if len(source_names) > 1:
+            multi_source_accounts += 1
+        signals = [{
+            "source_frontier": item.get("source_frontier"),
+            "observed_trigger": item.get("observed_trigger"),
+            "observed_date": (
+                item.get("trigger_date")
+                or item.get("license_or_issue_date")
+                or item.get("observed_at")
+            ),
+            "citation": item.get("citation"),
+        } for item in group]
+        for record in group:
+            evidence = dict(record.get("evidence") or {})
+            evidence["source_count"] = len(source_names)
+            evidence["official_sources"] = source_names
+            evidence["triangulation_state"] = (
+                "MULTI_SOURCE" if len(source_names) > 1 else "SINGLE_SOURCE"
+            )
+            record["evidence"] = evidence
+            record["corroborating_signals"] = signals
+    return records, multi_source_accounts
+
+
 def frontier_opportunities(
     states: list[str] | None = None,
     limit_per_source: int = 18,
@@ -988,6 +1051,7 @@ def frontier_opportunities(
     records: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
     for source, fetcher in (
+        (FORM5500, fetch_form5500),
         (FMCSA, fetch_fmcsa),
         (USASPENDING, fetch_usaspending),
         (ECHO, fetch_echo),
@@ -1014,12 +1078,14 @@ def frontier_opportunities(
                 "reason": reason,
                 "privacy": "ENTITY_FIELDS_ONLY",
             })
+    records, multi_source_accounts = triangulate(records)
     return {
         "leads": records,
         "sources": sources,
         "generated_at": _now().isoformat(),
         "count": len(records),
         "states": state_list,
+        "multi_source_accounts": multi_source_accounts,
         "doctrine": (
             "Official entity/facility observations only. No social scraping, no person-level "
             "contact enrichment, no demographics, no underwriting use, and no contact "

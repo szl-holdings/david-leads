@@ -1,22 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # © 2026 SZL Holdings — David Leads V7 "East Coast Domination"
 """
-signals_v7.py — TAX/WEALTH signals + MULTI-STATE expansion across the East Coast.
+signals_v7.py — ORGANIZATION-FORMATION signals + MULTI-STATE expansion.
 
-Wealth & money-in-motion (free, verified): IRS SOI income-by-ZIP, ProPublica 990 (HNW execs),
-IRS county migration (affluent inflows), SEC Form 4 (insider liquidity).
+Only organization-formation velocity is emitted. Aggregate affluence, named
+executives, insiders, compensation, transactions, and other wealth proxies are
+intentionally excluded from lead generation.
 
 Multi-state (free Socrata, reuses the NY pattern): Connecticut, Delaware, Pennsylvania.
 
 Honest by design: real values, sample fallbacks labeled, public-data-only, nothing fabricated.
 """
 from __future__ import annotations
-import csv, io, json, urllib.request, urllib.parse
+import json, urllib.request
 from datetime import datetime, timezone, timedelta
 
 UA = {"User-Agent": "SZL-David-Leads research@szlholdings.com"}
 T = 10
-DAILY, MONTHLY, ANNUAL = "updated daily", "updated monthly", "updated annually"
+DAILY, MONTHLY = "updated daily", "updated monthly"
 
 
 def _json(url, timeout=T, method="GET", body=None):
@@ -28,94 +29,10 @@ def _json(url, timeout=T, method="GET", body=None):
         return json.loads(r.read().decode())
 
 
-def _csv(url, timeout=T, max_bytes=4_000_000):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        raw = r.read(max_bytes).decode("utf-8", "ignore")
-    return list(csv.DictReader(io.StringIO(raw)))
-
-
 def _sig(source, signal, detail, freshness, axis, product, live=True, as_of=None):
     return {"source": source, "signal": signal, "detail": detail, "freshness": freshness,
             "scoring_axis": axis, "product": product, "public": True, "live": live,
             "as_of": as_of or datetime.now(timezone.utc).date().isoformat()}
-
-
-# ============================================================ TAX / WEALTH
-def irs_soi_zip_income(state="NY"):
-    """IRS SOI income-by-ZIP — share of $200k+ (agi_stub 6) returns = affluent geography.
-    Streams the national CSV; aggregates the target state's top brackets."""
-    try:
-        rows = _csv("https://www.irs.gov/pub/irs-soi/22zpallagi.csv", timeout=12, max_bytes=6_000_000)
-        st = [r for r in rows if (r.get("STATE") or "").upper() == state.upper()]
-        if not st:
-            return [_soi_sample()]
-        def num(r, k):
-            try: return float(r.get(k, 0) or 0)
-            except Exception: return 0.0
-        hi = [r for r in st if r.get("agi_stub") in ("5", "6")]
-        hi_returns = sum(num(r, "N1") for r in hi)
-        all_returns = sum(num(r, "N1") for r in st)
-        share = (hi_returns / all_returns * 100) if all_returns else 0
-        return [_sig("IRS SOI Income-by-ZIP (TY2022)",
-                     "Affluent-household geography (AGI $100k+ share) \u2192 estate / HNW premium-finance",
-                     f"{state}: {share:.1f}% of returns are $100k+ ({int(hi_returns):,} affluent households) \u2014 target these ZIPs",
-                     ANNUAL, "wealth_density", "EST")]
-    except Exception:
-        return [_soi_sample()]
-
-
-def propublica_990(state="NY"):
-    """ProPublica 990 API — nonprofit execs = reliably high-income individuals. No key."""
-    try:
-        url = f"https://projects.propublica.org/nonprofits/api/v2/search.json?state%5Bid%5D={state}&c_code%5Bid%5D=3"
-        data = _json(url)
-        total = data.get("total_results", 0)
-        orgs = data.get("organizations", [])[:3]
-        names = ", ".join((o.get("name") or "")[:24] for o in orgs)
-        return [_sig("ProPublica Nonprofit Explorer (IRS 990)",
-                     "Nonprofit executives \u2192 high-income individuals (estate, annuity, key-person)",
-                     f"{total:,} {state} 501(c)(3) orgs \u2014 named, compensated execs (e.g. {names})",
-                     "continuous", "wealth_individual", "RET", as_of=None)]
-    except Exception:
-        return [_990_sample(state)]
-
-
-def irs_migration(dest_state_fips="36"):
-    """IRS county migration — affluent inflows (high avg AGI per migrating return)."""
-    try:
-        rows = _csv("https://www.irs.gov/pub/irs-soi/countyinflow2223.csv", timeout=12, max_bytes=5_000_000)
-        dest = [r for r in rows if (r.get("y2_statefips") or "").zfill(2) == dest_state_fips]
-        def num(r, k):
-            try: return float(r.get(k, 0) or 0)
-            except Exception: return 0.0
-        flows = [(r, num(r, "agi") / num(r, "n1")) for r in dest if num(r, "n1") > 50]
-        flows.sort(key=lambda x: x[1], reverse=True)
-        if not flows:
-            return [_mig_sample()]
-        top = flows[0][0]; avg_agi = flows[0][1]
-        origin = (top.get("y1_state") or "") + " " + (top.get("y1_countyname") or "")
-        return [_sig("IRS County Migration (2022\u219223)",
-                     "Affluent newcomers moving in \u2192 relocation-triggered estate / annuity review",
-                     f"High-AGI inflow from {origin.strip()} (~${avg_agi:.0f}k avg AGI/household) \u2014 new affluent residents",
-                     ANNUAL, "wealth_migration", "EST")]
-    except Exception:
-        return [_mig_sample()]
-
-
-def sec_form4(limit=3):
-    """SEC Form 4 insider transactions — executives transacting stock = liquidity event."""
-    try:
-        end = datetime.now().date(); start = end - timedelta(days=7)
-        url = (f"https://efts.sec.gov/LATEST/search-index?forms=4&startdt={start}&enddt={end}")
-        data = _json(url, timeout=8)
-        n = data.get("hits", {}).get("total", {}).get("value") or len(data.get("hits", {}).get("hits", []))
-        return [_sig("SEC EDGAR Form 4 (insider transactions)",
-                     "Executive stock transactions \u2192 liquidity event (annuity / estate / premium-finance)",
-                     f"~{n} insider Form 4 filings this week \u2014 execs with liquidity to deploy",
-                     DAILY, "wealth_liquidity", "RET")]
-    except Exception:
-        return [_form4_sample()]
 
 
 # ============================================================ MULTI-STATE (Socrata, reuses NY pattern)
@@ -169,33 +86,22 @@ def state_pulse(state="CT"):
 
 
 # ============================================================ samples
-def _soi_sample():
-    return _sig("IRS SOI Income-by-ZIP [SAMPLE]", "Affluent-household geography (AGI $100k+ share)",
-                "Sample: ~28% of NY returns are $100k+ \u2014 target affluent ZIPs", ANNUAL, "wealth_density", "EST", live=False)
-def _990_sample(state="NY"):
-    return _sig("ProPublica 990 [SAMPLE]", "Nonprofit executives \u2192 high-income individuals",
-                f"Sample: thousands of {state} 501(c)(3) orgs with compensated execs", "continuous", "wealth_individual", "RET", live=False)
-def _mig_sample():
-    return _sig("IRS County Migration [SAMPLE]", "Affluent newcomers moving in",
-                "Sample: high-AGI inflow ~$185k avg/household into NY metro", ANNUAL, "wealth_migration", "EST", live=False)
-def _form4_sample():
-    return _sig("SEC Form 4 [SAMPLE]", "Executive stock transactions \u2192 liquidity event",
-                "Sample: ~2,900 insider filings/week", DAILY, "wealth_liquidity", "RET", live=False)
 def _state_sample(name, kind):
     return _sig(f"{name} [SAMPLE]", f"{name}: {kind} velocity",
                 f"Sample: {name} {kind} feed (offline)", DAILY, "business_formation" if kind == "business" else "new_professional", "RET", live=False)
 
 
 def gather_v7(live: bool = True, state="NY", extra_states=("CT", "DE", "PA")):
-    """Tax/wealth + multi-state pulse. state = home state (FIPS-mapped for migration)."""
-    fips = {"NY": "36", "NJ": "34", "CT": "09", "PA": "42", "MA": "25", "FL": "12"}.get(state.upper(), "36")
+    """Organization-level multi-state pulse."""
     if live:
-        sigs = (irs_soi_zip_income(state) + propublica_990(state) + irs_migration(fips) + sec_form4())
+        sigs = []
         for s in extra_states:
             sigs += state_pulse(s)
     else:
-        sigs = [_soi_sample(), _990_sample(state), _mig_sample(), _form4_sample(),
-                _state_sample("Connecticut", "business"), _state_sample("Delaware", "license")]
+        sigs = [
+            _state_sample("Connecticut", "business"),
+            _state_sample("Delaware", "license"),
+        ]
     gated = [s for s in sigs if s.get("public")]
     live_count = sum(1 for s in gated if s.get("live"))
     meta = {
@@ -204,6 +110,12 @@ def gather_v7(live: bool = True, state="NY", extra_states=("CT", "DE", "PA")):
         "sources": sorted({s["source"].replace(" [SAMPLE]", "") for s in gated}),
         "scoring_axes": sorted({s["scoring_axis"] for s in gated}),
         "states_covered": ["NY"] + list(extra_states),
+        "disabled_person_level_frontiers": [
+            "named nonprofit executive wealth proxy",
+            "named insider transaction wealth proxy",
+            "aggregate affluence geography proxy",
+            "tax-return migration wealth proxy",
+        ],
         "gathered_at": datetime.now(timezone.utc).isoformat(),
         "mode": "LIVE" if live else "SAMPLE (offline)", "version": "v7",
     }

@@ -49,8 +49,11 @@ underwriting decision, consumer report, or permission to contact.
 - **Opportunity Desk** turns official business and license records into a research queue with
   explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
   is never treated as permission to contact.
-- **Frontier Radar** adds recent FMCSA carrier-entity additions, USAspending contract activity,
-  and EPA ECHO facility monitoring activity. A Chicago organization-license lane is implemented
+- **Frontier Radar** adds Department of Labor Form 5500 employer life-plan timing, recent FMCSA
+  carrier-entity additions, USAspending contract activity, and EPA ECHO facility monitoring
+  activity. The Form 5500 lane reads official monthly bulk disclosures, keeps only organization,
+  plan-period, participant-count, and benefit-category fields, and treats the next reported
+  anniversary as a research hypothesis rather than a renewal claim. A Chicago organization-license lane is implemented
   but remains gated on documented reuse approval and a Socrata app token; SAM.gov remains
   key-gated; FCC ULS remains unavailable until a durable bulk-ingestion lane exists. Every source
   reports its true state, requests only minimized entity/facility fields, never substitutes
@@ -62,7 +65,7 @@ underwriting decision, consumer report, or permission to contact.
 - **Call Brief** gives a concise opening line and next step for human review.
 - **Proof & Sources** exposes the exact evidence record behind a recommendation.
 - **Results** records meeting, sale, and no-sale outcomes without presenting modeled results as facts.
-- **More tools** contains territory, wealth, workforce-event, opt-in, export, routing, and CRM actions.
+- **More tools** contains territory, workforce-event, opt-in, export, routing, and CRM actions.
 
 ## Data and safety boundaries
 
@@ -77,6 +80,9 @@ underwriting decision, consumer report, or permission to contact.
 - Frontier adapters do not request phone, email, named officer, crash/safety, compliance status,
   penalties, community demographics, insurance, or policy fields. Every resulting packet is
   `PROSPECTING_ONLY` and `not_for_underwriting=true`.
+- The Form 5500 adapter additionally excludes EINs, signers, preparers, administrators, named
+  brokers, commissions, and person-level addresses. Only a reported Schedule A life-benefit
+  indicator informs the life/business-protection fit shown in the queue.
 - A public record cannot enter `READY` through a checkbox or direct stage change. It requires a
   first-party business channel, named operator, license scope, jurisdiction, talk-track version,
   affirmative suppression/rules checks, and an unexpired clearance receipt.

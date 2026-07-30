@@ -7,7 +7,7 @@
   <meta name="description" content="David Leads turns official public business signals into a clear, source-linked Eastern U.S. research workspace.">
   <title>David Leads | Eastern Market Cockpit</title>
   <link rel="stylesheet" href="fonts/fonts.css">
-  <link rel="stylesheet" href="holo.css?v=broker-polish-20260729">
+  <link rel="stylesheet" href="holo.css?v=deal-moment-20260730">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -99,8 +99,8 @@
     <section class="content-shell">
       <section class="hero" aria-labelledby="pageTitle">
         <div>
-          <span class="eyebrow">Official signals. Human judgment.</span>
-          <h1 id="pageTitle">See where business is moving.</h1>
+          <span class="eyebrow">Verified buying moments. Human judgment.</span>
+          <h1 id="pageTitle">Know who changed. Know why now.</h1>
           <p id="scopeSummary">Loading the latest official records across the Eastern United States.</p>
         </div>
         <div class="hero-actions">
@@ -122,6 +122,11 @@
           <span class="metric-label">Markets represented</span>
           <strong id="metricStates">--</strong>
           <small id="metricStatesSub">Select one state for a deeper pull</small>
+        </article>
+        <article class="metric-card metric-timing">
+          <span class="metric-label">Life-plan timing windows</span>
+          <strong id="metricWindows">--</strong>
+          <small id="metricWindowsSub">Reported anniversaries in the next 180 days</small>
         </article>
         <article class="metric-card">
           <span class="metric-label">Official sources live</span>
@@ -155,8 +160,8 @@
       <section id="leadsView" class="view-panel active" aria-labelledby="leadsHeading">
         <div class="panel-heading">
           <div>
-            <span class="eyebrow">Live research queue</span>
-            <h2 id="leadsHeading">Organizations to investigate now</h2>
+            <span class="eyebrow">Today’s deal-moment queue</span>
+            <h2 id="leadsHeading">Start with the strongest reason to act.</h2>
           </div>
           <span id="resultCount" class="result-count">Loading</span>
         </div>
@@ -175,6 +180,23 @@
             <div><strong>Confirm permission</strong><small>Then prepare outreach</small></div>
           </li>
         </ol>
+
+        <div id="dailyBrief" class="daily-brief" aria-live="polite">
+          <span class="brief-orbit" aria-hidden="true"></span>
+          <div>
+            <span class="eyebrow">Broker brief</span>
+            <strong>Building today’s evidence-ranked queue</strong>
+            <small>Timing, fit, and official-source proof stay separate from contact permission.</small>
+          </div>
+        </div>
+
+        <div id="laneFilters" class="lane-filters" aria-label="Filter by deal moment">
+          <button class="lane-button active" type="button" data-lane="all">All moments</button>
+          <button class="lane-button" type="button" data-lane="timing">Life-plan timing</button>
+          <button class="lane-button" type="button" data-lane="growth">Growth &amp; awards</button>
+          <button class="lane-button" type="button" data-lane="operations">Operational change</button>
+          <button class="lane-button" type="button" data-lane="research">Needs research</button>
+        </div>
 
         <div class="filter-bar">
           <label class="search-field">
@@ -206,11 +228,11 @@
           <table class="lead-table">
             <thead>
               <tr>
-                <th scope="col">Organization</th>
-                <th scope="col">Market</th>
-                <th scope="col">Why it surfaced</th>
-                <th scope="col">Observed value</th>
-                <th scope="col">Next move</th>
+                <th scope="col">Account</th>
+                <th scope="col">Verified deal moment</th>
+                <th scope="col">Timing</th>
+                <th scope="col">Likely fit</th>
+                <th scope="col">Evidence</th>
                 <th scope="col"><span class="sr-only">Open lead</span></th>
               </tr>
             </thead>
@@ -363,6 +385,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=broker-polish-20260729" defer></script>
+  <script src="app.js?v=deal-moment-20260730" defer></script>
 </body>
 </html>

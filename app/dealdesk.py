@@ -1018,8 +1018,22 @@ def _priority(record: dict[str, Any]) -> int:
         score += 20
     if record.get("receipt_id"):
         score += 15
-    if record.get("type") in {"business", "licensee", "carrier", "federal_award", "facility"}:
+    if record.get("type") in {
+        "business",
+        "licensee",
+        "carrier",
+        "federal_award",
+        "facility",
+        "benefit_plan",
+    }:
         score += 5
+    timing = record.get("timing") or {}
+    try:
+        days_to_anniversary = int(timing.get("days_to_anniversary", 366))
+    except (AttributeError, TypeError, ValueError):
+        days_to_anniversary = 366
+    if 0 <= days_to_anniversary <= 180:
+        score += 10
     if record.get("contact_quality") != "[SAMPLE]":
         score += 10
     return min(score, 100)
@@ -1205,8 +1219,10 @@ def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
         "citation",
         "city",
         "contact_quality",
+        "corroborating_signals",
         "credential",
         "dba",
+        "evidence",
         "license_or_issue_date",
         "limitations",
         "name",
@@ -1218,6 +1234,7 @@ def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
         "parser_version",
         "product",
         "product_angle",
+        "product_fit",
         "purpose",
         "receipt_id",
         "receipt_signed",
@@ -1233,6 +1250,7 @@ def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
         "state",
         "status",
         "trigger_date",
+        "timing",
         "type",
         "why",
         "zip",

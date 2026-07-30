@@ -1,3 +1,10 @@
+> **RETIRED RESEARCH — DO NOT IMPLEMENT PERSON-LEVEL IDEAS.** This file is
+> retained as historical product research. The current production boundary is
+> organization-level official data only; social profiles, obituaries,
+> bereavement events, personal contacts, named donors/executives, and other
+> person-level proxies are prohibited. See
+> `FRONTIER_PRODUCT_RESEARCH_20260730.md`.
+
 # Field Leaders Recon — Insurance / Life Lead Intelligence
 
 **Project:** David Leads (AI lead-intelligence app for David Abraham, NYL financial professional)

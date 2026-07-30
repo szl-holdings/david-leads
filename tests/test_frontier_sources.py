@@ -437,6 +437,11 @@ class FrontierAggregationSafety(unittest.TestCase):
             "privacy": "ENTITY_FIELDS_ONLY",
         }
         with (
+            mock.patch.object(frontier_sources, "fetch_form5500", return_value={
+                **live,
+                "source": "DOL Form 5500",
+                "source_id": "dol-form5500-benefit-timing",
+            }),
             mock.patch.object(frontier_sources, "fetch_fmcsa", side_effect=TimeoutError),
             mock.patch.object(frontier_sources, "fetch_usaspending", return_value=live),
             mock.patch.object(frontier_sources, "fetch_echo", return_value={
@@ -464,12 +469,49 @@ class FrontierAggregationSafety(unittest.TestCase):
         ):
             result = frontier_sources.frontier_opportunities(["NY"])
         self.assertEqual(result["leads"], [])
-        self.assertEqual(result["sources"][0]["mode"], "UNAVAILABLE")
+        fmcsa = next(
+            source
+            for source in result["sources"]
+            if source["source_id"] == "fmcsa-company-census"
+        )
+        self.assertEqual(fmcsa["mode"], "UNAVAILABLE")
         self.assertEqual(
             result["sources"][-1]["reason"],
             "SAM_GOV_API_KEY_NOT_CONFIGURED",
         )
         self.assertNotIn("SAMPLE", str(result))
+
+    def test_triangulation_matches_only_same_state_organization_across_sources(self):
+        records = [
+            {
+                "name": "Example Manufacturing, Inc.",
+                "state": "NY",
+                "source_frontier": "BENEFIT_PLAN_TIMING",
+                "observed_trigger": "Life-plan anniversary",
+                "citation": {"label": "DOL", "url": "https://www.dol.gov/"},
+            },
+            {
+                "name": "EXAMPLE MANUFACTURING INC",
+                "state": "NY",
+                "source_frontier": "FEDERAL_CONTRACT",
+                "observed_trigger": "Federal contract activity",
+                "citation": {"label": "USAspending", "url": "https://www.usaspending.gov/"},
+            },
+            {
+                "name": "Example Manufacturing Inc",
+                "state": "PA",
+                "source_frontier": "FMCSA",
+                "observed_trigger": "Carrier registration",
+                "citation": {"label": "FMCSA", "url": "https://www.fmcsa.dot.gov/"},
+            },
+        ]
+        annotated, count = frontier_sources.triangulate(records)
+        self.assertEqual(count, 1)
+        self.assertEqual(annotated[0]["evidence"]["source_count"], 2)
+        self.assertEqual(annotated[0]["evidence"]["triangulation_state"], "MULTI_SOURCE")
+        self.assertEqual(len(annotated[0]["corroborating_signals"]), 2)
+        self.assertEqual(annotated[2]["evidence"]["source_count"], 1)
+        self.assertEqual(annotated[2]["evidence"]["triangulation_state"], "SINGLE_SOURCE")
 
 
 if __name__ == "__main__":
