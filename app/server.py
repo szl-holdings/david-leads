@@ -114,7 +114,14 @@ async def release_cache_policy(request: Request, call_next):
     """Keep the broker shell and live truth routes from remaining on stale releases."""
     response = await call_next(request)
     path = request.url.path
-    if path in {"/", "/index.html", "/healthz"} or path.startswith("/api/"):
+    if path in {
+        "/",
+        "/index.html",
+        "/healthz",
+        "/readyz",
+        "/version",
+        "/evidence",
+    } or path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-store, max-age=0"
         response.headers["Pragma"] = "no-cache"
     elif path.endswith((".js", ".css")):
@@ -355,6 +362,16 @@ def _release_receipt(source_revision: str | None) -> dict:
     }
 
 
+def _observed_source_revision() -> str | None:
+    """Return the first allowlisted deployment revision only when it is exact."""
+
+    for name in ("SOURCE_GITHUB_SHA", "GITHUB_SHA", "HF_SPACE_COMMIT_SHA"):
+        candidate = str(os.environ.get(name) or "")
+        if re.fullmatch(r"[0-9a-fA-F]{40}", candidate):
+            return candidate.lower()
+    return None
+
+
 def _runtime_bundle_manifest() -> dict:
     """Hash the exact runtime files Docker copies so live bytes can be compared to GitHub."""
     roots = [
@@ -393,11 +410,7 @@ def _runtime_bundle_manifest() -> dict:
     canonical = "\n".join(
         f"{item['path']}\0{item['sha256']}" for item in files
     ).encode("utf-8")
-    revision = (
-        os.environ.get("SOURCE_GITHUB_SHA")
-        or os.environ.get("GITHUB_SHA")
-        or os.environ.get("HF_SPACE_COMMIT_SHA")
-    )
+    revision = _observed_source_revision()
     release_receipt = _release_receipt(revision)
     return {
         "service": "david-leads",
@@ -424,6 +437,61 @@ def _runtime_bundle_manifest() -> dict:
 @app.get("/api/build-info")
 def build_info():
     return _runtime_bundle_manifest()
+
+
+@app.get("/version")
+def conformance_version():
+    revision = _observed_source_revision()
+    if revision is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "schemaVersion": "szl.vertical-conformance.version-unavailable.v1",
+                "state": "UNAVAILABLE",
+                "reason": "EXACT_DEPLOYED_GIT_SHA_UNAVAILABLE",
+            },
+        )
+    return {
+        "schemaVersion": "szl.vertical-conformance.version.v1",
+        "service": "david-leads",
+        "surface": "insurance",
+        "gitSha": revision,
+    }
+
+
+@app.get("/evidence")
+def conformance_evidence():
+    revision = _observed_source_revision()
+    if revision is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "schemaVersion": "szl.vertical-conformance.evidence-unavailable.v1",
+                "state": "UNAVAILABLE",
+                "reason": "EXACT_DEPLOYED_GIT_SHA_UNAVAILABLE",
+            },
+        )
+    release_receipt = _release_receipt(revision)
+    return {
+        "schemaVersion": "szl.vertical-conformance.evidence.v1",
+        "service": "david-leads",
+        "surface": "insurance",
+        "evidenceState": "PARTIAL",
+        "gitSha": revision,
+        "receipts": [],
+        "releaseReceipt": release_receipt,
+        "applicationReceiptCount": len(_PUBLIC_RECEIPTS),
+        "limitations": [
+            (
+                "No portable cross-repository root-to-target DSSE receipt pair "
+                "is exposed by this deployment."
+            ),
+            (
+                "No conformance denial receipt or OTel GenAI span set is "
+                "claimed by this endpoint."
+            ),
+        ],
+    }
 
 
 @app.get("/api/access-mode")
