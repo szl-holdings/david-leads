@@ -1683,6 +1683,71 @@ class ApiSafety(unittest.TestCase):
         self.assertFalse(body["receipt_minted"])
         self.assertEqual(body["release_receipt"]["state"], "UNAVAILABLE")
 
+    def test_conformance_routes_expose_exact_sha_and_honest_partial_evidence(self):
+        revision = "d" * 40
+        with patch.dict(
+            os.environ,
+            {
+                "SOURCE_GITHUB_SHA": revision.upper(),
+                "GITHUB_SHA": "",
+                "HF_SPACE_COMMIT_SHA": "",
+                "RELEASE_ATTESTATION": "",
+            },
+        ):
+            version = self.client.get("/version")
+            evidence = self.client.get("/evidence")
+
+        self.assertEqual(version.status_code, 200)
+        self.assertEqual(
+            version.json(),
+            {
+                "schemaVersion": "szl.vertical-conformance.version.v1",
+                "service": "david-leads",
+                "surface": "insurance",
+                "gitSha": revision,
+            },
+        )
+        self.assertEqual(evidence.status_code, 200)
+        body = evidence.json()
+        self.assertEqual(
+            body["schemaVersion"],
+            "szl.vertical-conformance.evidence.v1",
+        )
+        self.assertEqual(body["surface"], "insurance")
+        self.assertEqual(body["evidenceState"], "PARTIAL")
+        self.assertEqual(body["gitSha"], revision)
+        self.assertEqual(body["receipts"], [])
+        self.assertEqual(body["releaseReceipt"]["state"], "UNAVAILABLE")
+        self.assertIsInstance(body["applicationReceiptCount"], int)
+        self.assertIn(
+            "No portable cross-repository root-to-target DSSE receipt pair",
+            body["limitations"][0],
+        )
+        self.assertIn("no-store", version.headers["cache-control"])
+        self.assertIn("no-store", evidence.headers["cache-control"])
+
+    def test_conformance_routes_fail_closed_without_exact_sha(self):
+        invalid = "not-a-sha SECRET_VALUE"
+        with patch.dict(
+            os.environ,
+            {
+                "SOURCE_GITHUB_SHA": invalid,
+                "GITHUB_SHA": "a" * 39,
+                "HF_SPACE_COMMIT_SHA": "g" * 40,
+            },
+        ):
+            version = self.client.get("/version")
+            evidence = self.client.get("/evidence")
+
+        self.assertEqual(version.status_code, 503)
+        self.assertEqual(version.json()["state"], "UNAVAILABLE")
+        self.assertEqual(evidence.status_code, 503)
+        self.assertEqual(evidence.json()["state"], "UNAVAILABLE")
+        self.assertNotIn(invalid, version.text)
+        self.assertNotIn(invalid, evidence.text)
+        self.assertNotIn("SECRET_VALUE", version.text)
+        self.assertNotIn("SECRET_VALUE", evidence.text)
+
     def test_frontier_desk_requires_research_before_contact(self):
         record = {
             "name": "Example Carrier LLC",
