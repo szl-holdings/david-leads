@@ -1,3 +1,4 @@
+from html.parser import HTMLParser
 import pathlib
 import time
 import unittest
@@ -7,6 +8,45 @@ from fastapi.testclient import TestClient
 
 from app import dealdesk
 from app import server
+
+
+class _DataStatePillParser(HTMLParser):
+    """Capture the direct DOM contract used by renderDataState()."""
+
+    def __init__(self):
+        super().__init__()
+        self.attributes = {}
+        self.direct_children = []
+        self.direct_text = []
+        self.found = False
+        self._inside = False
+        self._depth = 0
+        self._tag = None
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if not self._inside and attributes.get("id") == "dataStatePill":
+            self.attributes = attributes
+            self.found = True
+            self._inside = True
+            self._tag = tag
+            return
+        if self._inside:
+            self._depth += 1
+            if self._depth == 1:
+                self.direct_children.append(tag)
+
+    def handle_endtag(self, tag):
+        if not self._inside:
+            return
+        if self._depth == 0 and tag == self._tag:
+            self._inside = False
+            return
+        self._depth -= 1
+
+    def handle_data(self, data):
+        if self._inside and self._depth == 0 and data.strip():
+            self.direct_text.append(data.strip())
 
 
 class PublicBoardProjectionTests(unittest.TestCase):
@@ -211,6 +251,57 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertNotIn("Password", page)
         self.assertIn('id="boot"', page)
         self.assertNotIn("Export governed CSV", page)
+
+    def test_data_state_status_has_accessible_dom_contract(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+
+        parser = _DataStatePillParser()
+        parser.feed(response.text)
+
+        self.assertTrue(parser.found)
+        self.assertEqual(parser.attributes["role"], "status")
+        self.assertEqual(parser.attributes["aria-live"], "polite")
+        self.assertIn("unavailable", parser.attributes["class"].split())
+        self.assertEqual(parser.direct_children, ["i"])
+        self.assertEqual(parser.direct_text, ["DATA: CHECKING"])
+
+    def test_data_state_rendering_is_source_derived_and_fails_closed(self):
+        script = self.client.get("/app.js").text.replace("\r\n", "\n")
+        function = script.split("function renderDataState() {", 1)[1].split(
+            "\n}\n\nfunction renderMetrics", 1
+        )[0]
+
+        self.assertIn(
+            'state.sources.filter((source) => source.mode === "LIVE")',
+            function,
+        )
+        self.assertIn('if (liveSources.length > 0)', function)
+        self.assertIn('LIVE / MEASURED · ${liveSources.length}/${totalSources}', function)
+        self.assertIn('else if (state.board)', function)
+        self.assertIn('UNAVAILABLE · 0/${totalSources}', function)
+        self.assertIn('pill.lastChild.textContent = "DATA: UNAVAILABLE"', function)
+        self.assertNotIn("state.leads.length", function)
+        self.assertNotIn("summary.live ?? state.leads.length", script)
+        self.assertIn("renderMetrics();\n  renderDataState();", script)
+
+    def test_access_mode_failure_makes_all_header_states_terminal(self):
+        script = self.client.get("/app.js").text.replace("\r\n", "\n")
+        unavailable = script.split("function renderWorkspaceUnavailable() {", 1)[1].split(
+            "\n}\n\nfunction renderMetrics", 1
+        )[0]
+        bootstrap = script.split("async function bootstrap() {", 1)[1].split(
+            "\n}\n\nfunction bindEvents", 1
+        )[0]
+
+        self.assertIn('access.mode !== "public_readonly"', bootstrap)
+        self.assertIn("renderWorkspaceUnavailable();", bootstrap)
+        self.assertIn('pill.classList.remove("measured")', unavailable)
+        self.assertIn('pill.classList.add("unavailable")', unavailable)
+        self.assertIn('pill.lastChild.textContent = "DATA: UNAVAILABLE"', unavailable)
+        self.assertIn('$("sourceStamp").textContent = "Release unavailable"', unavailable)
+        self.assertIn('$("sourceStamp").classList.remove("observed")', unavailable)
+        self.assertIn('$("freshness").textContent = "Live sources unavailable"', unavailable)
 
 
 if __name__ == "__main__":
