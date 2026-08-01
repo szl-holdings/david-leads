@@ -319,13 +319,15 @@ function showLoading(show) {
 async function loadLeads() {
   if (!state.selectedStates.size) return;
   if (state.controller) state.controller.abort();
-  state.controller = new AbortController();
+  const controller = new AbortController();
+  state.controller = controller;
   showLoading(true);
   const selected = [...state.selectedStates];
   const query = encodeURIComponent(selected.join(","));
   const started = performance.now();
   try {
-    const board = await api(`/api/frontier-desk?states=${query}`, { signal: state.controller.signal });
+    const board = await api(`/api/frontier-desk?states=${query}`, { signal: controller.signal });
+    if (state.controller !== controller) return;
     state.board = board;
     state.leads = Array.isArray(board.opportunities) ? board.opportunities : [];
     state.sources = Array.isArray(board.sources) ? board.sources : [];
@@ -333,7 +335,7 @@ async function loadLeads() {
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
     $("freshness").textContent = `${relativeTime(board.generated_at)} in ${seconds}s`;
   } catch (error) {
-    if (error.name === "AbortError") return;
+    if (error.name === "AbortError" || state.controller !== controller) return;
     state.board = null;
     state.leads = [];
     state.sources = [];
@@ -341,7 +343,10 @@ async function loadLeads() {
     $("scopeNotice").textContent = `Live sources could not complete: ${error.message}`;
     showToast("The live source pull did not complete. Try again.");
   } finally {
-    showLoading(false);
+    if (state.controller === controller) {
+      state.controller = null;
+      showLoading(false);
+    }
   }
 }
 

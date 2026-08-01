@@ -45,7 +45,7 @@ function fakeElement(classes = []) {
   };
 }
 
-test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
+function createHarness(fetch) {
   const elements = {
     dataStatePill: fakeElement(["live-pill", "unavailable"]),
     emptyState: fakeElement(),
@@ -66,7 +66,7 @@ test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
   const context = {
     AbortController,
     document,
-    fetch: () => new Promise(() => {}),
+    fetch,
     performance: { now: () => 100 },
     window: {
       location: { origin: "https://example.test" },
@@ -78,7 +78,12 @@ test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
     context,
   );
 
-  const hooks = context.__dataStateTest;
+  return { elements, hooks: context.__dataStateTest };
+}
+
+test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
+  const { elements, hooks } = createHarness(() => new Promise(() => {}));
+
   hooks.state.board = { generated_at: "2026-08-01T20:00:00Z" };
   hooks.state.sources = [{ mode: "LIVE" }, { mode: "UNAVAILABLE" }];
   hooks.renderDataState();
@@ -99,4 +104,29 @@ test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
   assert.equal(elements.workspace.attributes["aria-busy"], "true");
   assert.equal(elements.refreshData.disabled, true);
   assert.equal(elements.resultCount.textContent, "Loading current source records");
+});
+
+test("an aborted older pull cannot clear the newer pull's busy state", async () => {
+  const requests = [];
+  const fetch = (_path, { signal }) => new Promise((resolve, reject) => {
+    signal.addEventListener("abort", () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    }, { once: true });
+    requests.push({ resolve });
+  });
+  const { elements, hooks } = createHarness(fetch);
+  hooks.state.selectedStates = new Set(["VA"]);
+
+  const olderPull = hooks.loadLeads();
+  void hooks.loadLeads();
+  await olderPull;
+
+  assert.equal(requests.length, 2);
+  assert.equal(elements.dataStatePill.lastChild.textContent, "DATA: CHECKING");
+  assert.equal(elements.dataStatePill.classList.contains("checking"), true);
+  assert.equal(elements.workspace.attributes["aria-busy"], "true");
+  assert.equal(elements.refreshData.disabled, true);
+  assert.equal(elements.loadingState.classList.contains("hidden"), false);
 });
