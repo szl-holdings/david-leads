@@ -262,7 +262,10 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertTrue(parser.found)
         self.assertEqual(parser.attributes["role"], "status")
         self.assertEqual(parser.attributes["aria-live"], "polite")
-        self.assertIn("unavailable", parser.attributes["class"].split())
+        self.assertIn("checking", parser.attributes["class"].split())
+        self.assertNotIn("measured", parser.attributes["class"].split())
+        self.assertNotIn("unavailable", parser.attributes["class"].split())
+        self.assertEqual(parser.attributes["title"], "Loading current source records")
         self.assertEqual(parser.direct_children, ["i"])
         self.assertEqual(parser.direct_text, ["DATA: CHECKING"])
 
@@ -284,6 +287,7 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertNotIn("state.leads.length", function)
         self.assertNotIn("summary.live ?? state.leads.length", script)
         self.assertIn("renderMetrics();\n  renderDataState();", script)
+        self.assertIn('pill.classList.remove("checking")', function)
 
     def test_access_mode_failure_makes_all_header_states_terminal(self):
         script = self.client.get("/app.js").text.replace("\r\n", "\n")
