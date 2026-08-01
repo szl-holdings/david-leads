@@ -267,7 +267,7 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertEqual(parser.direct_text, ["DATA: CHECKING"])
 
     def test_data_state_rendering_is_source_derived_and_fails_closed(self):
-        script = self.client.get("/app.js").text
+        script = self.client.get("/app.js").text.replace("\r\n", "\n")
         function = script.split("function renderDataState() {", 1)[1].split(
             "\n}\n\nfunction renderMetrics", 1
         )[0]
@@ -284,6 +284,24 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertNotIn("state.leads.length", function)
         self.assertNotIn("summary.live ?? state.leads.length", script)
         self.assertIn("renderMetrics();\n  renderDataState();", script)
+
+    def test_access_mode_failure_makes_all_header_states_terminal(self):
+        script = self.client.get("/app.js").text.replace("\r\n", "\n")
+        unavailable = script.split("function renderWorkspaceUnavailable() {", 1)[1].split(
+            "\n}\n\nfunction renderMetrics", 1
+        )[0]
+        bootstrap = script.split("async function bootstrap() {", 1)[1].split(
+            "\n}\n\nfunction bindEvents", 1
+        )[0]
+
+        self.assertIn('access.mode !== "public_readonly"', bootstrap)
+        self.assertIn("renderWorkspaceUnavailable();", bootstrap)
+        self.assertIn('pill.classList.remove("measured")', unavailable)
+        self.assertIn('pill.classList.add("unavailable")', unavailable)
+        self.assertIn('pill.lastChild.textContent = "DATA: UNAVAILABLE"', unavailable)
+        self.assertIn('$("sourceStamp").textContent = "Release unavailable"', unavailable)
+        self.assertIn('$("sourceStamp").classList.remove("observed")', unavailable)
+        self.assertIn('$("freshness").textContent = "Live sources unavailable"', unavailable)
 
 
 if __name__ == "__main__":

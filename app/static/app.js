@@ -375,6 +375,17 @@ function renderDataState() {
   }
 }
 
+function renderWorkspaceUnavailable() {
+  const pill = $("dataStatePill");
+  pill.classList.remove("measured");
+  pill.classList.add("unavailable");
+  pill.lastChild.textContent = "DATA: UNAVAILABLE";
+  pill.title = "The public workspace did not pass its access gate";
+  $("sourceStamp").textContent = "Release unavailable";
+  $("sourceStamp").classList.remove("observed");
+  $("freshness").textContent = "Live sources unavailable";
+}
+
 function renderMetrics() {
   const summary = state.board?.summary || {};
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
@@ -788,6 +799,7 @@ async function bootstrap() {
     await Promise.all([loadLeads(), loadBuildAndHealth()]);
     state.releaseCheckTimer = window.setInterval(checkForNewRelease, 120000);
   } catch (error) {
+    renderWorkspaceUnavailable();
     $("scopeSummary").textContent = `The public workspace could not open: ${error.message}`;
     showToast("The public workspace could not open.");
   } finally {
