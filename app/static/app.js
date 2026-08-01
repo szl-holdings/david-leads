@@ -310,6 +310,7 @@ function showLoading(show) {
   $("refreshData").disabled = show;
   $("workspace").setAttribute("aria-busy", String(show));
   if (show) {
+    renderDataStateChecking();
     $("emptyState").classList.add("hidden");
     $("resultCount").textContent = "Loading current source records";
   }
@@ -356,11 +357,21 @@ function renderEverything() {
   renderScope();
 }
 
+function renderDataStateChecking() {
+  const pill = $("dataStatePill");
+  pill.classList.remove("measured");
+  pill.classList.remove("unavailable");
+  pill.classList.add("checking");
+  pill.lastChild.textContent = "DATA: CHECKING";
+  pill.title = `Loading current source records for ${selectedRegionName()}`;
+}
+
 function renderDataState() {
   const pill = $("dataStatePill");
   const liveSources = state.sources.filter((source) => source.mode === "LIVE");
   const totalSources = state.sources.length;
   const observedAt = state.board?.generated_at;
+  pill.classList.remove("checking");
   pill.classList.toggle("measured", liveSources.length > 0);
   pill.classList.toggle("unavailable", liveSources.length === 0);
   if (liveSources.length > 0) {
@@ -378,6 +389,7 @@ function renderDataState() {
 function renderWorkspaceUnavailable() {
   const pill = $("dataStatePill");
   pill.classList.remove("measured");
+  pill.classList.remove("checking");
   pill.classList.add("unavailable");
   pill.lastChild.textContent = "DATA: UNAVAILABLE";
   pill.title = "The public workspace did not pass its access gate";

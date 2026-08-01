@@ -43,9 +43,15 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
       - name: Install application and test dependencies
         run: python3 -m pip install --requirement requirements-dev.txt
       - name: Compile application and operations modules
         run: python3 -m compileall -q app ops
       - name: Run full safety and application test suite
         run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v
+      - name: Run deterministic data-state transition regression
+        run: node --test tests/data_state_transition.test.mjs

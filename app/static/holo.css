@@ -316,6 +316,23 @@ h3 {
   color: var(--green);
 }
 
+.live-pill.checking {
+  color: var(--blue);
+}
+
+.live-pill.checking i {
+  background: var(--blue);
+  box-shadow: 0 0 0 4px rgba(123, 169, 255, 0.12);
+  animation: checking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes checking-pulse {
+  50% {
+    opacity: 0.5;
+    transform: scale(0.72);
+  }
+}
+
 .source-stamp.observed {
   border-color: rgba(118, 242, 209, 0.3);
   color: var(--green);
