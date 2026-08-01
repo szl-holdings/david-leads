@@ -311,7 +311,7 @@ function showLoading(show) {
   $("workspace").setAttribute("aria-busy", String(show));
   if (show) {
     $("emptyState").classList.add("hidden");
-    $("resultCount").textContent = "Loading live records";
+    $("resultCount").textContent = "Loading current source records";
   }
 }
 
@@ -346,6 +346,7 @@ async function loadLeads() {
 
 function renderEverything() {
   renderMetrics();
+  renderDataState();
   renderFilters();
   renderDailyBrief();
   applyFilters();
@@ -355,12 +356,33 @@ function renderEverything() {
   renderScope();
 }
 
+function renderDataState() {
+  const pill = $("dataStatePill");
+  const liveSources = state.sources.filter((source) => source.mode === "LIVE");
+  const totalSources = state.sources.length;
+  const observedAt = state.board?.generated_at;
+  pill.classList.toggle("measured", liveSources.length > 0);
+  pill.classList.toggle("unavailable", liveSources.length === 0);
+  if (liveSources.length > 0) {
+    pill.lastChild.textContent = `LIVE / MEASURED · ${liveSources.length}/${totalSources}`;
+    pill.title = observedAt ? `Current pull observed ${formatDate(observedAt)}` : "Current source pull observed";
+  } else if (state.board) {
+    pill.lastChild.textContent = `UNAVAILABLE · 0/${totalSources}`;
+    pill.title = "No source adapter reported LIVE in the current pull";
+  } else {
+    pill.lastChild.textContent = "DATA: UNAVAILABLE";
+    pill.title = "The current source pull did not complete";
+  }
+}
+
 function renderMetrics() {
   const summary = state.board?.summary || {};
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
   const liveSources = state.sources.filter((source) => source.mode === "LIVE");
   $("metricOrganizations").textContent = formatNumber(summary.total ?? state.leads.length);
-  $("metricOrganizationsSub").textContent = `${formatNumber(summary.live ?? state.leads.length)} live, source-linked records`;
+  $("metricOrganizationsSub").textContent = summary.live != null
+    ? `${formatNumber(summary.live)} records reported LIVE by their source adapters`
+    : "No LIVE record subtotal was reported";
   $("metricStates").textContent = `${represented.size}/${state.selectedStates.size}`;
   $("metricStatesSub").textContent = represented.size === state.selectedStates.size
     ? "Every selected market represented"
@@ -566,7 +588,7 @@ function renderInvestorProof() {
   const signed = state.leads.filter((lead) => lead.receipt_signed).length;
   const latest = state.board?.generated_at ? formatDate(state.board.generated_at) : "Unavailable";
   const facts = [
-    ["Organizations in current live pull", formatNumber(state.leads.length)],
+    ["Organizations returned in current pull", formatNumber(state.leads.length)],
     ["Eastern markets queryable", "27"],
     ["Markets represented in this pull", formatNumber(represented.size)],
     ["Signed source receipts in this pull", `${signed}/${state.leads.length || 0}`],
@@ -701,7 +723,7 @@ async function verifyProof(receiptId) {
   try {
     const proof = await api(`/api/verify/${encodeURIComponent(receiptId)}`);
     const stateLabel = proof.signature_state || proof.state || (proof.verified ? "VERIFIED" : "OBSERVED");
-    result.innerHTML = `<div class="proof-result">Receipt: ${esc(receiptId)}<br>Verification state: ${esc(stateLabel)}<br>Hash and source-normalization checks were returned by the live runtime.</div>`;
+    result.innerHTML = `<div class="proof-result">Receipt: ${esc(receiptId)}<br>Verification state: ${esc(stateLabel)}<br>Hash and source-normalization checks were returned by the current runtime response.</div>`;
   } catch (error) {
     result.innerHTML = `<div class="proof-result">Receipt verification unavailable: ${esc(error.message)}</div>`;
   }
@@ -766,8 +788,8 @@ async function bootstrap() {
     await Promise.all([loadLeads(), loadBuildAndHealth()]);
     state.releaseCheckTimer = window.setInterval(checkForNewRelease, 120000);
   } catch (error) {
-    $("scopeSummary").textContent = `The live workspace could not open: ${error.message}`;
-    showToast("The live workspace could not open.");
+    $("scopeSummary").textContent = `The public workspace could not open: ${error.message}`;
+    showToast("The public workspace could not open.");
   } finally {
     $("boot").classList.add("done");
   }
