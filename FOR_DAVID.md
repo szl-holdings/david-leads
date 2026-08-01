@@ -1,6 +1,6 @@
-# David Leads — David’s operating guide
+# David Leads - David's operating guide
 
-David Leads is a public-record research workspace built for David Abraham’s
+David Leads is a public-record research workspace built for David Abraham's
 published focus on life insurance, long-term care, annuities, and protection
 planning. It helps answer one practical question:
 
@@ -15,9 +15,9 @@ Go to:
 
 https://szlholdings-david-leads.hf.space/
 
-The research view opens without a username or password. Private broker work,
-saved notes, contact channels, clearance decisions, and exports remain protected
-and are never shown in the public view.
+The research view opens without a username, password, or access key. Private
+broker work, saved notes, contact channels, clearance decisions, and exports
+remain protected and are never shown in the public view.
 
 ## Start your day
 
@@ -26,7 +26,7 @@ and are never shown in the public view.
 2. Choose **All East**, a region, or one state. Selecting one state runs a
    deeper state-specific search.
 3. Use the deal-moment buttons:
-   - **Life-plan timing** shows employers whose official Form 5500 filing
+   - **Life-plan timing** shows organizations whose official Form 5500 filing
      reports a group-life benefit and a plan or policy anniversary.
    - **Growth & awards** shows current federal contract activity.
    - **Operational change** shows carrier registrations and facility activity.
@@ -71,6 +71,16 @@ person-level addresses.
 Open **Market coverage**. Every source reports `LIVE`, `UNAVAILABLE`, or
 `NOT_APPLICABLE`. An outage stays visible; the application does not replace it
 with a fake lead.
+
+## Live verification on August 1, 2026
+
+- The application opened without a login.
+- All 27 Eastern states were selectable on desktop and mobile.
+- The Eastern view returned 70 live records; a deeper New York pull returned 53.
+- Both verified pulls reported zero example records.
+- The application and broker database reported ready.
+
+Counts change with the selected territory and current public-source responses.
 
 ## The simple rule
 
