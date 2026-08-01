@@ -16,7 +16,7 @@
     <div class="boot-mark" aria-hidden="true">
       <span></span><span></span><span></span>
     </div>
-    <p>Opening the live Eastern Market Cockpit</p>
+    <p>Opening the public-record research workspace</p>
   </div>
 
   <header class="app-header">
@@ -38,7 +38,7 @@
     </nav>
 
     <div class="header-status">
-      <span class="live-pill"><i></i>Live public data</span>
+      <span id="dataStatePill" class="live-pill unavailable" role="status" aria-live="polite"><i></i>DATA: CHECKING</span>
       <span id="sourceStamp" class="source-stamp">Checking release</span>
     </div>
   </header>
@@ -112,9 +112,9 @@
         </div>
       </section>
 
-      <section class="metric-grid" aria-label="Live market summary">
+      <section class="metric-grid" aria-label="Current market summary">
         <article class="metric-card metric-primary">
-          <span class="metric-label">Live organizations</span>
+          <span class="metric-label">Organizations returned</span>
           <strong id="metricOrganizations">--</strong>
           <small id="metricOrganizationsSub">Official records in this view</small>
         </article>
@@ -129,7 +129,7 @@
           <small id="metricWindowsSub">Reported anniversaries in the next 180 days</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Official sources live</span>
+          <span class="metric-label">Sources observed live</span>
           <strong id="metricSources">--</strong>
           <small id="metricSourcesSub">Unavailable sources stay visible</small>
         </article>
@@ -288,6 +288,30 @@
           <a id="attestationLink" class="secondary-button disabled" href="#" target="_blank" rel="noopener">Release receipt</a>
         </div>
 
+        <section class="kanchay-contract" aria-labelledby="kanchayHeading">
+          <div class="kanchay-value">
+            <span class="eyebrow">Investor brief · evidence before posture</span>
+            <h3 id="kanchayHeading">A research workflow with a visible permission boundary.</h3>
+            <p>David Leads turns minimized organization-level public records into a source-linked research queue. Its value is operator speed with traceability; it does not infer consent, underwriting eligibility, revenue, or purchase intent.</p>
+            <div class="kanchay-actions">
+              <a href="/api/build-info">Inspect build identity</a>
+              <a href="/readyz">Inspect readiness</a>
+            </div>
+          </div>
+          <div class="kanchay-states" aria-label="KANCHAY evidence state contract">
+            <article><strong>LIVE / MEASURED</strong><span>Only source adapters that succeed in the current pull are counted live; the observation time is shown.</span></article>
+            <article><strong>DERIVED / MODELED</strong><span>Priority and fit organize human research. They are not probabilities, quotes, or underwriting decisions.</span></article>
+            <article><strong>SAMPLE / EXAMPLE</strong><span>Examples stay labeled and are never promoted to a named prospect or live source observation.</span></article>
+            <article><strong>UNAVAILABLE / LIMITS</strong><span>Source failures remain visible. Public records never create permission to contact.</span></article>
+            <aside class="kanchay-quickstart" aria-label="Developer quickstart">
+              <b>Developer quickstart</b>
+              <code>python -m pip install -r requirements-dev.txt</code>
+              <code>python -m uvicorn app.server:app --port 7860</code>
+              <span>Open <code>http://127.0.0.1:7860</code>; default public mode is read-only.</span>
+            </aside>
+          </div>
+        </section>
+
         <div class="investor-proof-grid">
           <article class="proof-card">
             <span class="proof-index">01</span>
@@ -317,8 +341,8 @@
 
         <div class="investor-story-grid">
           <article class="story-card">
-            <span class="eyebrow">What is real now</span>
-            <h3>Live operating evidence</h3>
+            <span class="eyebrow">What is observed now</span>
+            <h3>Operating evidence and availability</h3>
             <dl id="operatingFacts" class="fact-list"></dl>
           </article>
           <article class="story-card signal-flow-card">
