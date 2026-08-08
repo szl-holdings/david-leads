@@ -137,4 +137,6 @@ deployment, GitHub OIDC signs the deployment manifest and the workflow publishes
 non-secret attestation reference to the Space. `receipt_minted=true` is fail-closed and appears
 only when that reference matches the exact running source revision.
 
+
+Last deployment refresh request: 2026-08-08 (for solo end-to-end operational alignment).
 © 2026 SZL Holdings · Apache-2.0
