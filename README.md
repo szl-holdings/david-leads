@@ -58,6 +58,11 @@ underwriting decision, consumer report, or permission to contact.
   key-gated; FCC ULS remains unavailable until a durable bulk-ingestion lane exists. Every source
   reports its true state, requests only minimized entity/facility fields, never substitutes
   samples, and keeps every signal out of underwriting.
+- **Evidence Constellation** resolves organizations by shared UEI, CIK, USDOT, EPA FRS ID, or a
+  review-required exact legal-name/state/ZIP candidate. It keeps authority, freshness,
+  corroboration, integrity, and identity separate; publishes a documented recheck/expiry clock;
+  surfaces counter-evidence; and binds each replayable packet to the normalized event hash,
+  parser version, source record, entity group, and receipt.
 - **Governed Broker Desk** records a business-published channel, issues a hashed 24-hour clearance
   receipt only after all licensing/suppression checks are affirmative, unlocks a manual call sheet,
   and captures factual outcomes including immediate do-not-call suppression.
@@ -83,6 +88,10 @@ underwriting decision, consumer report, or permission to contact.
 - The Form 5500 adapter additionally excludes EINs, signers, preparers, administrators, named
   brokers, commissions, and person-level addresses. Only a reported Schedule A life-benefit
   indicator informs the life/business-protection fit shown in the queue.
+- A shared authoritative organization identifier may create a deterministic cross-source link.
+  Exact normalized legal name + state + ZIP creates only a review-required candidate. Fuzzy links
+  are not enabled until a labeled organization-matching benchmark exists.
+- Proof grades are evidence-quality labels, never conversion probabilities or underwriting scores.
 - A public record cannot enter `READY` through a checkbox or direct stage change. It requires a
   first-party business channel, named operator, license scope, jurisdiction, talk-track version,
   affirmative suppression/rules checks, and an unexpired clearance receipt.
@@ -125,6 +134,11 @@ repository script reads credentials into terminal output, logs, chat, screenshot
 
 The publication boundary and its verification record are documented in
 [`PUBLICATION_READINESS.md`](PUBLICATION_READINESS.md).
+
+The current clean-room market benchmark and product synthesis are documented in
+[`research/COMPETITIVE_SYNTHESIS_2026-08-26.md`](research/COMPETITIVE_SYNTHESIS_2026-08-26.md).
+Vendored asset and direct dependency licence notes are recorded in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
 The GitHub workflow derives the deployed file set from the Dockerfile and performs a post-build
 content comparison. A GitHub merge is not a live deployment until that deployment and verification

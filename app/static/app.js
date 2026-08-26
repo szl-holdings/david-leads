@@ -208,14 +208,19 @@ function productFit(lead) {
 
 function evidenceSummary(lead) {
   const evidence = lead.evidence || {};
+  const constellation = lead.evidence_constellation || {};
+  const proof = constellation.proof || {};
+  const clock = constellation.deal_clock || {};
   const sourceCount = Number(evidence.source_count || 1);
+  const legacyLabel = sourceCount > 1
+    ? `${sourceCount}-source match`
+    : (evidence.strength === "DIRECT_FILING" ? "Direct filing" : "Official record");
+  const legacyDetail = sourceCount > 1
+    ? "Independent official signals"
+    : (lead.receipt_signed ? "Signed source receipt" : (lead.receipt_id ? "Source receipt linked" : "Citation linked"));
   return {
-    label: sourceCount > 1
-      ? `${sourceCount}-source match`
-      : (evidence.strength === "DIRECT_FILING" ? "Direct filing" : "Official record"),
-    detail: sourceCount > 1
-      ? "Independent official signals"
-      : (lead.receipt_signed ? "Signed source receipt" : (lead.receipt_id ? "Source receipt linked" : "Citation linked")),
+    label: proof.grade ? `Proof ${proof.grade} · ${sourceCount} source${sourceCount === 1 ? "" : "s"}` : legacyLabel,
+    detail: proof.grade ? `${String(clock.state || "UNKNOWN").replaceAll("_", " ")} · ${proof.dimensions?.integrity || "UNAVAILABLE"}` : legacyDetail,
   };
 }
 
@@ -614,12 +619,20 @@ function renderSources() {
 function renderInvestorProof() {
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
   const signed = state.leads.filter((lead) => lead.receipt_signed).length;
+  const constellation = state.board?.evidence_constellation || {};
+  const clock = constellation.deal_clock || {};
+  const proofGrades = constellation.proof_grades || {};
   const latest = state.board?.generated_at ? formatDate(state.board.generated_at) : "Unavailable";
   const facts = [
     ["Organizations returned in current pull", formatNumber(state.leads.length)],
     ["Eastern markets queryable", "27"],
     ["Markets represented in this pull", formatNumber(represented.size)],
     ["Signed source receipts in this pull", `${signed}/${state.leads.length || 0}`],
+    ["Multi-source organization groups", formatNumber(constellation.multi_source_entities || 0)],
+    ["Review-required identity groups", formatNumber(constellation.review_required_groups || 0)],
+    ["Replayable proof packets", `${formatNumber(constellation.replayable_packets || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`],
+    ["Proof grades", `A ${proofGrades.A || 0} · B ${proofGrades.B || 0} · C ${proofGrades.C || 0} · D ${proofGrades.D || 0}`],
+    ["Evidence clock", `${clock.CURRENT || 0} current · ${clock.RECHECK_DUE || 0} recheck · ${clock.STALE || 0} stale`],
     ["Persistence health", state.health?.deal_desk_persistence || "Checking"],
     ["Generated", latest],
   ];
@@ -627,6 +640,8 @@ function renderInvestorProof() {
     <div class="fact-row"><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>
   `).join("");
 
+  $("proofPackets").textContent = `${formatNumber(constellation.replayable_packets || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`;
+  $("proofClock").textContent = `${formatNumber(clock.CURRENT || 0)} current`;
   const awards = state.leads
     .map((lead) => ({ lead, amount: Number(lead.award?.amount) }))
     .filter((item) => Number.isFinite(item.amount))
@@ -669,6 +684,12 @@ function openLead(id) {
   const timing = timingSummary(lead);
   const fit = productFit(lead);
   const evidence = evidenceSummary(lead);
+  const constellation = lead.evidence_constellation || {};
+  const proof = constellation.proof || {};
+  const clock = constellation.deal_clock || {};
+  const resolution = lead.entity_resolution || {};
+  const counterEvidence = Array.isArray(constellation.counter_evidence) ? constellation.counter_evidence : [];
+  const decisionDimensions = constellation.decision_dimensions || {};
   const carriers = Array.isArray(lead.operational_snapshot?.reported_carriers)
     ? lead.operational_snapshot.reported_carriers
     : [];
@@ -698,6 +719,19 @@ function openLead(id) {
         <div class="drawer-fact"><span>Source state</span><strong>${esc(lead.truth_label || "LIVE")}</strong></div>
         ${idFacts}
       </div>
+    </section>
+    <section class="drawer-section">
+      <span class="drawer-section-label">Evidence Constellation</span>
+      <h3>Proof ${esc(proof.grade || "--")} · ${esc(String(clock.state || "UNKNOWN").replaceAll("_", " "))}</h3>
+      <div class="drawer-facts">
+        <div class="drawer-fact"><span>Authority</span><strong>${esc(proof.dimensions?.authority || "UNAVAILABLE")}</strong></div>
+        <div class="drawer-fact"><span>Integrity</span><strong>${esc(proof.dimensions?.integrity || "UNAVAILABLE")}</strong></div>
+        <div class="drawer-fact"><span>Identity</span><strong>${esc(String(resolution.status || "UNRESOLVED").replaceAll("_", " "))}</strong></div>
+        <div class="drawer-fact"><span>Permission</span><strong>${esc(lead.contact_gate || decisionDimensions.permission || "PUBLIC_RESEARCH_ONLY")}</strong></div>
+      </div>
+      <p class="supporting-detail"><strong>Why this may be wrong</strong></p>
+      ${counterEvidence.length ? `<ul>${counterEvidence.map((item) => `<li>${esc(item)}</li>`).join("")}</ul>` : `<p>No counter-evidence contract was returned.</p>`}
+      <p class="supporting-detail">Proof quality is not a sales probability. Recheck ${esc(clock.recheck_at ? formatDate(clock.recheck_at) : "unknown")}; expires ${esc(clock.expires_at ? formatDate(clock.expires_at) : "unknown")}.</p>
     </section>
     <section class="drawer-section">
       <span class="drawer-section-label">Likely product fit</span>

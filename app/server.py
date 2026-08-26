@@ -1522,6 +1522,7 @@ def frontier_desk(
     board["generated_at"] = source.get("generated_at")
     board["states"] = source.get("states", state_list)
     board["multi_source_accounts"] = source.get("multi_source_accounts", 0)
+    board["evidence_constellation"] = source.get("evidence_constellation", {})
     board["frontier_doctrine"] = source.get("doctrine")
     if principal == "operator":
         _STATE["frontier_desk"] = board
