@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import benefit_frontier
+from . import evidence_constellation as constellation
 from . import receipts as rc
 
 
@@ -1078,7 +1079,8 @@ def frontier_opportunities(
                 "reason": reason,
                 "privacy": "ENTITY_FIELDS_ONLY",
             })
-    records, multi_source_accounts = triangulate(records)
+    records, constellation_summary = constellation.annotate_constellation(records)
+    multi_source_accounts = int(constellation_summary["multi_source_entities"])
     return {
         "leads": records,
         "sources": sources,
@@ -1086,6 +1088,7 @@ def frontier_opportunities(
         "count": len(records),
         "states": state_list,
         "multi_source_accounts": multi_source_accounts,
+        "evidence_constellation": constellation_summary,
         "doctrine": (
             "Official entity/facility observations only. No social scraping, no person-level "
             "contact enrichment, no demographics, no underwriting use, and no contact "

@@ -216,8 +216,17 @@ source_urls[]
 source_observed_at[]
 source_record_id
 normalized_record_sha256
+entity_group_id
+entity_resolution_state
+entity_resolution_basis[]
+identity_review_required
 parser_version
 receipt_state = SIGNED | HASH_CHAINED_UNSIGNED | UNAVAILABLE
+proof_grade = A | B | C | D  # evidence quality, never a sales probability
+evidence_clock = CURRENT | RECHECK_DUE | STALE | UNKNOWN
+recheck_at
+expires_at
+counter_evidence[]
 evidence_freshness
 confidence_and_limitations
 broker_state_line_authority
@@ -235,6 +244,12 @@ Lead with measured workflow results, not modeled sales claims:
 
 - official opportunities discovered,
 - records with fresh corroboration,
+- deterministic identifier links,
+- review-required exact-match candidates,
+- unresolved organization identities,
+- current, recheck-due, stale, and unknown evidence events,
+- replayable and partial proof packets,
+- signed, hash-chained unsigned, and unavailable receipt states,
 - opportunities awaiting research,
 - opportunities manually cleared,
 - follow-ups due,

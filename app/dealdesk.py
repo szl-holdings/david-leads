@@ -1223,6 +1223,8 @@ def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
         "credential",
         "dba",
         "evidence",
+        "evidence_constellation",
+        "entity_resolution",
         "license_or_issue_date",
         "limitations",
         "name",
