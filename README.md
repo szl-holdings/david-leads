@@ -44,8 +44,8 @@ underwriting decision, consumer report, or permission to contact.
 
 ## Operator workflow
 
-- **Find Leads** gathers current public records. If an upstream source is unavailable, fallback
-  examples remain visibly labeled instead of being presented as live prospects.
+- **Find Leads** gathers current public records. If an upstream source is unavailable, the live
+  queue stays unavailable; it never substitutes an example record for a prospect.
 - **Opportunity Desk** turns official business and license records into a research queue with
   explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
   is never treated as permission to contact.

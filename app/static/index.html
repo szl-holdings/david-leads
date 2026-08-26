@@ -7,7 +7,7 @@
   <meta name="description" content="David Leads turns official public business signals into a clear, source-linked Eastern U.S. research workspace.">
   <title>David Leads | Eastern Market Cockpit</title>
   <link rel="stylesheet" href="fonts/fonts.css">
-  <link rel="stylesheet" href="holo.css?v=deal-moment-20260730">
+  <link rel="stylesheet" href="holo.css?v=broker-experience-20260826">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -38,6 +38,7 @@
     </nav>
 
     <div class="header-status">
+      <span id="accessStatePill" class="access-pill checking" role="status" aria-live="polite">PUBLIC VIEW: CHECKING</span>
       <span id="dataStatePill" class="live-pill checking" role="status" aria-live="polite" title="Loading current source records"><i></i>DATA: CHECKING</span>
       <span id="sourceStamp" class="source-stamp">Checking release</span>
     </div>
@@ -112,6 +113,24 @@
         </div>
       </section>
 
+      <section class="territory-toolbar" aria-labelledby="territoryToolbarTitle">
+        <div class="territory-toolbar-copy">
+          <span class="eyebrow">Market focus</span>
+          <strong id="territoryToolbarTitle">Choose where David works next</strong>
+          <small id="quickTerritorySummary">Eastern United States · 27 markets</small>
+        </div>
+        <label class="quick-territory-field" for="quickTerritorySelect">
+          <span>Choose territory</span>
+          <select id="quickTerritorySelect" data-testid="quick-territory-select">
+            <option value="">Loading territories</option>
+          </select>
+        </label>
+        <div id="accessBoundary" class="access-boundary checking">
+          <span aria-hidden="true"></span>
+          <p id="accessBoundaryCopy">Confirming public access. Viewing never grants permission to contact.</p>
+        </div>
+      </section>
+
       <section class="metric-grid" aria-label="Current market summary">
         <article class="metric-card metric-primary">
           <span class="metric-label">Organizations returned</span>
@@ -145,25 +164,25 @@
         </article>
       </section>
 
-      <nav class="workspace-tabs" aria-label="Market cockpit sections">
-        <button class="workspace-tab active" data-view-target="leads" type="button">
+      <nav class="workspace-tabs" aria-label="Market cockpit sections" role="tablist">
+        <button id="leadsTab" class="workspace-tab active" data-view-target="leads" type="button" role="tab" aria-controls="leadsView" aria-selected="true" tabindex="0">
           <span>01</span> Lead explorer
         </button>
-        <button class="workspace-tab" data-view-target="markets" type="button">
+        <button id="marketsTab" class="workspace-tab" data-view-target="markets" type="button" role="tab" aria-controls="marketsView" aria-selected="false" tabindex="-1">
           <span>02</span> Market coverage
         </button>
-        <button class="workspace-tab" data-view-target="investors" type="button">
+        <button id="investorsTab" class="workspace-tab" data-view-target="investors" type="button" role="tab" aria-controls="investorsView" aria-selected="false" tabindex="-1">
           <span>03</span> Investor proof
         </button>
       </nav>
 
-      <section id="leadsView" class="view-panel active" aria-labelledby="leadsHeading">
+      <section id="leadsView" class="view-panel active" role="tabpanel" aria-labelledby="leadsTab" tabindex="0">
         <div class="panel-heading">
           <div>
             <span class="eyebrow">Today’s deal-moment queue</span>
             <h2 id="leadsHeading">Start with the strongest reason to act.</h2>
           </div>
-          <span id="resultCount" class="result-count">Loading</span>
+          <span id="resultCount" class="result-count" role="status" aria-live="polite">Loading</span>
         </div>
 
         <ol class="broker-workflow" aria-label="Broker research workflow">
@@ -191,11 +210,11 @@
         </div>
 
         <div id="laneFilters" class="lane-filters" aria-label="Filter by deal moment">
-          <button class="lane-button active" type="button" data-lane="all">All moments</button>
-          <button class="lane-button" type="button" data-lane="timing">Life-plan timing</button>
-          <button class="lane-button" type="button" data-lane="growth">Growth &amp; awards</button>
-          <button class="lane-button" type="button" data-lane="operations">Operational change</button>
-          <button class="lane-button" type="button" data-lane="research">Needs research</button>
+          <button class="lane-button active" type="button" data-lane="all" aria-pressed="true">All moments</button>
+          <button class="lane-button" type="button" data-lane="timing" aria-pressed="false">Life-plan timing</button>
+          <button class="lane-button" type="button" data-lane="growth" aria-pressed="false">Growth &amp; awards</button>
+          <button class="lane-button" type="button" data-lane="operations" aria-pressed="false">Operational change</button>
+          <button class="lane-button" type="button" data-lane="research" aria-pressed="false">Needs research</button>
         </div>
 
         <div class="filter-bar">
@@ -222,7 +241,7 @@
           </label>
         </div>
 
-        <div id="scopeNotice" class="scope-notice"></div>
+        <div id="scopeNotice" class="scope-notice" role="status" aria-live="polite"></div>
 
         <div class="lead-table-wrap">
           <table class="lead-table">
@@ -251,21 +270,30 @@
             <p>Try another state, clear the search, or refresh the official sources.</p>
             <button id="resetFilters" class="secondary-button" type="button">Reset filters</button>
           </div>
+          <div id="errorState" class="error-state hidden" role="alert">
+            <div class="error-orbit" aria-hidden="true"></div>
+            <h3>Live data is unavailable</h3>
+            <p id="errorStateCopy">This does not mean zero leads. The current source pull did not complete.</p>
+            <div class="error-actions">
+              <button id="retryData" class="primary-button" type="button">Retry live data</button>
+              <button id="viewSourceStatus" class="secondary-button" type="button">View source status</button>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section id="marketsView" class="view-panel" aria-labelledby="marketsHeading">
+      <section id="marketsView" class="view-panel" role="tabpanel" aria-labelledby="marketsTab" tabindex="0" hidden>
         <div class="panel-heading">
           <div>
             <span class="eyebrow">Territory intelligence</span>
-            <h2 id="marketsHeading">The Eastern market atlas</h2>
+            <h2 id="marketsHeading" tabindex="-1">The Eastern market atlas</h2>
             <p>Every state is selectable. Counts show the records represented in the current live pull.</p>
           </div>
         </div>
         <div class="market-layout">
           <div>
             <div id="stateAtlas" class="state-atlas" aria-label="Eastern state coverage"></div>
-            <p class="atlas-note">A zero means the latest cross-territory pull did not return that state. Select the state to run a deeper state-specific query.</p>
+            <p id="atlasNote" class="atlas-note">A zero means the latest cross-territory pull did not return that state. Select the state to run a deeper state-specific query.</p>
           </div>
           <div class="source-stack">
             <div class="source-stack-heading">
@@ -278,7 +306,7 @@
         </div>
       </section>
 
-      <section id="investorsView" class="view-panel" aria-labelledby="investorsHeading">
+      <section id="investorsView" class="view-panel" role="tabpanel" aria-labelledby="investorsTab" tabindex="0" hidden>
         <div class="panel-heading investor-heading">
           <div>
             <span class="eyebrow">Operational proof</span>
@@ -298,16 +326,17 @@
               <a href="/readyz">Inspect readiness</a>
             </div>
           </div>
-          <div class="kanchay-states" aria-label="KANCHAY evidence state contract">
+          <div class="kanchay-states" aria-label="Evidence state contract">
             <article><strong>LIVE / MEASURED</strong><span>Only source adapters that succeed in the current pull are counted live; the observation time is shown.</span></article>
             <article><strong>DERIVED / MODELED</strong><span>Priority and fit organize human research. They are not probabilities, quotes, or underwriting decisions.</span></article>
-            <article><strong>SAMPLE / EXAMPLE</strong><span>Examples stay labeled and are never promoted to a named prospect or live source observation.</span></article>
+            <article><strong>EXAMPLES REJECTED</strong><span>Production routes reject sample, mock, example, and fixture records instead of placing them in a broker queue.</span></article>
             <article><strong>UNAVAILABLE / LIMITS</strong><span>Source failures remain visible. Public records never create permission to contact.</span></article>
-            <aside class="kanchay-quickstart" aria-label="Developer quickstart">
-              <b>Developer quickstart</b>
-              <code>python -m pip install -r requirements-dev.txt</code>
-              <code>python -m uvicorn app.server:app --port 7860</code>
-              <span>Open <code>http://127.0.0.1:7860</code>; default public mode is read-only.</span>
+            <aside class="kanchay-quickstart" aria-label="What an investor can verify">
+              <b>What an investor can verify</b>
+              <span>Records returned now</span>
+              <span>Markets covered now</span>
+              <span>Sources responding now</span>
+              <span>Running release identity</span>
             </aside>
           </div>
         </section>
@@ -388,8 +417,7 @@
     </section>
   </main>
 
-  <div id="drawerBackdrop" class="drawer-backdrop hidden" aria-hidden="true"></div>
-  <aside id="leadDrawer" class="lead-drawer" aria-labelledby="drawerTitle" aria-hidden="true">
+  <dialog id="leadDrawer" class="lead-drawer" aria-labelledby="drawerTitle" aria-describedby="drawerLocation">
     <div class="drawer-header">
       <div>
         <span id="drawerSource" class="source-chip">Official source</span>
@@ -401,7 +429,7 @@
       </button>
     </div>
     <div id="drawerBody" class="drawer-body"></div>
-  </aside>
+  </dialog>
 
   <dialog id="policyDialog" class="policy-dialog">
     <form method="dialog">
@@ -421,6 +449,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=deal-moment-20260730" defer></script>
+  <script src="app.js?v=broker-experience-20260826" defer></script>
 </body>
 </html>

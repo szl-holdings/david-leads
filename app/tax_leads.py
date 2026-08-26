@@ -9,8 +9,7 @@ HARD DOCTRINE (SZL governed-AI · honest by design):
     IRS Statistics-of-Income tables. It names NO individuals. That is the compliant
     use of tax data: aggregate territory targeting, not personal targeting.
   * NEVER fabricated. Every block carries the IRS source citation + a signed receipt.
-  * If irs.gov is unreachable the layer degrades to a clearly-labelled [SAMPLE] —
-    a tiny bundled illustrative set, never presented as live.
+  * If irs.gov is unreachable the affected source is UNAVAILABLE and returns no rows.
 
 Sources (no API key required):
   * IRS SOI — Individual Income Tax by ZIP : irs.gov/pub/irs-soi/21zpallagi.csv
@@ -123,7 +122,12 @@ def _load_zip_affluence() -> dict[str, Any]:
                     d["agi6"] += _to_float(row.get("A00100"))  # AGI in $000s
         _CACHE["zip"] = {"mode": "LIVE", "url": used_url, "agg": agg}
     except Exception:
-        _CACHE["zip"] = {"mode": "SAMPLE", "url": SRC_ZIP["urls"][0], "agg": _sample_zip_agg()}
+        _CACHE["zip"] = {
+            "mode": "UNAVAILABLE",
+            "url": SRC_ZIP["urls"][0],
+            "agg": {},
+            "reason": "IRS_ZIP_SOURCE_UNAVAILABLE",
+        }
     return _CACHE["zip"]
 
 
@@ -184,7 +188,12 @@ def _load_inflow() -> dict[str, Any]:
                              "agi_inflow_000": agi})
         _CACHE["inflow"] = {"mode": "LIVE", "url": used_url, "rows": rows}
     except Exception:
-        _CACHE["inflow"] = {"mode": "SAMPLE", "url": SRC_INFLOW["urls"][0], "rows": _sample_inflow_rows()}
+        _CACHE["inflow"] = {
+            "mode": "UNAVAILABLE",
+            "url": SRC_INFLOW["urls"][0],
+            "rows": [],
+            "reason": "IRS_MIGRATION_SOURCE_UNAVAILABLE",
+        }
     return _CACHE["inflow"]
 
 
@@ -209,27 +218,6 @@ def money_in_motion(states: list[str], top: int = 12) -> tuple[list[dict[str, An
         })
     rows.sort(key=lambda r: r["agi_inflow_000"], reverse=True)
     return rows[:top], data["mode"]
-
-
-# ============================================================================================
-# honest [SAMPLE] fallbacks — clearly labelled, IRS-shaped, never presented as live
-# ============================================================================================
-def _sample_zip_agg() -> dict[tuple, dict[str, float]]:
-    # illustrative shape only; real numbers come from the live IRS CSV
-    return {
-        ("NY", "10021"): {"hi": 9000.0, "tot": 30000.0, "agi6": 11000000.0},
-        ("NJ", "07078"): {"hi": 4200.0, "tot": 9000.0, "agi6": 6200000.0},
-        ("CT", "06830"): {"hi": 5100.0, "tot": 12000.0, "agi6": 9800000.0},
-    }
-
-
-def _sample_inflow_rows() -> list[dict[str, Any]]:
-    return [
-        {"state": "NY", "county": "[SAMPLE] New York County", "returns_inflow": 70000,
-         "individuals_inflow": 120000, "agi_inflow_000": 14000000},
-        {"state": "NJ", "county": "[SAMPLE] Hudson County", "returns_inflow": 30000,
-         "individuals_inflow": 50000, "agi_inflow_000": 3300000},
-    ]
 
 
 # ============================================================================================
@@ -261,7 +249,8 @@ def real_tax_territories(states: list[str] | None = None, top: int = 12) -> dict
             "bucket": "TERRITORY",
             "product": "PROSPECTING-MAP",
         }
-        receipt = rc.make_receipt(pseudo, signals, 100.0, witness=True)
+        if zips or counties:
+            receipt = rc.make_receipt(pseudo, signals, 100.0, witness=True)
     except Exception:
         receipt = None
 
