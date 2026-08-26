@@ -55,6 +55,7 @@ class PublicBoardProjectionTests(unittest.TestCase):
             [
                 {
                     "name": "Example Logistics LLC",
+                    "address": "125 Private Residence Risk Lane",
                     "state": "NY",
                     "zip": "10001",
                     "credential": "USDOT 123456",
@@ -90,6 +91,7 @@ class PublicBoardProjectionTests(unittest.TestCase):
         self.assertEqual(item["stage"], "REVIEW")
         self.assertFalse(item["call_ready"])
         self.assertFalse(item["phone_call_ready"])
+        self.assertNotIn("address", item)
         for field in (
             "owner",
             "last_note",
@@ -213,6 +215,103 @@ class PublicReadOnlyApiTests(unittest.TestCase):
             response = self.client.get("/api/frontier-desk?states=PA")
         self.assertEqual(response.status_code, 401)
 
+    def test_frontier_rejects_invalid_or_out_of_scope_territory(self):
+        with patch.object(server, "_PUBLIC_READONLY", True):
+            response = self.client.get("/api/frontier-desk?states=NY,ZZ")
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("ZZ", response.json()["detail"])
+
+    def test_canonical_territory_order_deduplicates_cache_keys(self):
+        self.assertEqual(
+            server._canonical_eastern_states("VA,NY,VA", server.EASTERN_STATES),
+            ["NY", "VA"],
+        )
+
+    def test_mutation_actor_is_bound_to_authenticated_session(self):
+        token = "identity-bound-operator-test"
+        server._TOKENS[token] = {
+            "expires_at": time.time() + 60,
+            "username": "David Abraham",
+        }
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            with (
+                patch.object(server.dd, "persistence_ready", return_value=True),
+                patch.object(server.dd, "update", return_value={"opportunity_id": "op-1"}) as update,
+            ):
+                response = self.client.post(
+                    "/api/deal-desk/op-1",
+                    headers=headers,
+                    json={"stage": "REVIEW", "actor": "Spoofed Actor"},
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(update.call_args.kwargs["actor"], "David Abraham")
+        finally:
+            server._TOKENS.pop(token, None)
+
+    def test_all_production_lead_routes_reject_example_records(self):
+        sample_record = {
+            "name": "[SAMPLE] Example Company",
+            "employer": "[SAMPLE] Example Company",
+            "state": "NY",
+            "source_status": "sample",
+            "_sample": True,
+        }
+        headers = {"Authorization": f"Bearer {self.token}"}
+
+        with patch.object(
+            server.rl,
+            "real_callable_leads",
+            return_value={"leads": [dict(sample_record)], "sources": [], "summary": {}},
+        ):
+            response = self.client.get("/api/real-leads?states=NY", headers=headers)
+            self.assertEqual(response.status_code, 503)
+
+        server._PUBLIC_BOARD_CACHE.clear()
+        with (
+            patch.object(server, "_PUBLIC_READONLY", True),
+            patch.object(
+                server.rl,
+                "real_callable_leads",
+                return_value={"leads": [dict(sample_record)], "sources": [], "summary": {}},
+            ),
+        ):
+            response = self.client.get("/api/deal-desk?states=NY")
+            self.assertEqual(response.status_code, 503)
+
+        with patch.object(
+            server.wl,
+            "warn_leads",
+            return_value={"leads": [dict(sample_record)]},
+        ):
+            response = self.client.get("/api/warn-leads?states=NY", headers=headers)
+            self.assertEqual(response.status_code, 503)
+
+        with patch.object(
+            server.tx,
+            "real_tax_territories",
+            return_value={
+                "affluent_zips": [],
+                "money_in_motion": [],
+                "sources": [{"mode": "SAMPLE"}],
+                "_receipt": None,
+            },
+        ):
+            response = self.client.get("/api/tax-territories?states=NY", headers=headers)
+            self.assertEqual(response.status_code, 503)
+
+        server._PUBLIC_BOARD_CACHE.clear()
+        with (
+            patch.object(server, "_PUBLIC_READONLY", True),
+            patch.object(
+                server.frontier_data,
+                "frontier_opportunities",
+                return_value={"leads": [dict(sample_record)], "sources": []},
+            ),
+        ):
+            response = self.client.get("/api/frontier-desk?states=NY")
+            self.assertEqual(response.status_code, 503)
+
     def test_public_shell_and_live_routes_disable_stale_release_caching(self):
         page = self.client.get("/")
         script = self.client.get("/app.js")
@@ -235,6 +334,11 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertIn("stateButtons", page)
         self.assertIn("stateAtlas", page)
         self.assertIn("mobileStateSelect", page)
+        self.assertIn("quickTerritorySelect", page)
+        self.assertIn("errorState", page)
+        self.assertIn("PUBLIC VIEW: CHECKING", page)
+        self.assertIn('role="tablist"', page)
+        self.assertIn('id="leadDrawer" class="lead-drawer"', page)
         self.assertIn("broker-workflow", page)
         self.assertIn("laneFilters", page)
         self.assertIn("Life-plan timing", page)
@@ -249,6 +353,7 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertNotIn('id="login"', page)
         self.assertNotIn("Assigned username", page)
         self.assertNotIn("Password", page)
+        self.assertNotIn("Developer quickstart", page)
         self.assertIn('id="boot"', page)
         self.assertNotIn("Export governed CSV", page)
 
@@ -286,7 +391,18 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertIn('pill.lastChild.textContent = "DATA: UNAVAILABLE"', function)
         self.assertNotIn("state.leads.length", function)
         self.assertNotIn("summary.live ?? state.leads.length", script)
-        self.assertIn("renderMetrics();\n  renderDataState();", script)
+        self.assertIn(
+            'sources.some((source) => source.mode === "LIVE")',
+            script,
+        )
+        self.assertIn(
+            "renderDataState();\n  renderFilters();\n  if (!state.board || state.loadError)",
+            script,
+        )
+        self.assertIn("if (!state.board || state.loadError) {", script)
+        self.assertIn("if (!state.loadError) {\n      $(\"freshness\")", script)
+        self.assertIn("renderUnavailableEvidence();", script)
+        self.assertIn("renderMetrics();\n  renderDailyBrief();", script)
         self.assertIn('pill.classList.remove("checking")', function)
 
     def test_access_mode_failure_makes_all_header_states_terminal(self):

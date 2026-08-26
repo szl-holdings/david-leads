@@ -10,7 +10,7 @@ HARD DOCTRINE (SZL governed-AI · honest by design):
     NEVER fabricated names or numbers.
   * Every real record carries its public source citation + an evidence receipt. The record
     remains research-only until the separate execution-time contact gate is cleared.
-  * If a portal is unreachable, that source degrades to a clearly-labelled [SAMPLE] — never faked.
+  * If a portal is unreachable, that source is UNAVAILABLE and returns no records.
 
 Sources (no API key required):
   * DE Division of Revenue — Business Licenses : data.delaware.gov resource 5zy2-grhr
@@ -229,7 +229,7 @@ def classify_prospect(record: dict[str, Any]) -> dict[str, Any]:
 
 
 # ============================================================================================
-# fetchers — each returns {source, citation_url, mode, records:[...]}; honest [SAMPLE] on failure
+# fetchers — each returns {source, citation_url, mode, records:[...]}; fail closed on failure
 # ============================================================================================
 def fetch_de_businesses(limit: int = 15) -> dict[str, Any]:
     """DE business licenses issued in the last 180 days that carry a public address."""
@@ -265,7 +265,7 @@ def fetch_de_businesses(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_DE_BIZ["label"], "citation": SRC_DE_BIZ,
-            "mode": "SAMPLE", "records": _sample_de()}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_ct_licenses(limit: int = 15) -> dict[str, Any]:
@@ -307,7 +307,7 @@ def fetch_ct_licenses(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_CT_LIC["label"], "citation": SRC_CT_LIC,
-            "mode": "SAMPLE", "records": _sample_ct_lic()}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_ct_new_entities(limit: int = 15) -> dict[str, Any]:
@@ -349,7 +349,7 @@ def fetch_ct_new_entities(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_CT_ENT["label"], "citation": SRC_CT_ENT,
-            "mode": "SAMPLE", "records": _sample_ct_ent()}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_ny_corporations(limit: int = 15) -> dict[str, Any]:
@@ -386,7 +386,7 @@ def fetch_ny_corporations(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_NY_CORP["label"], "citation": SRC_NY_CORP,
-            "mode": "SAMPLE", "records": _sample_generic("NY", "Coastal Holdings Corp")}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_nj_businesses(limit: int = 15) -> dict[str, Any]:
@@ -420,7 +420,7 @@ def fetch_nj_businesses(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_NJ_BIZ["label"], "citation": SRC_NJ_BIZ,
-            "mode": "SAMPLE", "records": _sample_generic("NJ", "Garden State Learning Center")}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_pa_businesses(limit: int = 15) -> dict[str, Any]:
@@ -457,7 +457,7 @@ def fetch_pa_businesses(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_PA_BIZ["label"], "citation": SRC_PA_BIZ,
-            "mode": "SAMPLE", "records": _sample_generic("PA", "Keystone Contractors Llc")}
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 def fetch_md_businesses(limit: int = 15) -> dict[str, Any]:
@@ -492,43 +492,7 @@ def fetch_md_businesses(limit: int = 15) -> dict[str, Any]:
     except Exception:
         pass
     return {"source": SRC_MD_BIZ["label"], "citation": SRC_MD_BIZ,
-            "mode": "SAMPLE", "records": _sample_generic("MD", "Chesapeake Industries Inc")}
-
-
-# ============================================================================================
-# honest [SAMPLE] fallbacks — clearly labelled, public-shaped, never presented as live
-# ============================================================================================
-def _sample_de() -> list[dict[str, Any]]:
-    return [{
-        "type": "business", "name": "[SAMPLE] Coastal Services Llc",
-        "category": "General Services", "address": "100 Market St", "city": "Wilmington",
-        "state": "DE", "zip": "19801", "license_or_issue_date": _iso_days_ago(20),
-        "public": True, "_sample": True,
-    }]
-
-
-def _sample_ct_lic() -> list[dict[str, Any]]:
-    return [{
-        "type": "licensee", "name": "[SAMPLE] J. Rivera", "credential": "Real Estate Broker",
-        "status": "Active", "address": "25 Main St", "city": "Hartford", "state": "CT",
-        "zip": "06103", "license_or_issue_date": _iso_days_ago(15), "public": True, "_sample": True,
-    }]
-
-
-def _sample_ct_ent() -> list[dict[str, Any]]:
-    return [{
-        "type": "entity", "name": "[SAMPLE] entity id 00000000", "category": "Certificate of Organization",
-        "address": "", "city": "", "state": "CT", "zip": "",
-        "license_or_issue_date": _iso_days_ago(3), "public": True, "_account_id": True, "_sample": True,
-    }]
-
-
-def _sample_generic(state: str, name: str) -> list[dict[str, Any]]:
-    return [{
-        "type": "business", "name": f"[SAMPLE] {name}", "category": "Business",
-        "address": "100 Main St", "city": "Capital City", "state": state, "zip": "00000",
-        "license_or_issue_date": _iso_days_ago(20), "public": True, "_sample": True,
-    }]
+            "mode": "UNAVAILABLE", "records": [], "reason": "SOURCE_FETCH_UNAVAILABLE"}
 
 
 # ============================================================================================
@@ -562,7 +526,12 @@ def _dedupe_key(rec: dict[str, Any]) -> str:
     ])
 
 
-def real_callable_leads(states: list[str] | None = None, limit_per: int = 12) -> dict[str, Any]:
+def real_callable_leads(
+    states: list[str] | None = None,
+    limit_per: int = 12,
+    *,
+    include_samples: bool = False,
+) -> dict[str, Any]:
     """Fetch, clean, de-dupe and attest real B2B research records.
 
     Each record gets an evidence receipt and public citation. The record is not
@@ -576,17 +545,61 @@ def real_callable_leads(states: list[str] | None = None, limit_per: int = 12) ->
     sample_count = 0
 
     for st in states:
-        for _key, fetcher in _STATE_FETCHERS.get(st, []):
+        for source_key, fetcher in _STATE_FETCHERS.get(st, []):
             try:
                 blk = fetcher(limit=limit_per)
             except Exception:
+                sources.append({
+                    "state": st,
+                    "source": source_key,
+                    "mode": "UNAVAILABLE",
+                    "citation": {},
+                    "count": 0,
+                    "reason": "SOURCE_FETCH_FAILED",
+                })
                 continue
-            mode = blk.get("mode", "SAMPLE")
+            mode = str(blk.get("mode") or "UNAVAILABLE").upper()
             citation = blk.get("citation", {})
-            sources.append({"state": st, "source": blk.get("source"),
-                            "mode": mode, "citation": citation,
-                            "count": len(blk.get("records", []))})
-            for rec in blk.get("records", []):
+            records = list(blk.get("records", []))
+            source_mode = mode
+            source_reason = blk.get("reason")
+            rejected_samples = 0
+            if not include_samples:
+                accepted_records = []
+                for record in records:
+                    name = _clean_text(record.get("name"))
+                    record_mode = str(record.get("mode") or record.get("source_status") or "").upper()
+                    is_sample_record = (
+                        mode == "SAMPLE"
+                        or record_mode in {"SAMPLE", "EXAMPLE", "MOCK", "FIXTURE"}
+                        or bool(record.get("_sample"))
+                        or str(record.get("contact_quality") or "").upper() == "[SAMPLE]"
+                        or name.upper().startswith("[SAMPLE]")
+                    )
+                    if is_sample_record:
+                        rejected_samples += 1
+                    else:
+                        accepted_records.append(record)
+                records = accepted_records
+            if mode == "SAMPLE" and not include_samples:
+                source_mode = "UNAVAILABLE"
+                source_reason = "LIVE_SOURCE_UNAVAILABLE_NO_SAMPLE_FALLBACK"
+            elif rejected_samples and not records:
+                source_mode = "UNAVAILABLE"
+                source_reason = "SAMPLE_RECORDS_REJECTED"
+            source_status = {
+                "state": st,
+                "source": blk.get("source"),
+                "mode": source_mode,
+                "citation": citation,
+                "count": len(records),
+            }
+            if source_reason:
+                source_status["reason"] = source_reason
+            if rejected_samples:
+                source_status["rejected_sample_records"] = rejected_samples
+            sources.append(source_status)
+            for rec in records:
                 name = _clean_text(rec.get("name"))
                 if _is_garbage_name(name) and not rec.get("_account_id"):
                     continue

@@ -72,15 +72,23 @@ Open **Market coverage**. Every source reports `LIVE`, `UNAVAILABLE`, or
 `NOT_APPLICABLE`. An outage stays visible; the application does not replace it
 with a fake lead.
 
-## Live verification on August 1, 2026
+## What to expect in the current workspace
 
-- The application opened without a login.
-- All 27 Eastern states were selectable on desktop and mobile.
-- The Eastern view returned 70 live records; a deeper New York pull returned 53.
-- Both verified pulls reported zero example records.
-- The application and broker database reported ready.
+- The application opens without a login for public research.
+- All 27 Eastern states are selectable by full state name on desktop and mobile.
+- Broker view, Market coverage, and Investor view each have a clear purpose.
+- A source outage appears as an error or unavailable source—not as zero demand and not as a sample lead.
+- Opening an account uses a focused evidence drawer and returns keyboard focus when it closes.
+- The application and broker database expose separate readiness checks.
 
-Counts change with the selected territory and current public-source responses.
+Counts change with the selected territory and current public-source responses. The release process
+records the exact source revision, deployment result, and running revision rather than treating an
+older count as a permanent product claim.
+
+## Word field guide
+
+The meeting-ready, plain-English handoff is included as
+`David_Leads_Broker_Field_Guide_2026.docx`. It contains no credentials or access keys.
 
 ## The simple rule
 

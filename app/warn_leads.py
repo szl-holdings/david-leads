@@ -8,10 +8,8 @@ HARD DOCTRINE (SZL governed-AI · honest by design):
     Notification) notices are filed with state Departments of Labor and published.
     A layoff with 60-day legal advance notice is a high-intent trigger for
     ACA / Short-Term Health / COBRA-alternative coverage.
-  * LIVE where a state exposes an open-data/CSV endpoint; otherwise a SMALL,
-    clearly-labelled "source_status": "sample" set derived from the REAL public
-    WARN notice schema. Sample employer names are illustrative placeholders —
-    we NEVER present a specific real employer's data as if live-verified.
+  * LIVE only where a state exposes a durable open-data/CSV endpoint. A source
+    without a current machine-readable feed is UNAVAILABLE and returns no leads.
   * Every lead carries its official state WARN portal citation + a frontier receipt.
   * Per-trigger time-decay (warn_layoff) + honest confidence band (ESTIMATE) applied.
 """
@@ -51,31 +49,12 @@ WARN_PORTAL: dict[str, dict[str, str]] = {
            "url": "https://www.ctdol.state.ct.us/progsupt/bussrvce/warnreport.htm"},
 }
 
-# ---- known open-data endpoints (best-effort live; absent -> honest sample) -------------------
+# ---- known open-data endpoints (best-effort live; absent -> unavailable) --------------------
 # Most states publish WARN as HTML/PDF, not machine-readable open data. We register only
-# endpoints we can honestly fetch as structured rows; everything else degrades to sample.
+# endpoints we can honestly fetch as structured rows; everything else remains unavailable.
 LIVE_ENDPOINTS: dict[str, str] = {
     # (left intentionally conservative — add a state only when a stable JSON/CSV exists)
 }
-
-# ---- SMALL illustrative sample set (clearly labelled; schema-faithful) -----------------------
-# Employer names are ILLUSTRATIVE PLACEHOLDERS, not specific real companies. This demonstrates
-# the WARN pipeline schema honestly when no machine-readable live feed is available in-sandbox.
-_SAMPLE: list[dict[str, Any]] = [
-    {"employer": "[SAMPLE] Hudson Valley Manufacturing Co.", "city": "Newburgh", "state": "NY",
-     "county": "Orange", "affected_count": 240, "notice_date": "2026-05-18", "effective_date": "2026-07-17"},
-    {"employer": "[SAMPLE] Garden State Logistics LLC", "city": "Edison", "state": "NJ",
-     "county": "Middlesex", "affected_count": 165, "notice_date": "2026-06-01", "effective_date": "2026-07-31"},
-    {"employer": "[SAMPLE] Keystone Foods Processing Inc.", "city": "Allentown", "state": "PA",
-     "county": "Lehigh", "affected_count": 310, "notice_date": "2026-05-05", "effective_date": "2026-07-06"},
-    {"employer": "[SAMPLE] Chesapeake Retail Group", "city": "Baltimore", "state": "MD",
-     "county": "Baltimore City", "affected_count": 120, "notice_date": "2026-06-10", "effective_date": "2026-08-10"},
-    {"employer": "[SAMPLE] First State Distribution Center", "city": "New Castle", "state": "DE",
-     "county": "New Castle", "affected_count": 95, "notice_date": "2026-06-15", "effective_date": "2026-08-14"},
-    {"employer": "[SAMPLE] Constitution Insurance Services", "city": "Hartford", "state": "CT",
-     "county": "Hartford", "affected_count": 180, "notice_date": "2026-05-22", "effective_date": "2026-07-21"},
-]
-
 
 def _days_since(date_str: str) -> float:
     try:
@@ -174,12 +153,12 @@ def _fetch_live(state: str) -> list[dict[str, Any]]:
 
 
 def warn_leads(states: list[str] | None = None) -> dict[str, Any]:
-    """Return WARN Act layoff leads for the covered states (live where possible, else sample)."""
+    """Return WARN Act layoff leads only where a live structured source is available."""
     want = [s.strip().upper() for s in (states or COVERED) if s.strip()]
     want = [s for s in want if s in COVERED] or COVERED
     leads: list[dict[str, Any]] = []
     live_states: list[str] = []
-    sample_states: list[str] = []
+    unavailable_states: list[str] = []
     for state in want:
         live_rows = _fetch_live(state)
         if live_rows:
@@ -187,23 +166,19 @@ def warn_leads(states: list[str] | None = None) -> dict[str, Any]:
             for r in live_rows:
                 leads.append(_build_lead(r, "live"))
         else:
-            sample_states.append(state)
-            for r in _SAMPLE:
-                if r["state"] == state:
-                    leads.append(_build_lead(r, "sample"))
+            unavailable_states.append(state)
     leads.sort(key=lambda l: l.get("score", 0.0), reverse=True)
     return {
         "count": len(leads),
         "states": want,
         "live_states": live_states,
-        "sample_states": sample_states,
+        "unavailable_states": unavailable_states,
         "leads": leads,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "disclaimer": (
             "WARN Act notices are PUBLIC records filed with state Departments of Labor. "
-            "Rows labelled source_status='sample' use illustrative placeholder employers on the "
-            "REAL WARN schema (no live feed available in-sandbox) and are NOT presented as "
-            "live-verified. Each lead cites its official state WARN portal. Coverage angle is "
+            "States without a durable structured feed are reported unavailable and return no "
+            "lead rows. Each live lead cites its official state WARN portal. Coverage angle is "
             "ACA / short-term / COBRA-alternative — public-data-only, honest by design."
         ),
     }

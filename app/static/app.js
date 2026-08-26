@@ -44,6 +44,8 @@ const state = {
   toastTimer: null,
   currentRevision: "",
   releaseCheckTimer: null,
+  loadError: "",
+  drawerReturnFocus: null,
 };
 
 async function api(path, options = {}) {
@@ -172,7 +174,7 @@ function renderRegionButtons() {
     .map(([name, values]) => {
       const active = values.length === state.selectedStates.size
         && values.every((code) => state.selectedStates.has(code));
-      return `<button class="region-button${active ? " active" : ""}" type="button" data-region="${esc(name)}">${esc(name)}${name === "All East" ? " (27)" : ""}</button>`;
+      return `<button class="region-button${active ? " active" : ""}" type="button" data-region="${esc(name)}" aria-pressed="${active}">${esc(name)}${name === "All East" ? " (27)" : ""}</button>`;
     })
     .join("");
 }
@@ -231,22 +233,41 @@ function dealLane(lead) {
   return "research";
 }
 
-function renderMobileTerritoryControls() {
-  const select = $("mobileStateSelect");
+function selectedTerritoryChoice() {
+  for (const [name, values] of Object.entries(EASTERN_REGIONS)) {
+    if (values.length === state.selectedStates.size && values.every((code) => state.selectedStates.has(code))) {
+      return `region:${name}`;
+    }
+  }
+  const selected = [...state.selectedStates];
+  return selected.length === 1 ? `state:${selected[0]}` : "";
+}
+
+function renderTerritorySelect(select) {
   if (!select.dataset.ready) {
     select.innerHTML = [
-      `<option value="">Choose a state</option>`,
-      `<option value="__ALL__">All East (27 markets)</option>`,
-      ...EASTERN_REGIONS["All East"].map((code) => `<option value="${code}">${esc(STATE_NAMES[code])} (${code})</option>`),
+      `<option value="">Choose a region or state</option>`,
+      `<optgroup label="Regions">`,
+      ...Object.entries(EASTERN_REGIONS).map(([name, values]) => (
+        `<option value="region:${esc(name)}">${name === "All East" ? "All Eastern states" : esc(name)} (${values.length})</option>`
+      )),
+      `</optgroup>`,
+      `<optgroup label="States">`,
+      ...EASTERN_REGIONS["All East"].map((code) => `<option value="state:${code}">${esc(STATE_NAMES[code])} (${code})</option>`),
+      `</optgroup>`,
     ].join("");
     select.dataset.ready = "true";
   }
+  select.value = selectedTerritoryChoice();
+}
+
+function renderMobileTerritoryControls() {
+  renderTerritorySelect($("mobileStateSelect"));
+  renderTerritorySelect($("quickTerritorySelect"));
   const selected = [...state.selectedStates];
-  const isAllEast = selected.length === EASTERN_REGIONS["All East"].length
-    && EASTERN_REGIONS["All East"].every((code) => state.selectedStates.has(code));
-  select.value = selected.length === 1 ? selected[0] : isAllEast ? "__ALL__" : "";
   $("mobileTerritoryLabel").textContent = selectedRegionName();
   $("mobileTerritoryCount").textContent = `${selected.length} market${selected.length === 1 ? "" : "s"} selected`;
+  $("quickTerritorySummary").textContent = `${selectedRegionName()} · ${selected.length} market${selected.length === 1 ? "" : "s"}`;
 }
 
 function selectedRegionName() {
@@ -280,7 +301,8 @@ function chooseRegion(name) {
   state.selectedStates = new Set(values);
   syncTerritoryControls();
   updateUrl();
-  loadLeads();
+  switchView("leads");
+  loadLeads({ focusResults: true });
 }
 
 function selectOnlyState(code) {
@@ -289,8 +311,24 @@ function selectOnlyState(code) {
   syncTerritoryControls();
   updateUrl();
   switchView("leads");
-  loadLeads();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  loadLeads({ focusResults: true });
+}
+
+function chooseTerritory(value) {
+  const [kind, raw] = String(value || "").split(":", 2);
+  if (kind === "region" && EASTERN_REGIONS[raw]) {
+    chooseRegion(raw);
+  } else if (kind === "state" && STATE_NAMES[raw]) {
+    selectOnlyState(raw);
+  }
+}
+
+function focusResults() {
+  const heading = $("leadsHeading");
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+  heading.setAttribute("tabindex", "-1");
+  heading.focus({ preventScroll: true });
+  heading.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
 }
 
 function updateUrl() {
@@ -315,13 +353,29 @@ function showLoading(show) {
   $("refreshData").disabled = show;
   $("workspace").setAttribute("aria-busy", String(show));
   if (show) {
+    $("errorState").classList.add("hidden");
     renderDataStateChecking();
     $("emptyState").classList.add("hidden");
     $("resultCount").textContent = "Loading current source records";
   }
 }
 
-async function loadLeads() {
+function admitSourceBoard(board) {
+  const sources = Array.isArray(board?.sources) ? board.sources : [];
+  const hasLiveSource = sources.some((source) => source.mode === "LIVE");
+  return {
+    board,
+    sources,
+    loadError: hasLiveSource
+      ? ""
+      : "No official source completed a live observation for the selected territory.",
+    leads: hasLiveSource && Array.isArray(board?.opportunities)
+      ? board.opportunities
+      : [],
+  };
+}
+
+async function loadLeads({ focusResults: focusAfterLoad = false } = {}) {
   if (!state.selectedStates.size) return;
   if (state.controller) state.controller.abort();
   const controller = new AbortController();
@@ -333,19 +387,24 @@ async function loadLeads() {
   try {
     const board = await api(`/api/frontier-desk?states=${query}`, { signal: controller.signal });
     if (state.controller !== controller) return;
-    state.board = board;
-    state.leads = Array.isArray(board.opportunities) ? board.opportunities : [];
-    state.sources = Array.isArray(board.sources) ? board.sources : [];
+    const admitted = admitSourceBoard(board);
+    state.board = admitted.board;
+    state.sources = admitted.sources;
+    state.loadError = admitted.loadError;
+    state.leads = admitted.leads;
     renderEverything();
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    $("freshness").textContent = `${relativeTime(board.generated_at)} in ${seconds}s`;
+    if (!state.loadError) {
+      $("freshness").textContent = `${relativeTime(board.generated_at)} in ${seconds}s`;
+    }
+    if (focusAfterLoad && !state.loadError) focusResults();
   } catch (error) {
     if (error.name === "AbortError" || state.controller !== controller) return;
     state.board = null;
     state.leads = [];
     state.sources = [];
+    state.loadError = error.message || "The current source pull did not complete.";
     renderEverything();
-    $("scopeNotice").textContent = `Live sources could not complete: ${error.message}`;
     showToast("The live source pull did not complete. Try again.");
   } finally {
     if (state.controller === controller) {
@@ -356,9 +415,15 @@ async function loadLeads() {
 }
 
 function renderEverything() {
-  renderMetrics();
   renderDataState();
   renderFilters();
+  if (!state.board || state.loadError) {
+    renderUnavailableEvidence();
+    applyFilters();
+    renderScope();
+    return;
+  }
+  renderMetrics();
   renderDailyBrief();
   applyFilters();
   renderAtlas();
@@ -396,6 +461,25 @@ function renderDataState() {
   }
 }
 
+function renderAccessState(status) {
+  const pill = $("accessStatePill");
+  const boundary = $("accessBoundary");
+  pill.classList.remove("checking", "confirmed", "unavailable");
+  pill.classList.add(status);
+  boundary.classList.remove("checking", "confirmed", "unavailable");
+  boundary.classList.add(status);
+  if (status === "confirmed") {
+    pill.textContent = "PUBLIC VIEW · NO LOGIN";
+    $("accessBoundaryCopy").textContent = "Viewing is open. Private notes, clearance, and outreach actions stay protected.";
+  } else if (status === "unavailable") {
+    pill.textContent = "PUBLIC VIEW: UNAVAILABLE";
+    $("accessBoundaryCopy").textContent = "Public access could not be confirmed. No private workflow data was exposed.";
+  } else {
+    pill.textContent = "PUBLIC VIEW: CHECKING";
+    $("accessBoundaryCopy").textContent = "Confirming public access. Viewing never grants permission to contact.";
+  }
+}
+
 function renderWorkspaceUnavailable() {
   const pill = $("dataStatePill");
   pill.classList.remove("measured");
@@ -406,9 +490,29 @@ function renderWorkspaceUnavailable() {
   $("sourceStamp").textContent = "Release unavailable";
   $("sourceStamp").classList.remove("observed");
   $("freshness").textContent = "Live sources unavailable";
+  state.loadError = "The public workspace did not pass its access or readiness gate.";
+  state.board = null;
+  state.leads = [];
+  state.sources = [];
+  renderEverything();
+  $("loadingState").classList.add("hidden");
+  $("errorStateCopy").textContent = `This does not mean zero leads. ${state.loadError}`;
+  $("errorState").classList.remove("hidden");
+  $("resultCount").textContent = "Workspace unavailable";
+  renderAccessState("unavailable");
 }
 
 function renderMetrics() {
+  if (!state.board || state.loadError) {
+    ["metricOrganizations", "metricStates", "metricWindows", "metricSources", "metricResearch", "metricCleared"]
+      .forEach((id) => { $(id).textContent = "--"; });
+    $("metricOrganizationsSub").textContent = "No completed live pull is available";
+    $("metricStatesSub").textContent = "Choose a territory and retry";
+    $("metricWindowsSub").textContent = "Waiting for a completed live pull";
+    $("metricSourcesSub").textContent = "Source status is unavailable";
+    $("proofLiveSources").textContent = "--";
+    return;
+  }
   const summary = state.board?.summary || {};
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
   const liveSources = state.sources.filter((source) => source.mode === "LIVE");
@@ -435,13 +539,64 @@ function renderMetrics() {
   $("proofLiveSources").textContent = `${liveSources.length} live`;
 }
 
+function renderUnavailableEvidence() {
+  renderMetrics();
+  const message = state.loadError || "Waiting for a completed live source pull.";
+  $("freshness").textContent = state.loadError ? "Live sources unavailable" : "Waiting for live sources";
+  const brief = $("dailyBrief");
+  brief.querySelector("strong").textContent = state.loadError
+    ? "Live broker brief unavailable"
+    : "Waiting for the live broker brief";
+  brief.querySelector("small").textContent = `${message} No prior territory result is being shown.`;
+  $("stateAtlas").innerHTML = EASTERN_REGIONS["All East"].map((code) => `
+    <button class="atlas-state${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-atlas-state="${code}" aria-pressed="${state.selectedStates.has(code)}" aria-label="${esc(STATE_NAMES[code])}: current record count unavailable. Load state-specific leads">
+      <strong>${code}</strong>
+      <small>${esc(STATE_NAMES[code])}</small>
+      <span>--</span>
+    </button>
+  `).join("");
+  $("atlasNote").textContent = "Current market counts are unavailable. A dash is not a zero; select a state or retry the live pull.";
+  $("sourceCards").innerHTML = `
+    <div class="source-card unavailable" role="status">
+      <span class="source-dot"></span>
+      <span>
+        <span class="source-title">Current source status unavailable</span>
+        <span class="source-reason">${esc(message)} Retry to request a new source observation.</span>
+      </span>
+      <span class="source-count">UNAVAILABLE</span>
+    </div>
+  `;
+  const facts = [
+    ["Organizations returned in current pull", "Unavailable"],
+    ["Eastern markets queryable", "27"],
+    ["Markets represented in this pull", "Unavailable"],
+    ["Signed source receipts in this pull", "Unavailable"],
+    ["Multi-source organization groups", "Unavailable"],
+    ["Review-required identity groups", "Unavailable"],
+    ["Replayable proof packets", "Unavailable"],
+    ["Proof grades", "Unavailable"],
+    ["Evidence clock", "Unavailable"],
+    ["Persistence health", state.health?.deal_desk_persistence || "Checking"],
+    ["Generated", "Unavailable"],
+  ];
+  $("operatingFacts").innerHTML = facts.map(([label, value]) => `
+    <div class="fact-row"><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>
+  `).join("");
+  $("proofPackets").textContent = "--";
+  $("proofClock").textContent = "--";
+  $("largestAward").textContent = "The current live source pull is unavailable. No award value from a prior territory is being shown.";
+}
+
 function renderDailyBrief() {
   const timing = state.leads
     .filter((lead) => Number.isFinite(Number(lead.timing?.days_to_anniversary)))
     .sort((a, b) => Number(a.timing.days_to_anniversary) - Number(b.timing.days_to_anniversary));
   const top = [...state.leads].sort((a, b) => Number(b.priority || 0) - Number(a.priority || 0))[0];
   const brief = $("dailyBrief");
-  if (!state.board) return;
+  if (!state.board) {
+    renderUnavailableEvidence();
+    return;
+  }
   const strong = timing[0] || top;
   if (!strong) {
     brief.querySelector("strong").textContent = "No deal moments returned for this territory";
@@ -566,8 +721,16 @@ function leadCard(lead) {
 function renderLeads() {
   $("leadRows").innerHTML = state.filtered.map(leadRow).join("");
   $("leadCards").innerHTML = state.filtered.map(leadCard).join("");
-  $("resultCount").textContent = `${formatNumber(state.filtered.length)} of ${formatNumber(state.leads.length)} records`;
-  $("emptyState").classList.toggle("hidden", state.filtered.length > 0 || state.leads.length === 0 && !state.board);
+  const unavailable = Boolean(state.loadError);
+  $("resultCount").textContent = unavailable
+    ? "Live data unavailable"
+    : `${formatNumber(state.filtered.length)} of ${formatNumber(state.leads.length)} records`;
+  $("errorStateCopy").textContent = `This does not mean zero leads. ${state.loadError || "The current source pull did not complete."}`;
+  $("errorState").classList.toggle("hidden", !unavailable);
+  $("emptyState").classList.toggle(
+    "hidden",
+    unavailable || state.filtered.length > 0 || state.leads.length === 0 && !state.board,
+  );
 }
 
 function renderScope() {
@@ -576,25 +739,34 @@ function renderScope() {
   const selectedCopy = selected.length === 1
     ? `${STATE_NAMES[selected[0]]} is selected. This is a deeper state-specific pull.`
     : `${name} is selected (${selected.length} markets). The cross-territory view shows the latest records per source; choose one state for a deeper pull.`;
-  $("scopeNotice").textContent = selectedCopy;
-  $("scopeSummary").textContent = state.board
-    ? `${formatNumber(state.leads.length)} official organization records in ${name}. Choose any state to focus David's research.`
-    : `Loading the latest official records in ${name}.`;
+  $("scopeNotice").textContent = state.loadError
+    ? `Live sources could not complete: ${state.loadError}`
+    : selectedCopy;
+  $("scopeSummary").textContent = state.loadError
+    ? `Live records are temporarily unavailable in ${name}. Retry to distinguish an outage from zero results.`
+    : state.board
+      ? `${formatNumber(state.leads.length)} official organization records in ${name}. Choose any state to focus David's research.`
+      : `Loading the latest official records in ${name}.`;
 }
 
 function renderAtlas() {
+  if (!state.board) {
+    renderUnavailableEvidence();
+    return;
+  }
   const counts = state.leads.reduce((acc, lead) => {
     const code = lead.state;
     if (STATE_NAMES[code]) acc[code] = (acc[code] || 0) + 1;
     return acc;
   }, {});
   $("stateAtlas").innerHTML = EASTERN_REGIONS["All East"].map((code) => `
-    <button class="atlas-state${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-atlas-state="${code}" aria-label="Load ${esc(STATE_NAMES[code])} leads">
+    <button class="atlas-state${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-atlas-state="${code}" aria-pressed="${state.selectedStates.has(code)}" aria-label="${esc(STATE_NAMES[code])}: ${formatNumber(counts[code] || 0)} records in this pull. Load state-specific leads">
       <strong>${code}</strong>
       <small>${esc(STATE_NAMES[code])}</small>
       <span>${formatNumber(counts[code] || 0)}</span>
     </button>
   `).join("");
+  $("atlasNote").textContent = "A zero means the latest completed cross-territory pull did not return that state. Select the state to run a deeper state-specific query.";
 }
 
 function cleanReason(source) {
@@ -604,6 +776,10 @@ function cleanReason(source) {
 }
 
 function renderSources() {
+  if (!state.board) {
+    renderUnavailableEvidence();
+    return;
+  }
   $("sourceCards").innerHTML = state.sources.map((source) => `
     <a class="source-card" href="${safeUrl(source.citation?.url)}" target="_blank" rel="noopener">
       <span class="source-dot${source.mode === "LIVE" ? " live" : ""}"></span>
@@ -617,6 +793,10 @@ function renderSources() {
 }
 
 function renderInvestorProof() {
+  if (!state.board) {
+    renderUnavailableEvidence();
+    return;
+  }
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
   const signed = state.leads.filter((lead) => lead.receipt_signed).length;
   const constellation = state.board?.evidence_constellation || {};
@@ -654,14 +834,26 @@ function renderInvestorProof() {
 function switchView(view) {
   if (!["leads", "markets", "investors"].includes(view)) return;
   state.activeView = view;
-  document.querySelectorAll(".view-panel").forEach((panel) => panel.classList.remove("active"));
-  document.querySelectorAll("[data-view-target]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.viewTarget === view);
+  document.querySelectorAll(".view-panel").forEach((panel) => {
+    const active = panel.id === `${view}View`;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
   });
-  $(`${view}View`).classList.add("active");
+  document.querySelectorAll(".workspace-tab").forEach((button) => {
+    const active = button.dataset.viewTarget === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll(".role-button").forEach((button) => {
+    const active = button.dataset.viewTarget === view;
+    button.classList.toggle("active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
 }
 
-function openLead(id) {
+function openLead(id, opener = null) {
   const lead = state.leads.find((item) => item.opportunity_id === id);
   if (!lead) return;
   const value = observedValue(lead);
@@ -763,20 +955,22 @@ function openLead(id) {
       <div id="proofResult"></div>
     </section>
   `;
-  $("drawerBackdrop").classList.remove("hidden");
-  $("drawerBackdrop").setAttribute("aria-hidden", "false");
-  $("leadDrawer").classList.add("open");
-  $("leadDrawer").setAttribute("aria-hidden", "false");
+  const drawer = $("leadDrawer");
+  state.drawerReturnFocus = opener || document.activeElement;
+  if (!drawer.open) drawer.showModal();
+  window.requestAnimationFrame(() => drawer.classList.add("open"));
   document.body.style.overflow = "hidden";
   $("closeDrawer").focus();
 }
 
 function closeLead() {
-  $("leadDrawer").classList.remove("open");
-  $("leadDrawer").setAttribute("aria-hidden", "true");
-  $("drawerBackdrop").classList.add("hidden");
-  $("drawerBackdrop").setAttribute("aria-hidden", "true");
+  const drawer = $("leadDrawer");
+  if (!drawer.open) return;
+  drawer.classList.remove("open");
+  drawer.close();
   document.body.style.overflow = "";
+  if (state.drawerReturnFocus?.isConnected) state.drawerReturnFocus.focus();
+  state.drawerReturnFocus = null;
 }
 
 async function verifyProof(receiptId) {
@@ -805,9 +999,9 @@ async function loadBuildAndHealth() {
     $("sourceStamp").classList.add("observed");
     const receipt = state.build.release_receipt || {};
     const attested = state.build.receipt_minted === true && receipt.state === "GITHUB_OIDC_ATTESTED";
-    $("proofRelease").textContent = attested ? "OIDC attested" : "Observed";
+    $("proofRelease").textContent = attested ? "Identity verified" : "Observed";
     $("proofReleaseCopy").textContent = attested
-      ? `Exact source revision ${revision} has a published GitHub OIDC receipt.`
+      ? `The running release matches source revision ${revision} and has a published identity receipt.`
       : "The running revision is exposed, but an attested release receipt is not currently reported.";
     if (attested && safeUrl(receipt.attestation_url) !== "#") {
       $("attestationLink").href = safeUrl(receipt.attestation_url);
@@ -841,12 +1035,15 @@ async function bootstrap() {
   restoreTerritoryFromUrl();
   syncTerritoryControls();
   bindEvents();
+  switchView(state.activeView);
+  renderAccessState("checking");
   try {
     const access = await api("/api/access-mode");
     state.accessMode = access.mode;
     if (access.mode !== "public_readonly") {
       throw new Error("The public workspace is not enabled.");
     }
+    renderAccessState("confirmed");
     await Promise.all([loadLeads(), loadBuildAndHealth()]);
     state.releaseCheckTimer = window.setInterval(checkForNewRelease, 120000);
   } catch (error) {
@@ -867,19 +1064,20 @@ function bindEvents() {
     const button = event.target.closest("[data-state]");
     if (button) selectOnlyState(button.dataset.state);
   });
-  $("mobileStateSelect").addEventListener("change", (event) => {
-    const code = event.target.value;
-    if (code === "__ALL__") {
-      chooseRegion("All East");
-    } else if (STATE_NAMES[code]) {
-      selectOnlyState(code);
-    }
+  ["mobileStateSelect", "quickTerritorySelect"].forEach((id) => {
+    $(id).addEventListener("change", (event) => chooseTerritory(event.target.value));
   });
   $("stateAtlas").addEventListener("click", (event) => {
     const button = event.target.closest("[data-atlas-state]");
     if (button) selectOnlyState(button.dataset.atlasState);
   });
   $("refreshData").addEventListener("click", () => loadLeads());
+  $("retryData").addEventListener("click", () => loadLeads({ focusResults: true }));
+  $("viewSourceStatus").addEventListener("click", () => {
+    switchView("markets");
+    $("marketsHeading").focus({ preventScroll: true });
+    $("marketsHeading").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   $("searchInput").addEventListener("input", applyFilters);
   $("sourceFilter").addEventListener("change", applyFilters);
   $("sortFilter").addEventListener("change", applyFilters);
@@ -889,7 +1087,9 @@ function bindEvents() {
     $("sortFilter").value = "priority";
     state.activeLane = "all";
     document.querySelectorAll("[data-lane]").forEach((item) => {
-      item.classList.toggle("active", item.dataset.lane === "all");
+      const active = item.dataset.lane === "all";
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
     });
     applyFilters();
   });
@@ -898,17 +1098,34 @@ function bindEvents() {
     if (!button) return;
     state.activeLane = button.dataset.lane;
     document.querySelectorAll("[data-lane]").forEach((item) => {
-      item.classList.toggle("active", item === button);
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
     });
     applyFilters();
   });
   document.querySelectorAll("[data-view-target]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.viewTarget));
   });
+  const workspaceTabs = [...document.querySelectorAll(".workspace-tab")];
+  workspaceTabs.forEach((tab, index) => {
+    tab.addEventListener("keydown", (event) => {
+      let nextIndex = null;
+      if (event.key === "ArrowRight") nextIndex = (index + 1) % workspaceTabs.length;
+      if (event.key === "ArrowLeft") nextIndex = (index - 1 + workspaceTabs.length) % workspaceTabs.length;
+      if (event.key === "Home") nextIndex = 0;
+      if (event.key === "End") nextIndex = workspaceTabs.length - 1;
+      if (nextIndex == null) return;
+      event.preventDefault();
+      const nextTab = workspaceTabs[nextIndex];
+      switchView(nextTab.dataset.viewTarget);
+      nextTab.focus();
+    });
+  });
   ["leadRows", "leadCards"].forEach((id) => {
     $(id).addEventListener("click", (event) => {
       const button = event.target.closest("[data-lead-id]");
-      if (button) openLead(button.dataset.leadId);
+      if (button) openLead(button.dataset.leadId, button);
     });
   });
   $("drawerBody").addEventListener("click", (event) => {
@@ -916,17 +1133,19 @@ function bindEvents() {
     if (button) verifyProof(button.dataset.proofId);
   });
   $("closeDrawer").addEventListener("click", closeLead);
-  $("drawerBackdrop").addEventListener("click", closeLead);
+  $("leadDrawer").addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeLead();
+  });
   $("openPolicy").addEventListener("click", () => $("policyDialog").showModal());
   $("openPolicyMobile").addEventListener("click", () => $("policyDialog").showModal());
   $("reloadRelease").addEventListener("click", () => window.location.reload());
   document.addEventListener("keydown", (event) => {
-    if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
+    const target = event.target;
+    const isEditing = target?.matches?.("input, textarea, select, [contenteditable='true']");
+    if (event.key === "/" && !isEditing && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
       $("searchInput").focus();
-    }
-    if (event.key === "Escape" && $("leadDrawer").classList.contains("open")) {
-      closeLead();
     }
   });
 }

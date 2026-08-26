@@ -1211,7 +1211,6 @@ def public_board(records: list[dict[str, Any]]) -> dict[str, Any]:
     """
     opportunities: list[dict[str, Any]] = []
     public_fields = {
-        "address",
         "attribution",
         "authoritative_entity_ids",
         "award",

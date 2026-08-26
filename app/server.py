@@ -179,7 +179,7 @@ if _ACCESS_MODE not in {"authenticated", "public_readonly"}:
     _ACCESS_MODE = "authenticated"
 _PUBLIC_READONLY = _ACCESS_MODE == "public_readonly"
 _TOKEN_TTL_SECONDS = max(300, int(os.environ.get("DAVID_SESSION_TTL_SECONDS", "28800")))
-_TOKENS: dict[str, float] = {}
+_TOKENS: dict[str, float | dict[str, object]] = {}
 _PUBLIC_RECEIPTS: dict[str, dict] = {}
 _PUBLIC_RECEIPT_LIMIT = 500
 _PUBLIC_BOARD_CACHE: dict[tuple[str, tuple[str, ...]], tuple[float, dict]] = {}
@@ -241,12 +241,31 @@ def _auth(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing token")
     token = authorization.split(" ", 1)[1]
-    expires_at = _TOKENS.get(token)
-    if expires_at is None:
+    session = _TOKENS.get(token)
+    if session is None:
         raise HTTPException(401, "Invalid token")
+    if isinstance(session, dict):
+        try:
+            expires_at = float(session.get("expires_at", 0))
+        except (TypeError, ValueError):
+            expires_at = 0
+    else:
+        expires_at = float(session)
     if expires_at <= time.time():
         _TOKENS.pop(token, None)
         raise HTTPException(401, "Session expired")
+    return "operator"
+
+
+def _operator_actor(authorization: str | None) -> str:
+    """Return the actor bound to the authenticated session, never request JSON."""
+    _auth(authorization)
+    token = authorization.split(" ", 1)[1]
+    session = _TOKENS.get(token)
+    if isinstance(session, dict):
+        actor = str(session.get("username") or "").strip()
+        if actor:
+            return actor[:80]
     return "operator"
 
 
@@ -280,6 +299,53 @@ def _cache_public_board(kind: str, states: list[str], board: dict) -> None:
     )
     while len(_PUBLIC_BOARD_CACHE) > _PUBLIC_BOARD_CACHE_LIMIT:
         _PUBLIC_BOARD_CACHE.pop(next(iter(_PUBLIC_BOARD_CACHE)))
+
+
+def _canonical_eastern_states(raw: str | None, default: tuple[str, ...]) -> list[str]:
+    requested = [
+        value.strip().upper()
+        for value in str(raw or "").split(",")
+        if value.strip()
+    ]
+    if not requested:
+        requested = list(default)
+    invalid = sorted(set(requested) - set(EASTERN_STATES))
+    if invalid:
+        raise HTTPException(
+            422,
+            f"Unsupported Eastern state code(s): {', '.join(invalid)}",
+        )
+    unique = set(requested)
+    return [code for code in EASTERN_STATES if code in unique]
+
+
+_NON_PRODUCTION_MODES = {"SAMPLE", "EXAMPLE", "MOCK", "FIXTURE"}
+
+
+def _record_has_non_production_marker(record: dict) -> bool:
+    mode = str(
+        record.get("mode")
+        or record.get("source_status")
+        or record.get("truth_label")
+        or ""
+    ).strip().upper()
+    name = str(record.get("name") or record.get("employer") or "").strip().upper()
+    return (
+        mode in _NON_PRODUCTION_MODES
+        or bool(record.get("_sample"))
+        or str(record.get("contact_quality") or "").strip().upper() == "[SAMPLE]"
+        or name.startswith("[SAMPLE]")
+    )
+
+
+def _reject_non_production_records(records: list[dict]) -> None:
+    if any(_record_has_non_production_marker(record) for record in records):
+        raise HTTPException(503, "production source returned non-live example data")
+
+
+def _reject_non_production_sources(sources: list[dict]) -> None:
+    if any(str(source.get("mode") or "").strip().upper() in _NON_PRODUCTION_MODES for source in sources):
+        raise HTTPException(503, "production source returned a non-live example mode")
 
 
 @app.get("/healthz")
@@ -527,7 +593,10 @@ def login(req: LoginReq):
     if not (pass_ok and key_ok):
         raise HTTPException(401, "Invalid credentials or access key")
     tok = secrets.token_urlsafe(24)
-    _TOKENS[tok] = time.time() + _TOKEN_TTL_SECONDS
+    _TOKENS[tok] = {
+        "expires_at": time.time() + _TOKEN_TTL_SECONDS,
+        "username": req.username,
+    }
     return {"token": tok, "user": req.username, "expires_in": _TOKEN_TTL_SECONDS}
 
 
@@ -1358,18 +1427,26 @@ def real_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = He
     """Currently filed public B2B research records from official state open-data portals.
 
     Public business addresses only; no permission to contact is inferred. Every
-    record carries a citation and an evidence receipt. A down legacy source
-    degrades to a visible sample rather than being presented as live.
+    record carries a citation and an evidence receipt. A down source is
+    reported unavailable and returns no example records.
     """
     _auth(authorization)
     if rl is None:
         raise HTTPException(503, "real-leads source unavailable")
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
-        ["NY", "NJ", "PA", "MD", "DE", "CT"]
+    state_list = _canonical_eastern_states(
+        states,
+        ("NY", "NJ", "PA", "MD", "DE", "CT"),
+    )
     try:
-        out = rl.real_callable_leads(state_list, limit_per=12)
+        out = rl.real_callable_leads(
+            state_list,
+            limit_per=12,
+            include_samples=False,
+        )
     except Exception:
         raise HTTPException(503, "real-leads temporarily unavailable")
+    _reject_non_production_sources(list(out.get("sources", [])))
+    _reject_non_production_records(list(out.get("leads", [])))
     # stash each signed receipt so /api/verify/{rid} works, and strip internal-only keys
     clean_leads = []
     for lead in out.get("leads", []):
@@ -1388,11 +1465,11 @@ class DealDeskUpdateReq(BaseModel):
     next_action: str | None = None
     note: str | None = None
     owner: str | None = None
-    actor: str = "David"
+    actor: str | None = None
 
 
 class DealDeskResearchReq(BaseModel):
-    actor: str
+    actor: str | None = None
     channel_type: str
     channel_value: str
     source_url: str
@@ -1401,7 +1478,7 @@ class DealDeskResearchReq(BaseModel):
 
 
 class DealDeskClearanceReq(BaseModel):
-    actor: str
+    actor: str | None = None
     channel_id: str
     business_purpose: str
     talk_track_version: str
@@ -1415,7 +1492,7 @@ class DealDeskClearanceReq(BaseModel):
 
 
 class DealDeskDispositionReq(BaseModel):
-    actor: str
+    actor: str | None = None
     disposition: str
     note: str = ""
     follow_up_at: str | None = None
@@ -1436,17 +1513,24 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
             503,
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or [
-        "NY", "NJ", "PA", "MD", "DE", "CT"
-    ]
+    state_list = _canonical_eastern_states(
+        states,
+        ("NY", "NJ", "PA", "MD", "DE", "CT"),
+    )
     if principal == "public_readonly":
         cached = _cached_public_board("deal", state_list)
         if cached is not None:
             return cached
     try:
-        source = rl.real_callable_leads(state_list, limit_per=12)
+        source = rl.real_callable_leads(
+            state_list,
+            limit_per=12,
+            include_samples=False,
+        )
     except Exception:
         raise HTTPException(503, "public business sources temporarily unavailable")
+    _reject_non_production_sources(list(source.get("sources", [])))
+    _reject_non_production_records(list(source.get("leads", [])))
     clean: list[dict] = []
     for lead in source.get("leads", []):
         receipt = lead.pop("_receipt", None)
@@ -1493,14 +1577,14 @@ def frontier_desk(
             503,
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or list(
-        EASTERN_STATES
-    )
+    state_list = _canonical_eastern_states(states, EASTERN_STATES)
     if principal == "public_readonly":
         cached = _cached_public_board("frontier", state_list)
         if cached is not None:
             return cached
     source = frontier_data.frontier_opportunities(state_list, limit_per_source=18)
+    _reject_non_production_sources(list(source.get("sources", [])))
+    _reject_non_production_records(list(source.get("leads", [])))
     clean: list[dict] = []
     for lead in source.get("leads", []):
         receipt = lead.pop("_receipt", None)
@@ -1537,7 +1621,7 @@ def update_deal_desk(
     req: DealDeskUpdateReq,
     authorization: str | None = Header(default=None),
 ):
-    _auth(authorization)
+    actor = _operator_actor(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
     if not dd.persistence_ready():
@@ -1552,7 +1636,7 @@ def update_deal_desk(
             next_action=req.next_action,
             note=req.note,
             owner=req.owner,
-            actor=req.actor,
+            actor=actor,
         )
     except KeyError as exc:
         raise HTTPException(404, str(exc)) from exc
@@ -1569,7 +1653,7 @@ def record_deal_desk_research(
     req: DealDeskResearchReq,
     authorization: str | None = Header(default=None),
 ):
-    _auth(authorization)
+    actor = _operator_actor(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
     if not dd.persistence_ready():
@@ -1577,7 +1661,7 @@ def record_deal_desk_research(
     try:
         opportunity = dd.record_research(
             opportunity_id,
-            actor=req.actor,
+            actor=actor,
             channel_type=req.channel_type,
             channel_value=req.channel_value,
             source_url=req.source_url,
@@ -1599,7 +1683,7 @@ def record_deal_desk_clearance(
     req: DealDeskClearanceReq,
     authorization: str | None = Header(default=None),
 ):
-    _auth(authorization)
+    actor = _operator_actor(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
     if not dd.persistence_ready():
@@ -1607,7 +1691,7 @@ def record_deal_desk_clearance(
     try:
         opportunity = dd.record_clearance(
             opportunity_id,
-            actor=req.actor,
+            actor=actor,
             channel_id=req.channel_id,
             business_purpose=req.business_purpose,
             talk_track_version=req.talk_track_version,
@@ -1654,7 +1738,7 @@ def record_deal_desk_disposition(
     req: DealDeskDispositionReq,
     authorization: str | None = Header(default=None),
 ):
-    _auth(authorization)
+    actor = _operator_actor(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
     if not dd.persistence_ready():
@@ -1662,7 +1746,7 @@ def record_deal_desk_disposition(
     try:
         opportunity = dd.record_disposition(
             opportunity_id,
-            actor=req.actor,
+            actor=actor,
             disposition=req.disposition,
             note=req.note,
             follow_up_at=req.follow_up_at,
@@ -1721,19 +1805,24 @@ def data_policy():
 @app.get("/api/warn-leads")
 def warn_leads(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Header(default=None)):
     """WARN Act layoff leads (public state DOL records) for the covered states. A 60-day WARN
-    notice is a high-intent trigger for ACA / short-term / COBRA-alternative coverage. Live where
-    a structured endpoint exists; otherwise honest source_status='sample' rows on the real WARN
-    schema (clearly labelled, never presented as live). Each lead carries its state WARN portal
-    citation + a frontier receipt. Defensive: never 500s."""
+    notice is a research trigger for coverage-continuity work. Live rows are returned only where
+    a durable structured endpoint exists; other states are reported unavailable with no example
+    employers. Each live lead carries its state WARN portal citation + a frontier receipt."""
     _auth(authorization)
     if wl is None:
         raise HTTPException(503, "warn-leads source unavailable")
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
-        ["NY", "NJ", "PA", "MD", "DE", "CT"]
+    state_list = _canonical_eastern_states(
+        states,
+        ("NY", "NJ", "PA", "MD", "DE", "CT"),
+    )
+    unsupported = [state for state in state_list if state not in set(wl.COVERED)]
+    if unsupported:
+        raise HTTPException(422, f"WARN source does not cover: {', '.join(unsupported)}")
     try:
         out = wl.warn_leads(state_list)
     except Exception:
         raise HTTPException(503, "warn-leads temporarily unavailable")
+    _reject_non_production_records(list(out.get("leads", [])))
     # stash each frontier receipt so /api/verify/{rid} can echo it
     for lead in out.get("leads", []):
         rcpt = lead.get("receipt")
@@ -1748,17 +1837,23 @@ def tax_territories(states: str = "NY,NJ,CT,PA,MD,DE",
                     authorization: str | None = Header(default=None)):
     """TERRITORY intelligence from aggregate IRS public statistics: affluent ZIPs ($200k+ return
     density) + money-in-motion counties (AGI carried in by movers). Names NO individuals — this is
-    the compliant use of tax data. Each block carries the IRS citation + a signed receipt.
-    Defensive: if irs.gov is unreachable the layer degrades to an honest [SAMPLE]; never 500s."""
+    the compliant use of tax data. Each block carries the IRS citation + a receipt when live
+    observations exist. If irs.gov is unreachable, the source is unavailable and returns no rows."""
     _auth(authorization)
     if tx is None:
         raise HTTPException(503, "tax-territory source unavailable")
-    state_list = [s.strip().upper() for s in (states or "").split(",") if s.strip()] or \
-        ["NY", "NJ", "CT", "PA", "MD", "DE"]
+    state_list = _canonical_eastern_states(
+        states,
+        ("NY", "NJ", "CT", "PA", "MD", "DE"),
+    )
     try:
         out = tx.real_tax_territories(state_list, top=12)
     except Exception:
         raise HTTPException(503, "tax-territory temporarily unavailable")
+    _reject_non_production_sources(list(out.get("sources", [])))
+    _reject_non_production_records(
+        list(out.get("affluent_zips", [])) + list(out.get("money_in_motion", []))
+    )
     rcpt = out.pop("_receipt", None)
     if isinstance(rcpt, dict) and rcpt.get("id"):
         _STATE.setdefault("receipts", {})[rcpt["id"]] = rcpt
