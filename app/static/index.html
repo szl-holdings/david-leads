@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#07101d">
+  <meta name="theme-color" content="#080c14">
   <meta name="description" content="David Leads turns official public business signals into a clear, source-linked Eastern U.S. research workspace.">
   <title>David Leads | Evidence-Backed Broker Research</title>
   <link rel="stylesheet" href="fonts/fonts.css">
-  <link rel="stylesheet" href="holo.css?v=broker-experience-20260826">
+  <link rel="stylesheet" href="holo.css?v=kanchay-honesty-20260828">
 </head>
 <body>
   <a class="skip-link" href="#workspace">Skip to workspace</a>
@@ -24,7 +24,7 @@
       <svg class="brand-mark" viewBox="0 0 42 42" aria-hidden="true">
         <rect x="1" y="1" width="40" height="40" rx="12" fill="currentColor"></rect>
         <path d="M11.5 28.5v-15l9.5 5.3 9.5-5.3v15" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
-        <circle cx="21" cy="24" r="3.2" fill="#76f2d1"></circle>
+        <circle cx="21" cy="24" r="3.2" fill="#3af4c8"></circle>
       </svg>
       <span class="brand-copy">
         <strong>David Leads</strong>
@@ -83,7 +83,6 @@
       <div id="stateButtons" class="state-buttons" aria-label="Choose states"></div>
 
       <div class="territory-summary" aria-live="polite">
-        <span class="territory-orbit" aria-hidden="true"></span>
         <div>
           <strong id="territoryCount">27 markets selected</strong>
           <small id="territoryLabel">Eastern United States</small>
@@ -133,35 +132,44 @@
 
       <section class="metric-grid" aria-label="Current market summary">
         <article class="metric-card metric-primary">
-          <span class="metric-label">Organizations returned</span>
-          <strong id="metricOrganizations">--</strong>
+          <span class="metric-label">Organizations returned <span class="honesty-chip measured">MEASURED</span></span>
+          <strong id="metricOrganizations">UNKNOWN</strong>
           <small id="metricOrganizationsSub">Official records in this view</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Markets represented</span>
-          <strong id="metricStates">--</strong>
+          <span class="metric-label">Markets represented <span class="honesty-chip measured">MEASURED</span></span>
+          <strong id="metricStates">UNKNOWN</strong>
           <small id="metricStatesSub">Select one state for a deeper pull</small>
         </article>
         <article class="metric-card metric-timing">
-          <span class="metric-label">Life-plan timing windows</span>
-          <strong id="metricWindows">--</strong>
+          <span class="metric-label">Life-plan timing windows <span class="honesty-chip reported">REPORTED</span></span>
+          <strong id="metricWindows">UNKNOWN</strong>
           <small id="metricWindowsSub">Reported anniversaries in the next 180 days</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Sources observed live</span>
-          <strong id="metricSources">--</strong>
+          <span class="metric-label">Sources observed live <span class="honesty-chip measured">MEASURED</span></span>
+          <strong id="metricSources">UNKNOWN</strong>
           <small id="metricSourcesSub">Unavailable sources stay visible</small>
         </article>
         <article class="metric-card">
-          <span class="metric-label">Research next</span>
-          <strong id="metricResearch">--</strong>
-          <small>Each record links to its source</small>
+          <span class="metric-label">Research next <span class="honesty-chip simulated">SIMULATED</span></span>
+          <strong id="metricResearch">UNKNOWN</strong>
+          <small>Priority is advisory, not a theorem</small>
         </article>
         <article class="metric-card metric-gated">
-          <span class="metric-label">Cleared to contact</span>
+          <span class="metric-label">Cleared to contact <span class="honesty-chip measured">MEASURED</span></span>
           <strong id="metricCleared">0</strong>
           <small>Public data never creates consent</small>
         </article>
+      </section>
+
+      <section class="honesty-legend" aria-label="Evidence honesty states">
+        <span class="honesty-chip measured">MEASURED</span>
+        <span class="honesty-chip reported">REPORTED</span>
+        <span class="honesty-chip roadmap">ROADMAP</span>
+        <span class="honesty-chip unknown">UNKNOWN</span>
+        <span class="honesty-chip simulated">SIMULATED</span>
+        <span class="honesty-chip unavailable">UNAVAILABLE</span>
       </section>
 
       <nav class="workspace-tabs" aria-label="Market cockpit sections" role="tablist">
@@ -201,7 +209,6 @@
         </ol>
 
         <div id="dailyBrief" class="daily-brief" aria-live="polite">
-          <span class="brief-orbit" aria-hidden="true"></span>
           <div>
             <span class="eyebrow">Broker brief</span>
             <strong>Building today’s evidence-ranked queue</strong>
@@ -250,7 +257,7 @@
                 <th scope="col">Account</th>
                 <th scope="col">Source-verified business moment</th>
                 <th scope="col">Timing</th>
-                <th scope="col">Likely fit</th>
+                <th scope="col">Likely fit <span class="honesty-chip simulated">SIMULATED</span></th>
                 <th scope="col">Evidence</th>
                 <th scope="col"><span class="sr-only">Open lead</span></th>
               </tr>
@@ -265,13 +272,13 @@
             <p>Gathering official records</p>
           </div>
           <div id="emptyState" class="empty-state hidden">
-            <div class="empty-orbit" aria-hidden="true"></div>
-            <h3>No records match these filters</h3>
-            <p>Try another state, clear the search, or refresh the official sources.</p>
+            <span class="honesty-chip unknown">UNKNOWN</span>
+            <h3>No matching records in this filter set</h3>
+            <p>This is not a zero-demand claim. A missing pull is UNAVAILABLE. An unfinished lane is ROADMAP.</p>
             <button id="resetFilters" class="secondary-button" type="button">Reset filters</button>
           </div>
           <div id="errorState" class="error-state hidden" role="alert">
-            <div class="error-orbit" aria-hidden="true"></div>
+            <span class="honesty-chip unavailable">UNAVAILABLE</span>
             <h3>Live data is unavailable</h3>
             <p id="errorStateCopy">This does not mean zero leads. The current source pull did not complete.</p>
             <div class="error-actions">
@@ -327,10 +334,17 @@
             </div>
           </div>
           <div class="kanchay-states" aria-label="Evidence state contract">
-            <article><strong>LIVE / MEASURED</strong><span>Only source adapters that succeed in the current pull are counted live; the observation time is shown.</span></article>
-            <article><strong>DERIVED / MODELED</strong><span>Priority and fit organize human research. They are not probabilities, quotes, or underwriting decisions.</span></article>
-            <article><strong>EXAMPLES REJECTED</strong><span>Production routes reject sample, mock, example, and fixture records instead of placing them in a broker queue.</span></article>
-            <article><strong>UNAVAILABLE / LIMITS</strong><span>Source failures remain visible. Public records never create permission to contact.</span></article>
+            <article><strong>MEASURED</strong><span>Only source adapters that succeed in the current pull are counted live. The observation time is shown.</span></article>
+            <article><strong>REPORTED</strong><span>Official fields pass through as filed. A reported anniversary is a research hypothesis, not a renewal claim.</span></article>
+            <article><strong>ROADMAP</strong><span>Lanes that exist in code but still need a key, reuse approval, or durable ingest stay ROADMAP. They are not live coverage.</span></article>
+            <article><strong>UNKNOWN</strong><span>No completed observation for this claim. UNKNOWN is not a zero, not an empty market, and not a dashboard.</span></article>
+            <article><strong>SIMULATED</strong><span>Priority and likely fit organize human research. They are advisory. Λ uniqueness is Conjecture 1 (OPEN), never a theorem.</span></article>
+            <article><strong>UNAVAILABLE</strong><span>Source failures remain visible. Public records never create permission to contact.</span></article>
+            <aside class="kanchay-conjecture" aria-label="Lambda conjecture status">
+              <span class="honesty-chip simulated">SIMULATED</span>
+              <b>Λ uniqueness</b>
+              <span>Conjecture 1 (OPEN). Never a theorem. Advisory ranking only; not a proof, probability, quote, or underwriting score.</span>
+            </aside>
             <aside class="kanchay-quickstart" aria-label="What an investor can verify">
               <b>What an investor can verify</b>
               <span>Records returned now</span>
@@ -345,7 +359,7 @@
           <article class="proof-card">
             <span class="proof-index">01</span>
             <h3>Source-grounded</h3>
-            <strong id="proofLiveSources">--</strong>
+            <strong id="proofLiveSources" class="unknown">UNKNOWN</strong>
             <p>Official sources live in the current run, each with its own citation and availability state.</p>
           </article>
           <article class="proof-card">
@@ -369,13 +383,13 @@
           <article class="proof-card">
             <span class="proof-index">05</span>
             <h3>Session-verifiable source references</h3>
-            <strong id="proofPackets">--</strong>
+            <strong id="proofPackets" class="unknown">UNKNOWN</strong>
             <p>Each reference binds a normalized source record to its signed receipt for this runtime session. Resolution, grade, clock, and counter-evidence are outside that receipt; no durable history is claimed.</p>
           </article>
           <article class="proof-card">
             <span class="proof-index">06</span>
             <h3>Evidence clock</h3>
-            <strong id="proofClock">--</strong>
+            <strong id="proofClock" class="unknown">UNKNOWN</strong>
             <p>Current, recheck-due, stale, and unknown evidence stay separate; stale observations do not silently remain prioritized.</p>
           </article>
         </div>
@@ -449,6 +463,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=broker-experience-20260826" defer></script>
+  <script src="app.js?v=kanchay-honesty-20260828" defer></script>
 </body>
 </html>

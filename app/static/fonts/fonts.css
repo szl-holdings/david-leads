@@ -1,47 +1,41 @@
 /* SPDX-License-Identifier: Apache-2.0
    © 2026 SZL Holdings — David Leads
-   Self-hosted fonts (SZL Doctrine v11: 0 runtime CDN). Vendored from Google Fonts 2026-07-06.
-   Fraunces + Inter served same-origin; no fonts.googleapis.com / fonts.gstatic.com at runtime. */
+   Self-hosted fonts (SZL Doctrine v11: 0 runtime CDN).
+   Space Grotesk (Florian Karsten) + JetBrains Mono, SIL OFL 1.1.
+   Served same-origin; no fonts.googleapis.com / fonts.gstatic.com at runtime. */
 
 @font-face {
-  font-family: 'Fraunces';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url(./fraunces-500.ttf) format('truetype');
-}
-@font-face {
-  font-family: 'Fraunces';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(./fraunces-600.ttf) format('truetype');
-}
-@font-face {
-  font-family: 'Inter';
+  font-family: "Space Grotesk";
   font-style: normal;
   font-weight: 400;
   font-display: swap;
-  src: url(./inter-400.ttf) format('truetype');
+  src: url(./SpaceGrotesk-Regular.ttf) format("truetype");
 }
 @font-face {
-  font-family: 'Inter';
+  font-family: "Space Grotesk";
   font-style: normal;
   font-weight: 500;
   font-display: swap;
-  src: url(./inter-500.ttf) format('truetype');
+  src: url(./SpaceGrotesk-Medium.ttf) format("truetype");
 }
 @font-face {
-  font-family: 'Inter';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url(./inter-600.ttf) format('truetype');
-}
-@font-face {
-  font-family: 'Inter';
+  font-family: "Space Grotesk";
   font-style: normal;
   font-weight: 700;
   font-display: swap;
-  src: url(./inter-700.ttf) format('truetype');
+  src: url(./SpaceGrotesk-Bold.ttf) format("truetype");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(./JetBrainsMono-Regular.ttf) format("truetype");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url(./JetBrainsMono-Medium.ttf) format("truetype");
 }

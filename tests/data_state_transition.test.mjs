@@ -250,18 +250,18 @@ test("a failed pull clears prior territory evidence without false zeros", () => 
     "metricOrganizations", "metricStates", "metricWindows", "metricSources",
     "metricResearch", "metricCleared", "proofLiveSources",
   ]) {
-    assert.equal(elements[id].textContent, "--");
+    assert.equal(elements[id].textContent, "UNKNOWN");
   }
   assert.equal(elements.freshness.textContent, "Live sources unavailable");
   assert.match(strong.textContent, /unavailable/i);
   assert.doesNotMatch(`${strong.textContent} ${small.textContent}`, /72 organizations|Old New York/);
-  assert.match(elements.stateAtlas.innerHTML, /<span>--<\/span>/);
+  assert.match(elements.stateAtlas.innerHTML, /UNKNOWN/);
   assert.doesNotMatch(elements.stateAtlas.innerHTML, /<span>0<\/span>/);
-  assert.match(elements.atlasNote.textContent, /dash is not a zero/i);
+  assert.match(elements.atlasNote.textContent, /UNKNOWN is not a zero/i);
   assert.match(elements.sourceCards.innerHTML, /UNAVAILABLE/);
   assert.doesNotMatch(elements.operatingFacts.innerHTML, /0\/0|>0</);
-  assert.equal(elements.proofPackets.textContent, "--");
-  assert.equal(elements.proofClock.textContent, "--");
+  assert.equal(elements.proofPackets.textContent, "UNKNOWN");
+  assert.equal(elements.proofClock.textContent, "UNKNOWN");
   assert.match(elements.largestAward.textContent, /unavailable/i);
   assert.doesNotMatch(elements.largestAward.textContent, /\$|Old/);
 });
