@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
-# © 2026 SZL Holdings — David Leads Sovereign Insurance Intelligence
+# © 2026 SZL Holdings — David Leads
 """
-receipts.py — compliance-grade signed receipts for every lead score.
+Tamper-evident source and guarded-workflow receipts.
 
-Honest-by-design (SZL doctrine): if a signing key is present (env SZL_COSIGN_PRIVATE_PEM),
-we produce a real ECDSA-P256 DSSE-style signature over the canonical payload. If NOT present,
-we emit a clearly-labelled UNSIGNED but HASH-CHAINED receipt — we NEVER fabricate a signature.
+If a signing key is present (env SZL_COSIGN_PRIVATE_PEM), the module produces an
+ECDSA-P256 DSSE-style signature over the canonical payload. Without that key it emits a
+clearly labeled UNSIGNED, hash-linked receipt; it never fabricates a signature.
 
-Each receipt binds: the lead, the public data signals used, the score, and the prior receipt
-hash (tamper-evident chain). This is the audit-defensible provenance that no agent-level
-competitor offers.
+A receipt binds the normalized payload and its declared predecessor hash. The chain tip and
+public receipt cache are process memory unless a separate durable store is explicitly configured;
+verification without the predecessor checks only the declared link, not historical continuity.
 """
 from __future__ import annotations
 import base64, hashlib, json, os
@@ -280,6 +280,30 @@ def verify_receipt(
         verdict = "SIGNATURE_VERIFIED"
     else:
         verdict = "HASH_INTEGRITY_VERIFIED"
+    consensus = receipt.get("consensus")
+    if isinstance(consensus, dict):
+        signing_mode = str(consensus.get("signing_mode") or "UNAVAILABLE")
+        witness = {
+            "state": (
+                "THRESHOLD_REACHED"
+                if consensus.get("signed") is True
+                else "UNSIGNED_OR_UNAVAILABLE"
+            ),
+            "consensus": consensus.get("khipu_consensus"),
+            "signing_mode": signing_mode,
+            "durability": (
+                "PROCESS_EPHEMERAL"
+                if "ephemeral" in signing_mode.lower()
+                else "DECLARED_BY_RECEIPT"
+            ),
+        }
+    else:
+        witness = {
+            "state": "UNAVAILABLE",
+            "consensus": None,
+            "signing_mode": "UNAVAILABLE",
+            "durability": "UNAVAILABLE",
+        }
     return {
         "receipt_id": receipt["id"],
         "verdict": verdict,
@@ -292,6 +316,7 @@ def verify_receipt(
             if chain_state == "VERIFIED" and sig_ok is True
             else "INTEGRITY_AND_PROVENANCE_METADATA_ONLY"
         ),
+        "witness": witness,
         "checks": checks,
         "recomputed_hash": recomputed,
     }

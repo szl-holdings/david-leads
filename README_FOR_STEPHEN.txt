@@ -1,69 +1,59 @@
 ========================================================================
-  READ ME FIRST — STEPHEN'S MEETING PREP  (David Abraham / New York Life)
+  DAVID LEADS - CURRENT MEETING PREP
 ========================================================================
 
->>> USE THIS AS YOUR SCRIPT: DAVID_ABRAHAM_WALKTHROUGH.md <<<
-That file is the full, step-by-step narrative for the meeting. Read it
-verbatim or paraphrase. It walks the REAL LIVE APP, section by section,
-with exactly what to click and what to say.
+LIVE URL
+  https://szlholdings-david-leads.hf.space/
 
-------------------------------------------------------------------------
-THE DEMO IS THE REAL, LIVE APP — NOT A SIMULATION
-------------------------------------------------------------------------
-Live URL:   https://szlholdings-david-leads.hf.space
-Login:      Retrieve the assigned credentials from the approved secret store.
-Security:   Legacy public demo credentials are revoked and require Space-secret rotation.
+CURRENT SCRIPT
+  HANDOFF_FOR_STEPHEN.md
+  DAVID_ABRAHAM_WALKTHROUGH.md
 
-Everything David sees is computed live from PUBLIC data (SEC EDGAR, BLS,
-U.S. Census, CDC, and 13-state open-data portals). Every lead and brief
-carries a tamper-evident, signed compliance receipt. The app now
-implements the exact experience described in the walkthrough:
+OPERATING CONTRACT
+  README.md
+  FOR_DAVID.md
 
-  - Morning Brief + KPI cards (Qualified Appts/Week, HOT Leads,
-    Pipeline Premium [illustrative], Avg Lambda-Score, Trend)
-  - Run Live Public-Data Intelligence + Territory Pulse (13 states;
-    MA/NH/ME shown honestly as gaps)
-  - Ranked leads: HOT / WARM / NURTURE, matched NYL product, est. premium,
-    urgency chip (ACT NOW < 48h), wealth tier, lapse decile, receptivity,
-    likely coverage gap
-  - Expand a lead: Why this lead / Predictive Moments timeline / Next Best
-    Action + ready talk track
-  - Signed 4-Part Brief (Priority / Why-now / 3 ranked Opening lines /
-    Sensitivity), witness-signed by a math engine (not an AI guess)
-  - Verify Receipt -> VERIFIED modal with the five checks
-  - Open the Black Box -> transparent Lambda model card + provenance/DOI
-  - Territory Map, Export Call List (CSV), Push to CRM (webhook)
+WHAT THE DEMO IS
+  - Public, organization-only broker research from official sources.
+  - No login is required for the sanitized public research view.
+  - Source lanes report LIVE, UNAVAILABLE, or NOT_APPLICABLE.
+  - The live path does not substitute sample prospects.
+  - Proof grades describe evidence quality, not buying likelihood.
+  - Evidence clocks and counter-evidence stay visible.
+  - Public evidence never grants permission to contact.
+  - Source receipts disclose signature, payload integrity, chain state,
+    claim scope, witness mode, and durability.
 
-------------------------------------------------------------------------
-WHAT TO SAY / SHOW (short version)
-------------------------------------------------------------------------
-1. Log in live. "This is your private intelligence desk, not a website."
-2. Morning Brief + KPIs: "Where to spend today, before any calls."
-3. Run Live Intelligence, then Territory Pulse: real public signals,
-   real state counts, honest gaps.
-4. Walk the ranked leads top-down. Expand the #1 lead.
-5. Open its Signed 4-Part Brief and read it. Click Verify -> VERIFIED.
-6. Open the Black Box: "no hidden model, fully citable."
-7. Export the call list / mention Push-to-CRM.
-8. Close with the one-liner from the walkthrough.
+BEFORE PRESENTING
+  1. Verify /api/build-info binds the running Space to the intended exact
+     GitHub revision and release-attestation reference.
+  2. Verify /healthz and /readyz.
+  3. Read current source states from Market coverage.
+  4. Open one official citation and verify one source receipt.
+  5. Do not reuse an old count, source state, or deployment claim.
 
-------------------------------------------------------------------------
-HONESTY GUARDRAILS (this IS the differentiator — don't skip)
-------------------------------------------------------------------------
-  - "Illustrative" for premium / pipeline numbers.
-  - "Estimated from public records" for wealth tier.
-  - "Advisory, not an FCRA/credit decision" for lapse risk.
-  - If a state shows [SAMPLE] or GAP, say so out loud.
-  - We never use private PII. The verifiable receipts are the moat.
+TWO-MINUTE FLOW
+  1. Open the public workspace and state the research-only boundary.
+  2. Choose a region or state.
+  3. Show current source health.
+  4. Open one organization and read the source moment, timing, likely fit,
+     proof grade, evidence clock, counter-evidence, and permission state.
+  5. Open the official citation.
+  6. Verify the source receipt and narrate each returned state.
+  7. Open Investor view and show release identity and Evidence Constellation.
+  8. Close on protected human clearance before any outreach.
 
-------------------------------------------------------------------------
-IF THE LIVE APP IS SLOW / COLD-STARTS
-------------------------------------------------------------------------
-The Hugging Face Space can sleep when idle. Open the URL a few minutes
-before the meeting so it's warm. If a state's live count doesn't load,
-it falls back to a labeled cached/sample value on purpose — that's the
-honest behavior, and you can point to it as a feature.
+DO NOT CLAIM
+  - People or families are ready to buy.
+  - A public record proves intent, need, renewal, coverage, or insurability.
+  - Appointments, premium, revenue, conversion, or pipeline are guaranteed.
+  - A source is live when the current panel says otherwise.
+  - A session receipt is a durable historical archive.
+  - GitHub and Hugging Face are aligned without exact-revision deployment proof.
 
-Source of truth: GitHub szl-holdings/david-leads (main). The live Space
-is byte-aligned with main.
+RETIRED ARTIFACTS
+  David_Leads_PORTABLE.html and SPEC.md are retained for history only. They are
+  labeled LEGACY / RETIRED / DO NOT USE and are not meeting fallbacks.
+
+No credentials or secret values belong in this repository or demo material.
 ========================================================================

@@ -1,4 +1,9 @@
-# Live + Doctrine Audit — David Leads App
+> **LEGACY / RETIRED / DO NOT USE AS CURRENT RELEASE OR RUNTIME EVIDENCE.**
+> This June 2026 HTTP snapshot contains superseded product claims and fixed observations.
+> Use [README.md](README.md) and [FOR_DAVID.md](FOR_DAVID.md), then verify the current
+> build identity, readiness, source states, and live payload directly.
+
+# Archived Live + Doctrine Audit — David Leads App
 **Audited:** https://szlholdings-david-leads.hf.space  
 **Date:** 2026-06-29 (UTC)  
 **Auditor:** Read-only HTTP audit via curl/HTTP — no code modified  

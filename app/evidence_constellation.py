@@ -17,7 +17,7 @@ from typing import Any
 
 
 SCHEMA_VERSION = "david.evidence-constellation.v1"
-POLICY_VERSION = "organization-events-2026-08-26"
+POLICY_VERSION = "organization-events-2026-08-28"
 
 _LEGAL_SUFFIX = re.compile(
     r"(?:\bL\.?L\.?C\.?|\bINC(?:ORPORATED)?\.?|\bCORP(?:ORATION)?\.?|"
@@ -35,6 +35,12 @@ _IDENTIFIER_ALIASES = {
     "FRS ID": "EPA_FRS",
     "CIK": "SEC_CIK",
     "SEC CIK": "SEC_CIK",
+}
+_IDENTIFIER_VALUE_PATTERNS = {
+    "UEI": re.compile(r"[A-Z0-9]{12}"),
+    "USDOT": re.compile(r"[0-9]{1,8}"),
+    "EPA_FRS": re.compile(r"[0-9]{12}"),
+    "SEC_CIK": re.compile(r"[0-9]{1,10}"),
 }
 _EVENT_IDENTIFIERS = ("AWARD", "ACK", "FILING", "LICENSE")
 _LIFETIME_DAYS = {
@@ -86,7 +92,14 @@ def _stable_identifiers(record: dict[str, Any]) -> tuple[str, ...]:
         value = re.sub(r"[^A-Z0-9]", "", str(item.get("value") or "").upper())
         if not raw_system or not value or any(token in raw_system for token in _EVENT_IDENTIFIERS):
             continue
-        system = _IDENTIFIER_ALIASES.get(raw_system, raw_system.replace(" ", "_"))
+        system = _IDENTIFIER_ALIASES.get(raw_system)
+        pattern = _IDENTIFIER_VALUE_PATTERNS.get(system or "")
+        if (
+            pattern is None
+            or pattern.fullmatch(value) is None
+            or not value.strip("0")
+        ):
+            continue
         keys.add(f"{system}:{value}")
     return tuple(sorted(keys))
 
@@ -142,6 +155,8 @@ def resolve_entities(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
         if len(members) < 2 or len(sources) < 2:
             continue
         for member in members[1:]:
+            if union.find(members[0]) == union.find(member):
+                continue
             union.union(members[0], member)
             candidate_links.add(tuple(sorted((members[0], member))))
 
@@ -162,14 +177,21 @@ def resolve_entities(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
             for position, left in enumerate(members)
             for pair in (tuple(sorted((left, right))) for right in members[position + 1 :])
         )
-        exact_candidate = not shared_identifier and any(
+        exact_candidate = any(
             pair in candidate_links
             for position, left in enumerate(members)
             for pair in (tuple(sorted((left, right))) for right in members[position + 1 :])
         )
         if len(sources) > 1:
             multi_source_entities += 1
-        if shared_identifier:
+        if shared_identifier and exact_candidate:
+            status = "MIXED_IDENTIFIER_AND_EXACT_CANDIDATE"
+            review_required = True
+            basis = [
+                "shared authoritative organization identifier",
+                "exact normalized legal name, state, and ZIP candidate",
+            ]
+        elif shared_identifier:
             status = "DETERMINISTIC_IDENTIFIER"
             review_required = False
             basis = ["shared authoritative organization identifier"]
@@ -187,11 +209,31 @@ def resolve_entities(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
             basis = ["no approved authoritative organization identifier"]
         counts[status] += 1
 
-        fingerprint_parts = sorted(
+        identifier_fingerprint = sorted({
             key for index in members for key in _stable_identifiers(resolved[index])
-        ) or sorted(filter(None, (_candidate_key(resolved[index]) for index in members)))
-        fallback = "|".join(str(resolved[members[0]].get(key) or "") for key in ("state", "name", "zip"))
-        group_id = "org_" + hashlib.sha256("|".join(fingerprint_parts or [fallback]).encode()).hexdigest()[:16]
+        })
+        candidate_fingerprint = sorted({
+            key for index in members if (key := _candidate_key(resolved[index]))
+        })
+        if identifier_fingerprint:
+            fingerprint = "IDENTIFIER|" + "|".join(identifier_fingerprint)
+        elif exact_candidate and candidate_fingerprint:
+            fingerprint = "CANDIDATE|" + "|".join(candidate_fingerprint)
+        else:
+            provenance_parts = sorted(
+                "|".join(
+                    str(resolved[index].get(key) or "")
+                    for key in (
+                        "source_frontier",
+                        "source_record_id",
+                        "normalized_record_sha256",
+                        "receipt_id",
+                    )
+                )
+                for index in members
+            )
+            fingerprint = "PROVENANCE|" + "|".join(provenance_parts)
+        group_id = "org_" + hashlib.sha256(fingerprint.encode()).hexdigest()[:16]
         signals = [{
             "source_frontier": resolved[index].get("source_frontier"),
             "observed_trigger": resolved[index].get("observed_trigger"),
@@ -228,7 +270,11 @@ def resolve_entities(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]
         "entity_groups": len(groups),
         "multi_source_entities": multi_source_entities,
         "resolution_counts": dict(sorted(counts.items())),
-        "review_required_groups": counts["EXACT_NAME_STATE_ZIP_CANDIDATE"] + counts["UNRESOLVED"],
+        "review_required_groups": (
+            counts["EXACT_NAME_STATE_ZIP_CANDIDATE"]
+            + counts["MIXED_IDENTIFIER_AND_EXACT_CANDIDATE"]
+            + counts["UNRESOLVED"]
+        ),
     }
 
 
@@ -242,8 +288,7 @@ def _deal_clock(record: dict[str, Any], current: datetime) -> dict[str, Any]:
     anniversary = _parse_datetime((record.get("timing") or {}).get("next_anniversary"))
     if source == "BENEFIT_PLAN_TIMING" and anniversary:
         expires_at = anniversary + timedelta(days=30)
-        days_to_anniversary = (anniversary.date() - current.date()).days
-        recheck_at = current + timedelta(days=14 if days_to_anniversary <= 90 else 30)
+        recheck_at = anniversary - timedelta(days=90)
         basis = "reported plan or policy period anniversary hypothesis"
     elif event_at:
         lifetime = _LIFETIME_DAYS.get(source, 90)
@@ -276,6 +321,17 @@ def _deal_clock(record: dict[str, Any], current: datetime) -> dict[str, Any]:
     }
 
 
+def _signed_source_receipt(record: dict[str, Any]) -> bool:
+    """Require a coherent signed receipt reference over the normalized source record."""
+    digest = str(record.get("normalized_record_sha256") or "")
+    return bool(
+        str(record.get("receipt_id") or "").strip()
+        and record.get("receipt_signed") is True
+        and str(record.get("receipt_state") or "").upper() == "SIGNED"
+        and re.fullmatch(r"[0-9a-f]{64}", digest)
+    )
+
+
 def _proof(record: dict[str, Any], clock: dict[str, Any]) -> dict[str, Any]:
     citation = record.get("citation") or {}
     authority = (
@@ -284,19 +340,18 @@ def _proof(record: dict[str, Any], clock: dict[str, Any]) -> dict[str, Any]:
         and str(record.get("source_class") or "").startswith("OFFICIAL")
         else "PARTIAL"
     )
-    receipt_state = str(record.get("receipt_state") or "").upper()
     integrity = (
-        "SIGNED"
-        if record.get("receipt_signed") is True or receipt_state == "SIGNED"
-        else ("HASH_CHAINED_UNSIGNED" if record.get("receipt_id") else "UNAVAILABLE")
+        "SIGNED_SOURCE_RECEIPT"
+        if _signed_source_receipt(record)
+        else ("REFERENCE_ONLY" if record.get("receipt_id") else "UNAVAILABLE")
     )
     resolution = record.get("entity_resolution") or {}
     source_count = int((record.get("evidence") or {}).get("source_count") or 0)
     if clock["state"] == "STALE" or authority != "OFFICIAL_CITED":
         grade = "D"
-    elif integrity == "SIGNED" and source_count > 1 and resolution.get("status") == "DETERMINISTIC_IDENTIFIER":
+    elif integrity == "SIGNED_SOURCE_RECEIPT" and source_count > 1 and resolution.get("status") == "DETERMINISTIC_IDENTIFIER":
         grade = "A"
-    elif integrity == "SIGNED" and clock["state"] in {"CURRENT", "RECHECK_DUE"}:
+    elif integrity == "SIGNED_SOURCE_RECEIPT" and clock["state"] in {"CURRENT", "RECHECK_DUE"}:
         grade = "B"
     else:
         grade = "C"
@@ -309,6 +364,7 @@ def _proof(record: dict[str, Any], clock: dict[str, Any]) -> dict[str, Any]:
             "corroboration": "MULTI_SOURCE" if source_count > 1 else "SINGLE_SOURCE",
             "integrity": integrity,
             "identity": resolution.get("status", "UNRESOLVED"),
+            "receipt_claim_scope": "NORMALIZED_SOURCE_RECORD_ONLY",
         },
     }
 
@@ -322,6 +378,11 @@ def _counter_evidence(record: dict[str, Any], clock: dict[str, Any]) -> list[str
         items.append("The organization link requires human review before records may be treated as one entity.")
     if clock["state"] in {"RECHECK_DUE", "STALE", "UNKNOWN"}:
         items.append("The evidence clock requires a fresh official-source check before prioritization.")
+    if (
+        str(record.get("receipt_state") or "").upper() == "SIGNED"
+        and not _signed_source_receipt(record)
+    ):
+        items.append("The declared signed receipt is incomplete or inconsistent and is treated as unverified.")
     for limitation in record.get("limitations") or []:
         text = str(limitation).strip()
         if text and text not in items:
@@ -337,27 +398,30 @@ def annotate_constellation(
     *,
     now: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Resolve organizations and attach replayable proof/clock metadata."""
+    """Resolve organizations and attach session-verifiable source-receipt references."""
     current = _now(now)
     resolved, resolution_summary = resolve_entities(records)
     grade_counts: Counter[str] = Counter()
     clock_counts: Counter[str] = Counter()
-    replayable = 0
-    signed = 0
+    session_verifiable = 0
+    signed_source_receipts = 0
     for record in resolved:
         clock = _deal_clock(record, current)
         proof = _proof(record, clock)
         packet_state = (
-            "REPLAYABLE"
+            "SESSION_VERIFIABLE_REFERENCE"
             if record.get("normalized_record_sha256")
             and record.get("parser_version")
             and record.get("source_record_id")
-            and record.get("receipt_id")
+            and _signed_source_receipt(record)
             else "PARTIAL"
         )
         packet = {
             "schema_version": SCHEMA_VERSION,
             "state": packet_state,
+            "durability": "PROCESS_MEMORY",
+            "historical_replay": False,
+            "claim_scope": "NORMALIZED_SOURCE_RECORD_RECEIPT_REFERENCE",
             "normalized_record_sha256": record.get("normalized_record_sha256"),
             "parser_version": record.get("parser_version"),
             "source_record_id": record.get("source_record_id"),
@@ -380,8 +444,8 @@ def annotate_constellation(
         }
         grade_counts[proof["grade"]] += 1
         clock_counts[clock["state"]] += 1
-        replayable += int(packet_state == "REPLAYABLE")
-        signed += int(proof["dimensions"]["integrity"] == "SIGNED")
+        session_verifiable += int(packet_state == "SESSION_VERIFIABLE_REFERENCE")
+        signed_source_receipts += int(proof["dimensions"]["integrity"] == "SIGNED_SOURCE_RECEIPT")
 
     return resolved, {
         "schema_version": SCHEMA_VERSION,
@@ -394,8 +458,10 @@ def annotate_constellation(
             state: clock_counts.get(state, 0)
             for state in ("CURRENT", "RECHECK_DUE", "STALE", "UNKNOWN")
         },
-        "replayable_packets": replayable,
-        "signed_packets": signed,
+        "session_verifiable_references": session_verifiable,
+        "signed_source_receipts": signed_source_receipts,
+        "proof_reference_durability": "PROCESS_MEMORY",
+        "historical_replay": False,
         "permission_state": "PUBLIC_RESEARCH_ONLY",
         "doctrine": (
             "Proof quality is not a sales probability. Organization events remain research-only; "

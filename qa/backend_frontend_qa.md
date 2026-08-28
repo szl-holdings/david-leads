@@ -1,4 +1,9 @@
-# David Leads — Production-Readiness Hardening QA Report
+> **LEGACY / RETIRED / DO NOT USE AS CURRENT RELEASE OR RUNTIME EVIDENCE.**
+> This report describes a historical branch-local QA run. Its status, counts, and product
+> concepts are not the active demo contract. Use [README.md](../README.md) and
+> [FOR_DAVID.md](../FOR_DAVID.md), then verify the running release directly.
+
+# Archived — David Leads Production-Readiness Hardening QA Report
 
 **Branch:** `hardening/production-ready` (off `main`, HEAD 85430e6) · **Workdir:** `/home/user/workspace/dlv8`
 **Scope:** Harden only — no new features. Behavior preserved (L1 Λ = 87.2; honest-by-design doctrine intact).

@@ -190,6 +190,34 @@ class PublicReadOnlyApiTests(unittest.TestCase):
             server._STATE.clear()
             server._STATE.update(prior_state)
 
+    def test_public_frontier_rejects_refresh_pressure_with_retry_after(self):
+        class BusyLimiter:
+            @staticmethod
+            def acquire(*, blocking):
+                self.assertFalse(blocking)
+                return False
+
+            @staticmethod
+            def release():
+                raise AssertionError("unacquired limiter must not be released")
+
+        server._PUBLIC_BOARD_CACHE.clear()
+        with (
+            patch.object(server, "_PUBLIC_READONLY", True),
+            patch.object(server, "_PUBLIC_FRONTIER_LIMITER", BusyLimiter()),
+        ):
+            response = self.client.get(
+                "/api/frontier-desk?states=VT&limit_per_source=7"
+            )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.headers["retry-after"], "5")
+        self.assertIn("refresh is already running", response.json()["detail"])
+
+    def test_public_frontier_caps_per_source_payload(self):
+        response = self.client.get("/api/frontier-desk?limit_per_source=19")
+        self.assertEqual(response.status_code, 422)
+
     def test_operator_mutations_still_require_authentication(self):
         with patch.object(server, "_PUBLIC_READONLY", True):
             response = self.client.post("/api/logout")

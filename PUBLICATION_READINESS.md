@@ -1,11 +1,31 @@
-# Public Revenue Frontier — Publication Readiness
+# David Leads — Publication and Runtime Evidence Contract
 
-> Status: **PUBLIC · PRODUCTION PATH OPERATIONAL · READY WITH EXPLICIT EXCEPTION**
+> Status: **CONTROL CONTRACT ACTIVE · LIVE STATE MUST BE VERIFIED**
 >
-> Scope: `szl-holdings/david-leads` is the revenue-adjacent insurance
-> frontier in the nine-repository portfolio.
+> Scope: `szl-holdings/david-leads` source, protected release workflows, and the
+> `SZLHOLDINGS/david-leads` Hugging Face Space.
 
-## Operational evidence
+## Current release evidence
+
+This document defines the verification contract and preserves a dated historical
+baseline. It does not make a fixed current-release claim. For the release that is
+running now, verify all of the following against the same exact GitHub source revision:
+
+1. `/api/build-info` reports the expected `source_revision`, manifest digest, and
+   release-receipt state.
+2. `/healthz` and `/readyz` report the configured authentication, public access mode,
+   and persistence state required by the deployment.
+3. The [GitHub Actions history](https://github.com/szl-holdings/david-leads/actions)
+   shows successful exact-head operational CI, migration, CDN guard, and Hugging Face
+   deployment jobs.
+4. The deployment run verifies Docker-derived publication bytes, runtime source
+   identity, smoke routes, and the GitHub OIDC attestation reference after restart.
+
+A GitHub merge, successful build, HTTP 200, or runtime self-report is not by itself
+proof that the same revision is deployed. Live data counts are observations that can
+change with upstream query windows; they are never fixed release guarantees.
+
+## Historical baseline — 2026-07-28
 
 The credential remediation, governed broker desk, and durable persistence path
 were observed on 2026-07-28. This evidence is specific to `david-leads`; it is
@@ -39,8 +59,10 @@ not an estate-wide claim.
 
 This readiness record is itself part of the Docker-copied governance bundle.
 A merge that changes a Docker-copied input (`requirements.txt`, `app/**`,
-`PUBLICATION_READINESS.md`, `PUBLIC_DATA_OPERATING_MODEL.md`, or
-`SPACE_PROVENANCE.json`), the `Dockerfile`, or the deployment workflow must
+`PUBLICATION_READINESS.md`, `PUBLIC_DATA_OPERATING_MODEL.md`,
+`SPACE_PROVENANCE.json`, `THIRD_PARTY_NOTICES.md`,
+`research/COMPETITIVE_SYNTHESIS_2026-08-26.md`, or
+`ops/credential-rotation.md`), the `Dockerfile`, or the deployment workflow must
 complete a fresh exact-source deployment and live probe. Other repository
 changes do not trigger this deployment and are not covered by its runtime
 source-identity evidence. The machine-readable evidence record is deliberately
@@ -117,7 +139,7 @@ PostgreSQL-ready runtime above:
 
 ## Release receipt boundary
 
-The last measured baseline above reported `receipt_minted=false`. Releases
+The historical 2026-07-28 baseline above reported `receipt_minted=false`. Releases
 containing the current deployment workflow add a second, cryptographic step:
 after the reusable deployer verifies exact running bytes, GitHub OIDC signs the
 exact `hf-deploy-manifest.json` and stores the attestation in GitHub. The

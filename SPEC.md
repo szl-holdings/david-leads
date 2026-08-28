@@ -1,4 +1,11 @@
-# David Leads — Sovereign Insurance Intelligence
+> [!CAUTION]
+> **LEGACY / RETIRED / DO NOT USE FOR IMPLEMENTATION, DEMOS, OR PRODUCT CLAIMS.**
+> This early person-level concept is retained only as design history. It is
+> superseded by the organization-only, public-research-only contract in
+> [`README.md`](README.md) and [`FOR_DAVID.md`](FOR_DAVID.md). The active live
+> path never substitutes sample prospects and never infers permission to contact.
+
+# Archived concept - David Leads Sovereign Insurance Intelligence
 **Client:** David Abraham, MBA — Financial Professional, New York Life Insurance Company (New York, NY)
 **Built by:** SZL Holdings (Stephen Lutar) — sovereign governed-AI substrate, retargeted to insurance lead intelligence.
 **Meeting:** tomorrow. Goal = impress David, prove the KPI, win the consulting engagement.

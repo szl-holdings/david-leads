@@ -1,4 +1,8 @@
-# Investor-Ready Surface — Self-Test Report
+> **LEGACY / RETIRED / DO NOT USE AS CURRENT RELEASE OR RUNTIME EVIDENCE.**
+> This is a historical local self-test, not a publication or deployment witness. Use
+> [README.md](../README.md) and [FOR_DAVID.md](../FOR_DAVID.md) for the active contract.
+
+# Archived Investor-Ready Surface — Self-Test Report
 
 Branch: `feat/investor-ready` (off `main`). Built + self-tested locally. **Not pushed / not deployed.**
 

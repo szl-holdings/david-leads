@@ -1,4 +1,10 @@
 {
+ "artifact_status": "LEGACY_RETIRED_DO_NOT_USE",
+ "current_contract": [
+  "README.md",
+  "FOR_DAVID.md"
+ ],
+ "scope_note": "Historical synthetic V8 self-test. Not current release, deployment, runtime, or live-data evidence.",
  "login": {
   "ok": true
  },

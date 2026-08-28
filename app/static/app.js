@@ -60,9 +60,62 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${response.status})`);
+    const failure = new Error(body.detail || `Request failed (${response.status})`);
+    failure.status = response.status;
+    const retryAfterHeader = response.headers?.get?.("Retry-After");
+    if (retryAfterHeader !== null && retryAfterHeader !== "") {
+      const retryAfterSeconds = Number(retryAfterHeader);
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+        failure.retryAfterMs = Math.min(10_000, retryAfterSeconds * 1000);
+      }
+    }
+    throw failure;
   }
   return response.json();
+}
+
+const MAX_PUBLIC_REFRESH_RETRIES = 6;
+const DEFAULT_PUBLIC_REFRESH_RETRY_MS = 5000;
+
+function waitForRetry(delayMs, signal) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const onAbort = () => {
+      clearTimeout(timer);
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function fetchFrontierBoard(path, controller) {
+  for (let retry = 0; ; retry += 1) {
+    try {
+      return await api(path, { signal: controller.signal });
+    } catch (error) {
+      if (
+        error.name === "AbortError"
+        || error.status !== 429
+        || retry >= MAX_PUBLIC_REFRESH_RETRIES
+      ) {
+        throw error;
+      }
+      const delayMs = Number.isFinite(error.retryAfterMs)
+        ? error.retryAfterMs
+        : DEFAULT_PUBLIC_REFRESH_RETRY_MS;
+      await waitForRetry(delayMs, controller.signal);
+    }
+  }
 }
 
 function esc(value) {
@@ -385,7 +438,7 @@ async function loadLeads({ focusResults: focusAfterLoad = false } = {}) {
   const query = encodeURIComponent(selected.join(","));
   const started = performance.now();
   try {
-    const board = await api(`/api/frontier-desk?states=${query}`, { signal: controller.signal });
+    const board = await fetchFrontierBoard(`/api/frontier-desk?states=${query}&limit_per_source=8`, controller);
     if (state.controller !== controller) return;
     const admitted = admitSourceBoard(board);
     state.board = admitted.board;
@@ -573,7 +626,7 @@ function renderUnavailableEvidence() {
     ["Signed source receipts in this pull", "Unavailable"],
     ["Multi-source organization groups", "Unavailable"],
     ["Review-required identity groups", "Unavailable"],
-    ["Replayable proof packets", "Unavailable"],
+    ["Session-verifiable source references", "Unavailable"],
     ["Proof grades", "Unavailable"],
     ["Evidence clock", "Unavailable"],
     ["Persistence health", state.health?.deal_desk_persistence || "Checking"],
@@ -770,7 +823,10 @@ function renderAtlas() {
 }
 
 function cleanReason(source) {
-  if (source.mode === "LIVE") return `${formatNumber(source.count)} records in this live pull`;
+  if (source.mode === "LIVE") {
+    if (source.reason) return String(source.reason).replaceAll("_", " ").toLowerCase();
+    return `${formatNumber(source.count)} records in this live pull`;
+  }
   if (source.mode === "NOT_APPLICABLE") return "Not applicable to the selected territory";
   return String(source.reason || "Source unavailable").replaceAll("_", " ").toLowerCase();
 }
@@ -798,8 +854,10 @@ function renderInvestorProof() {
     return;
   }
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
-  const signed = state.leads.filter((lead) => lead.receipt_signed).length;
   const constellation = state.board?.evidence_constellation || {};
+  const signed = Number.isFinite(Number(constellation.signed_source_receipts))
+    ? Number(constellation.signed_source_receipts)
+    : 0;
   const clock = constellation.deal_clock || {};
   const proofGrades = constellation.proof_grades || {};
   const latest = state.board?.generated_at ? formatDate(state.board.generated_at) : "Unavailable";
@@ -810,8 +868,8 @@ function renderInvestorProof() {
     ["Signed source receipts in this pull", `${signed}/${state.leads.length || 0}`],
     ["Multi-source organization groups", formatNumber(constellation.multi_source_entities || 0)],
     ["Review-required identity groups", formatNumber(constellation.review_required_groups || 0)],
-    ["Replayable proof packets", `${formatNumber(constellation.replayable_packets || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`],
-    ["Proof grades", `A ${proofGrades.A || 0} · B ${proofGrades.B || 0} · C ${proofGrades.C || 0} · D ${proofGrades.D || 0}`],
+    ["Session-verifiable source references", `${formatNumber(constellation.session_verifiable_references || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`],
+    ["Proof grades (evidence quality, not likelihood)", `A ${proofGrades.A || 0} · B ${proofGrades.B || 0} · C ${proofGrades.C || 0} · D ${proofGrades.D || 0}`],
     ["Evidence clock", `${clock.CURRENT || 0} current · ${clock.RECHECK_DUE || 0} recheck · ${clock.STALE || 0} stale`],
     ["Persistence health", state.health?.deal_desk_persistence || "Checking"],
     ["Generated", latest],
@@ -820,7 +878,7 @@ function renderInvestorProof() {
     <div class="fact-row"><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>
   `).join("");
 
-  $("proofPackets").textContent = `${formatNumber(constellation.replayable_packets || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`;
+  $("proofPackets").textContent = `${formatNumber(constellation.session_verifiable_references || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`;
   $("proofClock").textContent = `${formatNumber(clock.CURRENT || 0)} current`;
   const awards = state.leads
     .map((lead) => ({ lead, amount: Number(lead.award?.amount) }))
@@ -978,8 +1036,25 @@ async function verifyProof(receiptId) {
   result.innerHTML = `<div class="proof-result">Verifying ${esc(receiptId)}...</div>`;
   try {
     const proof = await api(`/api/verify/${encodeURIComponent(receiptId)}`);
-    const stateLabel = proof.signature_state || proof.state || (proof.verified ? "VERIFIED" : "OBSERVED");
-    result.innerHTML = `<div class="proof-result">Receipt: ${esc(receiptId)}<br>Verification state: ${esc(stateLabel)}<br>Hash and source-normalization checks were returned by the current runtime response.</div>`;
+    const signatureState = proof.signature_state || "UNAVAILABLE";
+    const integrityState = proof.integrity_state || "UNAVAILABLE";
+    const chainState = proof.chain_state || "UNAVAILABLE";
+    const claimScope = proof.claim_scope || "UNAVAILABLE";
+    const witness = proof.witness || {};
+    const chainWarning = ["VERIFIED", "GENESIS_DECLARED"].includes(chainState)
+      ? ""
+      : `<br><strong>Chain limit:</strong> the signature may verify, but the predecessor chain was not independently supplied and verified.`;
+    result.innerHTML = `<div class="proof-result">
+      <strong>Receipt:</strong> ${esc(receiptId)}<br>
+      <strong>Verdict:</strong> ${esc(proof.verdict || "UNAVAILABLE")}<br>
+      <strong>Signature:</strong> ${esc(signatureState)}<br>
+      <strong>Payload integrity:</strong> ${esc(integrityState)}<br>
+      <strong>Predecessor chain:</strong> ${esc(chainState)}<br>
+      <strong>Claim scope:</strong> ${esc(claimScope)}<br>
+      <strong>Witness:</strong> ${esc(witness.state || "UNAVAILABLE")} · ${esc(witness.durability || "UNAVAILABLE")}<br>
+      <strong>Witness mode:</strong> ${esc(witness.signing_mode || "UNAVAILABLE")}
+      ${chainWarning}
+    </div>`;
   } catch (error) {
     result.innerHTML = `<div class="proof-result">Receipt verification unavailable: ${esc(error.message)}</div>`;
   }
@@ -1044,6 +1119,7 @@ async function bootstrap() {
       throw new Error("The public workspace is not enabled.");
     }
     renderAccessState("confirmed");
+    $("boot").classList.add("done");
     await Promise.all([loadLeads(), loadBuildAndHealth()]);
     state.releaseCheckTimer = window.setInterval(checkForNewRelease, 120000);
   } catch (error) {
