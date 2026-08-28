@@ -136,8 +136,33 @@ function safeUrl(value) {
   }
 }
 
+function unknownValue(value) {
+  return value == null || value === "" || value === "--" ? "UNKNOWN" : value;
+}
+
 function formatNumber(value) {
   return Number(value || 0).toLocaleString("en-US");
+}
+
+function sourceHonesty(source) {
+  const mode = String(source?.mode || "").toUpperCase();
+  const reason = String(source?.reason || "").toUpperCase();
+  if (mode === "LIVE") return "MEASURED";
+  if (mode === "SAMPLE" || mode === "EXAMPLE" || mode === "SIMULATED") return "SIMULATED";
+  if (mode === "NOT_APPLICABLE") return "UNKNOWN";
+  if (
+    reason.includes("NOT_CONFIGURED")
+    || reason.includes("DURABLE_INGEST")
+    || reason.includes("REUSE_APPROVAL")
+  ) {
+    return "ROADMAP";
+  }
+  return "UNAVAILABLE";
+}
+
+function markUnknown(node, isUnknown) {
+  if (!node) return;
+  node.classList.toggle("unknown", Boolean(isUnknown));
 }
 
 function formatMoney(value) {
@@ -558,12 +583,13 @@ function renderWorkspaceUnavailable() {
 function renderMetrics() {
   if (!state.board || state.loadError) {
     ["metricOrganizations", "metricStates", "metricWindows", "metricSources", "metricResearch", "metricCleared"]
-      .forEach((id) => { $(id).textContent = "--"; });
+      .forEach((id) => { $(id).textContent = "UNKNOWN"; });
     $("metricOrganizationsSub").textContent = "No completed live pull is available";
     $("metricStatesSub").textContent = "Choose a territory and retry";
     $("metricWindowsSub").textContent = "Waiting for a completed live pull";
     $("metricSourcesSub").textContent = "Source status is unavailable";
-    $("proofLiveSources").textContent = "--";
+    $("proofLiveSources").textContent = "UNKNOWN";
+    markUnknown($("proofLiveSources"), true);
     return;
   }
   const summary = state.board?.summary || {};
@@ -590,6 +616,7 @@ function renderMetrics() {
     ? `${formatNumber(timingWindows.reduce((sum, lead) => sum + Number(lead.operational_snapshot?.participants_reported || 0), 0))} reported participants represented`
     : "No reported anniversaries in this pull";
   $("proofLiveSources").textContent = `${liveSources.length} live`;
+  markUnknown($("proofLiveSources"), false);
 }
 
 function renderUnavailableEvidence() {
@@ -605,10 +632,10 @@ function renderUnavailableEvidence() {
     <button class="atlas-state${state.selectedStates.has(code) ? " selected" : ""}" type="button" data-atlas-state="${code}" aria-pressed="${state.selectedStates.has(code)}" aria-label="${esc(STATE_NAMES[code])}: current record count unavailable. Load state-specific leads">
       <strong>${code}</strong>
       <small>${esc(STATE_NAMES[code])}</small>
-      <span>--</span>
+      <span class="unknown">UNKNOWN</span>
     </button>
   `).join("");
-  $("atlasNote").textContent = "Current market counts are unavailable. A dash is not a zero; select a state or retry the live pull.";
+  $("atlasNote").textContent = "UNKNOWN is not a zero. Select a state or retry the live pull. ROADMAP lanes stay labeled until they have a configured ingest path.";
   $("sourceCards").innerHTML = `
     <div class="source-card unavailable" role="status">
       <span class="source-dot"></span>
@@ -616,27 +643,29 @@ function renderUnavailableEvidence() {
         <span class="source-title">Current source status unavailable</span>
         <span class="source-reason">${esc(message)} Retry to request a new source observation.</span>
       </span>
-      <span class="source-count">UNAVAILABLE</span>
+      <span class="source-count honesty-chip unavailable">UNAVAILABLE</span>
     </div>
   `;
   const facts = [
-    ["Organizations returned in current pull", "Unavailable"],
+    ["Organizations returned in current pull", "UNKNOWN"],
     ["Eastern markets queryable", "27"],
-    ["Markets represented in this pull", "Unavailable"],
-    ["Signed source receipts in this pull", "Unavailable"],
-    ["Multi-source organization groups", "Unavailable"],
-    ["Review-required identity groups", "Unavailable"],
-    ["Session-verifiable source references", "Unavailable"],
-    ["Proof grades", "Unavailable"],
-    ["Evidence clock", "Unavailable"],
-    ["Persistence health", state.health?.deal_desk_persistence || "Checking"],
-    ["Generated", "Unavailable"],
+    ["Markets represented in this pull", "UNKNOWN"],
+    ["Signed source receipts in this pull", "UNKNOWN"],
+    ["Multi-source organization groups", "UNKNOWN"],
+    ["Review-required identity groups", "UNKNOWN"],
+    ["Session-verifiable source references", "UNKNOWN"],
+    ["Proof grades", "UNKNOWN"],
+    ["Evidence clock", "UNKNOWN"],
+    ["Persistence health", state.health?.deal_desk_persistence || "UNKNOWN"],
+    ["Generated", "UNKNOWN"],
   ];
   $("operatingFacts").innerHTML = facts.map(([label, value]) => `
     <div class="fact-row"><dt>${esc(label)}</dt><dd>${esc(value)}</dd></div>
   `).join("");
-  $("proofPackets").textContent = "--";
-  $("proofClock").textContent = "--";
+  $("proofPackets").textContent = "UNKNOWN";
+  $("proofClock").textContent = "UNKNOWN";
+  markUnknown($("proofPackets"), true);
+  markUnknown($("proofClock"), true);
   $("largestAward").textContent = "The current live source pull is unavailable. No award value from a prior territory is being shown.";
 }
 
@@ -749,9 +778,9 @@ function leadCard(lead) {
     <div class="lead-card-head">
       <div>
         <span class="company-name">${esc(lead.name || "Unnamed organization")}</span>
-        <span class="company-meta">${esc(lead.city || "City unavailable")}, ${esc(lead.state || "--")}</span>
+        <span class="company-meta">${esc(lead.city || "City unavailable")}, ${esc(unknownValue(lead.state))}</span>
       </div>
-      <span class="market-badge">${esc(lead.state || "--")}</span>
+      <span class="market-badge">${esc(unknownValue(lead.state))}</span>
     </div>
     <div class="lead-card-signal">
       <span class="signal-name">${esc(lead.observed_trigger || sourceName(lead))}</span>
@@ -780,10 +809,29 @@ function renderLeads() {
     : `${formatNumber(state.filtered.length)} of ${formatNumber(state.leads.length)} records`;
   $("errorStateCopy").textContent = `This does not mean zero leads. ${state.loadError || "The current source pull did not complete."}`;
   $("errorState").classList.toggle("hidden", !unavailable);
-  $("emptyState").classList.toggle(
-    "hidden",
-    unavailable || state.filtered.length > 0 || state.leads.length === 0 && !state.board,
-  );
+  const empty = $("emptyState");
+  const showEmpty = !unavailable && state.filtered.length === 0 && !(state.leads.length === 0 && !state.board);
+  empty.classList.toggle("hidden", !showEmpty);
+  if (showEmpty) {
+    const chip = empty.querySelector?.(".honesty-chip");
+    const heading = empty.querySelector?.("h3");
+    const copy = empty.querySelector?.("p");
+    const measuredEmpty = Boolean(state.board) && state.leads.length === 0;
+    if (chip) {
+      chip.className = `honesty-chip ${measuredEmpty ? "measured" : "unknown"}`;
+      chip.textContent = measuredEmpty ? "MEASURED" : "UNKNOWN";
+    }
+    if (heading) {
+      heading.textContent = measuredEmpty
+        ? "This pull returned no organizations"
+        : "No matching records in this filter set";
+    }
+    if (copy) {
+      copy.textContent = measuredEmpty
+        ? "A measured empty result is not unavailable coverage and not a ROADMAP lane. Try another state or source."
+        : "This is not a zero-demand claim. A missing pull is UNAVAILABLE. An unfinished lane is ROADMAP.";
+    }
+  }
 }
 
 function renderScope() {
@@ -836,16 +884,18 @@ function renderSources() {
     renderUnavailableEvidence();
     return;
   }
-  $("sourceCards").innerHTML = state.sources.map((source) => `
+  $("sourceCards").innerHTML = state.sources.map((source) => {
+    const honesty = sourceHonesty(source);
+    return `
     <a class="source-card" href="${safeUrl(source.citation?.url)}" target="_blank" rel="noopener">
       <span class="source-dot${source.mode === "LIVE" ? " live" : ""}"></span>
       <span>
         <span class="source-title">${esc(source.source || "Official source")}</span>
         <span class="source-reason">${esc(cleanReason(source))}</span>
       </span>
-      <span class="source-count">${esc(source.mode)}</span>
-    </a>
-  `).join("");
+      <span class="source-count honesty-chip ${honesty.toLowerCase()}">${esc(honesty)}</span>
+    </a>`;
+  }).join("");
 }
 
 function renderInvestorProof() {
@@ -880,6 +930,8 @@ function renderInvestorProof() {
 
   $("proofPackets").textContent = `${formatNumber(constellation.session_verifiable_references || 0)}/${formatNumber(constellation.events_total || state.leads.length)}`;
   $("proofClock").textContent = `${formatNumber(clock.CURRENT || 0)} current`;
+  markUnknown($("proofPackets"), false);
+  markUnknown($("proofClock"), false);
   const awards = state.leads
     .map((lead) => ({ lead, amount: Number(lead.award?.amount) }))
     .filter((item) => Number.isFinite(item.amount))
@@ -926,7 +978,7 @@ function openLead(id, opener = null) {
     ? lead.authoritative_entity_ids
     : [];
   const idFacts = identifiers.map((item) => `
-    <div class="drawer-fact"><span>${esc(item.system || "Identifier")}</span><strong>${esc(item.value || "--")}</strong></div>
+    <div class="drawer-fact"><span>${esc(item.system || "Identifier")}</span><strong>${esc(unknownValue(item.value))}</strong></div>
   `).join("");
   const receiptLink = lead.receipt_id
     ? `<button class="drawer-link" type="button" data-proof-id="${esc(lead.receipt_id)}">Verify source receipt</button>`
@@ -961,7 +1013,7 @@ function openLead(id, opener = null) {
     <section class="drawer-section">
       <span class="drawer-section-label">Deal moment</span>
       <div class="drawer-facts">
-        <div class="drawer-fact"><span>State</span><strong>${esc(lead.state || "--")}</strong></div>
+        <div class="drawer-fact"><span>State</span><strong>${esc(unknownValue(lead.state))}</strong></div>
         <div class="drawer-fact"><span>Observed</span><strong>${esc(formatDate(observedDate(lead)))}</strong></div>
         <div class="drawer-fact"><span>Timing</span><strong>${esc(timing.label)}</strong></div>
         <div class="drawer-fact"><span>Evidence</span><strong>${esc(evidence.label)}</strong></div>
@@ -972,7 +1024,7 @@ function openLead(id, opener = null) {
     </section>
     <section class="drawer-section">
       <span class="drawer-section-label">Evidence Constellation</span>
-      <h3>Proof ${esc(proof.grade || "--")} · ${esc(String(clock.state || "UNKNOWN").replaceAll("_", " "))}</h3>
+      <h3>Proof ${esc(unknownValue(proof.grade))} · ${esc(String(clock.state || "UNKNOWN").replaceAll("_", " "))}</h3>
       <div class="drawer-facts">
         <div class="drawer-fact"><span>Authority</span><strong>${esc(proof.dimensions?.authority || "UNAVAILABLE")}</strong></div>
         <div class="drawer-fact"><span>Integrity</span><strong>${esc(proof.dimensions?.integrity || "UNAVAILABLE")}</strong></div>
@@ -1010,6 +1062,7 @@ function openLead(id, opener = null) {
         <a class="drawer-link" href="${safeUrl(lead.source_record?.url)}" target="_blank" rel="noopener">Source documentation</a>
         ${receiptLink}
       </div>
+      <p class="supporting-detail">A source receipt is a session-verifiable reference for the normalized official record. It is not a theorem, a conversion proof, or permission to contact.</p>
       <div id="proofResult"></div>
     </section>
   `;

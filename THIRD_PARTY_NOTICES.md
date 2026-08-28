@@ -9,10 +9,12 @@ the complete licence text and transitive dependency graph when producing a relea
 - **Three.js r128** — Copyright 2010-2021 Three.js Authors — MIT License.
   The same-origin minimized file is `app/static/vendor/three.min.js`; its embedded `@license`
   header is retained. Source: <https://github.com/mrdoob/three.js/tree/r128>.
-- **Inter font** — Copyright The Inter Project Authors — SIL Open Font License 1.1.
-  Source: <https://github.com/rsms/inter>.
-- **Fraunces font** — Copyright The Fraunces Project Authors — SIL Open Font License 1.1.
-  Source: <https://github.com/undercasetype/Fraunces>.
+- **Space Grotesk font** — Copyright 2020 The Space Grotesk Project Authors — SIL Open Font License 1.1.
+  Source: <https://github.com/floriankarsten/space-grotesk>.
+  Licence text: `app/static/fonts/OFL-SpaceGrotesk.txt`.
+- **JetBrains Mono font** — Copyright 2020 The JetBrains Mono Project Authors — SIL Open Font License 1.1.
+  Source: <https://github.com/JetBrains/JetBrainsMono>.
+  Licence text: `app/static/fonts/OFL-JetBrainsMono.txt`.
 
 The fonts and Three.js are self-hosted; the application has no runtime CDN dependency.
 
