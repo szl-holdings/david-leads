@@ -60,9 +60,62 @@ async function api(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${response.status})`);
+    const failure = new Error(body.detail || `Request failed (${response.status})`);
+    failure.status = response.status;
+    const retryAfterHeader = response.headers?.get?.("Retry-After");
+    if (retryAfterHeader !== null && retryAfterHeader !== "") {
+      const retryAfterSeconds = Number(retryAfterHeader);
+      if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0) {
+        failure.retryAfterMs = Math.min(10_000, retryAfterSeconds * 1000);
+      }
+    }
+    throw failure;
   }
   return response.json();
+}
+
+const MAX_PUBLIC_REFRESH_RETRIES = 6;
+const DEFAULT_PUBLIC_REFRESH_RETRY_MS = 5000;
+
+function waitForRetry(delayMs, signal) {
+  return new Promise((resolve, reject) => {
+    let timer;
+    const onAbort = () => {
+      clearTimeout(timer);
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      reject(error);
+    };
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function fetchFrontierBoard(path, controller) {
+  for (let retry = 0; ; retry += 1) {
+    try {
+      return await api(path, { signal: controller.signal });
+    } catch (error) {
+      if (
+        error.name === "AbortError"
+        || error.status !== 429
+        || retry >= MAX_PUBLIC_REFRESH_RETRIES
+      ) {
+        throw error;
+      }
+      const delayMs = Number.isFinite(error.retryAfterMs)
+        ? error.retryAfterMs
+        : DEFAULT_PUBLIC_REFRESH_RETRY_MS;
+      await waitForRetry(delayMs, controller.signal);
+    }
+  }
 }
 
 function esc(value) {
@@ -385,7 +438,7 @@ async function loadLeads({ focusResults: focusAfterLoad = false } = {}) {
   const query = encodeURIComponent(selected.join(","));
   const started = performance.now();
   try {
-    const board = await api(`/api/frontier-desk?states=${query}&limit_per_source=8`, { signal: controller.signal });
+    const board = await fetchFrontierBoard(`/api/frontier-desk?states=${query}&limit_per_source=8`, controller);
     if (state.controller !== controller) return;
     const admitted = admitSourceBoard(board);
     state.board = admitted.board;

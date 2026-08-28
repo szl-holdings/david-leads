@@ -67,6 +67,8 @@ function createHarness(fetch) {
   };
   const context = {
     AbortController,
+    clearTimeout,
+    setTimeout,
     document,
     fetch,
     performance: { now: () => 100 },
@@ -76,7 +78,7 @@ function createHarness(fetch) {
   };
   const app = fs.readFileSync(new URL("../app/static/app.js", import.meta.url), "utf8");
   vm.runInNewContext(
-    `${app}\nglobalThis.__dataStateTest = { state, renderDataState, loadLeads, admitSourceBoard };`,
+    `${app}\nglobalThis.__dataStateTest = { state, renderDataState, loadLeads, admitSourceBoard, fetchFrontierBoard };`,
     context,
   );
 
@@ -131,6 +133,42 @@ test("an aborted older pull cannot clear the newer pull's busy state", async () 
   assert.equal(elements.workspace.attributes["aria-busy"], "true");
   assert.equal(elements.refreshData.disabled, true);
   assert.equal(elements.loadingState.classList.contains("hidden"), false);
+});
+
+test("a busy public refresh honors Retry-After and retries without clearing state", async () => {
+  const expected = {
+    generated_at: "2026-08-28T07:30:00Z",
+    opportunities: [],
+    sources: [{ source: "FMCSA", mode: "LIVE", count: 0 }],
+  };
+  let attempts = 0;
+  const fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return {
+        ok: false,
+        status: 429,
+        headers: { get: (name) => name === "Retry-After" ? "0" : null },
+        json: async () => ({ detail: "live refresh already running" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => expected,
+    };
+  };
+  const { hooks } = createHarness(fetch);
+  const controller = new AbortController();
+
+  const actual = await hooks.fetchFrontierBoard(
+    "/api/frontier-desk?states=VA&limit_per_source=8",
+    controller,
+  );
+
+  assert.equal(attempts, 2);
+  assert.equal(actual, expected);
 });
 
 test("a successful response with no LIVE source is admitted as unavailable, not zero demand", async () => {
