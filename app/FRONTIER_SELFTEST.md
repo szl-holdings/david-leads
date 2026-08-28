@@ -1,4 +1,8 @@
-# Frontier Upgrade — Self-Test Report
+> **LEGACY / RETIRED / DO NOT USE AS CURRENT RELEASE OR RUNTIME EVIDENCE.**
+> This is a historical local self-test for a superseded feature branch. Use
+> [README.md](../README.md) and [FOR_DAVID.md](../FOR_DAVID.md) for the active contract.
+
+# Archived Frontier Upgrade — Self-Test Report
 
 Branch: `feat/frontier-upgrade` · **Not pushed / not deployed** (parent agent verifies & deploys).
 

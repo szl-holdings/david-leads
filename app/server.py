@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# © 2026 SZL Holdings — David Leads Sovereign Insurance Intelligence
-"""FastAPI backend: login gate, live signal run, scored leads, signed receipts, KPI."""
+# © 2026 SZL Holdings — David Leads
+"""FastAPI backend for evidence-backed organization research and guarded broker workflows."""
 from __future__ import annotations
 import os, secrets, hashlib, io, csv, json, re, urllib.request, urllib.error, urllib.parse
-import http.client, ipaddress, socket, ssl, time
+import http.client, ipaddress, socket, ssl, threading, time
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi import FastAPI, HTTPException, Header, Query, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
 
 from . import signals as sig
@@ -101,11 +103,57 @@ EASTERN_STATES = (
     "VA", "WV", "WI",
 )
 EASTERN_STATES_QUERY = ",".join(EASTERN_STATES)
-app = FastAPI(title="David Leads — Sovereign Insurance Intelligence", version="1.0")
+app = FastAPI(
+    title="David Leads — Evidence-Backed Broker Research",
+    version="2.0",
+    description=(
+        "Official-public-data organization research with source receipts, evidence "
+        "clocks, and a fail-closed contact-permission boundary."
+    ),
+)
+_PUBLIC_OPENAPI_PATHS = frozenset({
+    "/healthz",
+    "/readyz",
+    "/version",
+    "/evidence",
+    "/api/access-mode",
+    "/api/build-info",
+    "/api/model",
+    "/api/methodology",
+    "/api/data-policy",
+    "/api/frontier-desk",
+    "/api/receipt/{rid}",
+    "/api/verify/{rid}",
+})
+
+
+def _curated_openapi() -> dict:
+    """Publish the supported public research contract, not retired/internal routes."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=[
+            route
+            for route in app.routes
+            if getattr(route, "path", None) in _PUBLIC_OPENAPI_PATHS
+        ],
+    )
+    schema["info"]["x-truth-boundary"] = (
+        "Organization research only; public evidence never grants permission to contact."
+    )
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _curated_openapi
 # CORS: env-configurable allow-list (comma-separated). The public projection is intentionally
 # readable cross-origin. Protected actions still require a bearer token and never use cookies.
 _CORS_ORIGINS = [o.strip() for o in os.environ.get("DAVID_CORS_ORIGINS", "*").split(",") if o.strip()] or ["*"]
 app.add_middleware(CORSMiddleware, allow_origins=_CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 SERVE_STATIC = os.environ.get("SERVE_STATIC", "1") == "1"
 
 
@@ -126,6 +174,20 @@ async def release_cache_policy(request: Request, call_next):
         response.headers["Pragma"] = "no-cache"
     elif path.endswith((".js", ".css")):
         response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if path in {"/", "/index.html"} or path.startswith("/static/"):
+        response.headers["Content-Security-Policy"] = "; ".join((
+            "default-src 'self'",
+            "base-uri 'none'",
+            "connect-src 'self'",
+            "font-src 'self'",
+            "img-src 'self' data:",
+            "script-src 'self'",
+            "style-src 'self'",
+            "frame-ancestors 'self' https://huggingface.co https://*.huggingface.co",
+        ))
     return response
 
 
@@ -185,6 +247,7 @@ _PUBLIC_RECEIPT_LIMIT = 500
 _PUBLIC_BOARD_CACHE: dict[tuple[str, tuple[str, ...]], tuple[float, dict]] = {}
 _PUBLIC_BOARD_CACHE_LIMIT = 32
 _PUBLIC_BOARD_CACHE_TTL_SECONDS = 300
+_PUBLIC_FRONTIER_LIMITER = threading.BoundedSemaphore(value=1)
 
 # session cache of last run
 _STATE: dict = {"leads": [], "signals": [], "meta": {}, "receipts": {}}
@@ -744,10 +807,8 @@ def run(req: RunReq, authorization: str | None = Header(default=None)):
     }
 
 
-@app.get("/api/model")
-def model(authorization: str | None = Header(default=None)):
-    """Open the black box for the active organization-level public-data product."""
-    _auth(authorization, allow_public_readonly=True)
+def _organization_model_card() -> dict:
+    """Return the single active, organization-only public methodology contract."""
     return {
         "schema": "szl.public-deal-moment-model/v1",
         "name": "David Leads organization deal-moment model",
@@ -760,7 +821,10 @@ def model(authorization: str | None = Header(default=None)):
         "inputs": [
             "Official public organization filings and registrations",
             "Federal award notices",
+            "FMCSA legal-organization-suffix-gated carrier registrations",
+            "EPA ECHO facility monitoring observations",
             "Employer benefit-plan filings with life-benefit timing context",
+            "Evidence Constellation identity, source-receipt, counter-evidence, and clock metadata",
         ],
         "excluded_inputs": [
             "Social-profile scraping",
@@ -770,9 +834,30 @@ def model(authorization: str | None = Header(default=None)):
             "Consumer-report, health, or protected-class data",
         ],
         "ranking": {
-            "method": "transparent rules over filing recency, organization scale, and source corroboration",
-            "labels": ["OBSERVED", "HYPOTHESIS", "UNAVAILABLE"],
+            "method": (
+                "Transparent rules over official-event recency, source authority, "
+                "organization identity, corroboration, and source-receipt integrity"
+            ),
+            "labels": ["OBSERVED", "HYPOTHESIS", "REVIEW_REQUIRED", "UNAVAILABLE"],
             "no_hidden_model": True,
+        },
+        "evidence_constellation": {
+            "identity": (
+                "Shared approved organization identifiers may link automatically; exact "
+                "legal-name/state/ZIP matches remain review-required; fuzzy linking is disabled."
+            ),
+            "proof_dimensions": [
+                "authority",
+                "freshness",
+                "corroboration",
+                "source_receipt_integrity",
+                "identity",
+            ],
+            "clock_states": ["CURRENT", "RECHECK_DUE", "STALE", "UNKNOWN"],
+            "counter_evidence": "Displayed with every organization event.",
+            "proof_grade_is_sales_probability": False,
+            "receipt_claim_scope": "NORMALIZED_SOURCE_RECORD_ONLY",
+            "historical_replay": False,
         },
         "contact_boundary": {
             "default": "PUBLIC_RESEARCH_ONLY",
@@ -782,6 +867,13 @@ def model(authorization: str | None = Header(default=None)):
         "active_endpoint": "/api/frontier-desk",
         "retired_endpoint": "/api/run",
     }
+
+
+@app.get("/api/model")
+def model(authorization: str | None = Header(default=None)):
+    """Open the black box for the active organization-level public-data product."""
+    _auth(authorization, allow_public_readonly=True)
+    return _organization_model_card()
 
 
 _OPERATOR_DRIVER_LABELS = {
@@ -934,19 +1026,19 @@ def operator_trace(lead_id: str, authorization: str | None = Header(default=None
 
 @app.get("/api/methodology")
 def methodology():
-    """PUBLIC transparency surface: the full scoring methodology, unauthenticated.
-
-    The model card contains formula/axes/weights/sources only — no PII, no leads.
-    Transparency is the brand; the black box stays open to everyone."""
-    try:
-        card = sc.model_card()
-        return {
-            "access": "public — no login required (transparency surface; contains no PII or lead data)",
-            "doctrine": "SZL governed-AI · honest by design · Λ = Conjecture 1 (advisory, never proven)",
-            "model_card": card,
-        }
-    except Exception:
-        raise HTTPException(503, "methodology temporarily unavailable")
+    """Public organization-only methodology; retired household scoring is excluded."""
+    return {
+        "access": (
+            "public — no login required; contains no person, household, contact, or lead data"
+        ),
+        "doctrine": (
+            "SZL governed-AI · official organization evidence · human contact clearance"
+        ),
+        "model_card": _organization_model_card(),
+        "retired_methodology": (
+            "Household archetypes and person-level life-event scoring are not part of the active product."
+        ),
+    }
 
 
 @app.get("/api/edgar-signals")
@@ -1561,6 +1653,7 @@ def deal_desk(states: str = "NY,NJ,PA,MD,DE,CT", authorization: str | None = Hea
 @app.get("/api/frontier-desk")
 def frontier_desk(
     states: str = EASTERN_STATES_QUERY,
+    limit_per_source: int = Query(default=8, ge=1, le=18),
     authorization: str | None = Header(default=None),
 ):
     """Entity-level FMCSA and federal-contract activity for broker research.
@@ -1578,11 +1671,28 @@ def frontier_desk(
             "deal desk persistence requires DAVID_DATABASE_URL or a ready absolute DAVID_DEAL_DESK_PATH",
         )
     state_list = _canonical_eastern_states(states, EASTERN_STATES)
+    cache_kind = f"frontier:{limit_per_source}"
     if principal == "public_readonly":
-        cached = _cached_public_board("frontier", state_list)
+        cached = _cached_public_board(cache_kind, state_list)
         if cached is not None:
             return cached
-    source = frontier_data.frontier_opportunities(state_list, limit_per_source=18)
+    public_slot = False
+    if principal == "public_readonly":
+        public_slot = _PUBLIC_FRONTIER_LIMITER.acquire(blocking=False)
+        if not public_slot:
+            raise HTTPException(
+                429,
+                "A live official-source refresh is already running; retry shortly.",
+                headers={"Retry-After": "5"},
+            )
+    try:
+        source = frontier_data.frontier_opportunities(
+            state_list,
+            limit_per_source=limit_per_source,
+        )
+    finally:
+        if public_slot:
+            _PUBLIC_FRONTIER_LIMITER.release()
     _reject_non_production_sources(list(source.get("sources", [])))
     _reject_non_production_records(list(source.get("leads", [])))
     clean: list[dict] = []
@@ -1611,7 +1721,7 @@ def frontier_desk(
     if principal == "operator":
         _STATE["frontier_desk"] = board
     else:
-        _cache_public_board("frontier", state_list, board)
+        _cache_public_board(cache_kind, state_list, board)
     return board
 
 

@@ -1,109 +1,141 @@
-# David Leads — Client Walkthrough (for the meeting with David Abraham, New York Life)
+# David Leads - current client walkthrough
 
-This is the narrative script for the **real, live application** at
-**https://szlholdings-david-leads.hf.space** — not a simulation.
-Everything David sees is computed live from public data, and every lead/brief carries a
-cryptographically verifiable receipt. Honest by design: public-data only, no fabricated signals,
-estimates clearly labeled.
+This walkthrough is for the current Evidence-Backed Broker Research workspace at
+<https://szlholdings-david-leads.hf.space/>. It is an organization-only public
+research demo. It is not a person-level prospect list, buying-intent model, or
+permission-to-contact system.
 
-**Login (live, in front of David):**
-- Retrieve the assigned credentials from the approved secret store.
-- Never paste credentials into email, chat, a public issue, or this repository.
-- The legacy public demo credentials are revoked and require rotation in the Space settings.
+Before presenting, verify the exact running release and current source states as
+described in [`HANDOFF_FOR_STEPHEN.md`](HANDOFF_FOR_STEPHEN.md). Counts below are
+deliberately not fixed because every source pull can change.
 
----
+## One-sentence takeaway
 
-## 0. One-sentence takeaway (say this first or last)
-"David — this finds the people in your territory who just had a life event that creates a real
-insurance need, ranks them by fit and readiness, hands you a signed, citation-backed brief and a
-ready talk track, and every single claim is verifiable. It's prospecting you can defend to compliance."
+> David Leads turns official organization records into an evidence-backed
+> research queue: what changed, why the timing may matter, what proves it, what
+> contradicts it, and what a licensed human must clear before outreach.
 
----
+## 1. Open the public research workspace
 
-## 1. The private console (login)
-- Open the URL, enter the three credentials above. It's a private, login-gated console — not a
-  public website. Frame it as "your own intelligence desk."
-- Note the footer: "public, aggregate data only … never private PII … every lead carries a
-  tamper-evident, compliance-grade receipt. Honest by design."
+Open the live URL. The public research view does not require a username,
+password, or access key. It exposes sanitized organization and facility records
+only. Saved notes, channels, clearances, dispositions, exports, and other
+operator actions remain protected.
 
-## 2. Morning Brief + KPIs (top of the dashboard)
-Point to the KPI cards:
-- **Qualified Appts / Week** — modeled from lead quality (HOT×0.70 + WARM×0.35).
-- **HOT Leads** — score ≥ 80, ready to engage now.
-- **Pipeline Premium** — illustrative annualized estimate across leads (say "illustrative" out loud).
-- **Avg Λ-Score** and **Appts/Week trend**.
-Say: "This is your morning brief — where to spend today, before you've made a single call."
+Say:
 
-## 3. Run Live Public-Data Intelligence
-- Click **Run Live Public-Data Intelligence**. It pulls live public signals (SEC EDGAR, BLS wages,
-  U.S. Census ACS, CDC natality, and 13-state open-data portals — business formations, licenses,
-  deeds, permits).
-- Then click **Territory Pulse** to show the live 13-state Atlantic seaboard map: states light up by
-  activity (CT/DE surging with real counts in the hundreds-of-thousands to millions), with
-  Massachusetts/New Hampshire/Maine shown honestly as data gaps — "we don't pretend to have data we
-  don't have."
+> Public access lets us inspect official evidence. It never creates consent or
+> permission to contact anyone.
 
-## 4. Ranked Leads (the core)
-Walk down the ranked list. For each lead:
-- **HOT / WARM / NURTURE** badge + the Λ-score, matched **NYL product**, and an **estimated annual
-  premium** (illustrative).
-- **Urgency chip** — ACT NOW (within 48h of the trigger), WARM, or COLD. (Research shows ~14×
-  conversion when you reach someone inside the life-event window.)
-- **Wealth tier** (Mass / Mass-Affluent / Affluent / HNW) — estimated from public proxies
-  (assessed property value, Census income, insider status). Say "estimated from public records."
-- **Lapse-risk decile** and **receptivity** — how likely to stick, and how ready to talk now.
-- **Likely coverage gap** chip — e.g. "education-funding gap" for a new-parent household.
+## 2. Read the release and data state
 
-Expand a lead (▸) to show:
-- **Why this lead** — the scoring factors, in plain English.
-- **Predictive Moments** — the timeline of public sources that surfaced them (each a real citation).
-- **Next Best Action** — the concrete move + a ready talk track David can use verbatim.
+Point to the release stamp and the data-state indicator.
 
-## 5. The Signed 4-Part Brief (the boardroom moment)
-Click **Signed Brief** on the top lead. Read it aloud — it has four parts:
-1. **Priority** — why this lead, now.
-2. **Why now** — the time-sensitive trigger + freshness.
-3. **Opening line** — three ranked outreach angles (e.g. Family Coverage / Income Replacement /
-   College Head-Start), each copyable.
-4. **Sensitivity** — where to tread carefully.
-Each part shows a green ✓ formula badge (LambdaMonotonicity, FalsePosition, SummationInvariant) —
-these are **witness-signed by a math engine, not an AI guess**. Then click **Verify signed brief**.
+- The release stamp identifies the running source revision.
+- The data-state indicator reports how many source lanes answered live in this
+  pull.
+- `UNAVAILABLE` is a real state, not a hidden failure and not a zero-demand
+  claim.
 
-## 6. Verify Receipt (the moat)
-Click **Verify Receipt** on any lead → a **VERIFIED** modal with the five checks:
-- Payload hash re-derives (tamper-evident)
-- All signals are public data
-- Zero fabricated signals (honest by design)
-- Chained to the prior receipt
-- (When the cosign key is set) ECDSA-P256 signature verifies
-Say: "This is the part no competitor has — you can prove to compliance exactly where every claim
-came from, and that nothing was made up."
+Do not say the current release is aligned with GitHub unless `/api/build-info`
+and the deployment evidence bind the same exact revision.
 
-## 7. Open the Black Box (the Λ score)
-Click **Open the Black Box**. Show the model card:
-- The transparent Λ formula (weighted geometric mean — one weak axis pulls the whole score down).
-- Time-decay (freshness erodes honestly), the receptivity score, the lapse decile (advisory, NOT FCRA).
-- Provenance: advisory; Λ uniqueness is **Conjecture 1 (open)**; DOI 10.5281/zenodo.20434308; cites
-  Aczél 1957, Guo 2017, McAllester 1999.
-Say: "There's no hidden black box — the methodology is published and citable."
+## 3. Choose a market
 
-## 8. Territory Map + Export + Push to CRM
-- **Territory Map / Pulse** — live NY-metro + seaboard coverage from Census + open data.
-- **Export Call List** — downloads a CSV of the ranked list (with scores, triggers, gaps, receipt
-  hashes) — David can work it in his own tools.
-- **Push to CRM** — one-click webhook to send enriched, receipted leads into AgencyZoom / Salesforce
-  FSC / HubSpot.
+Choose **All East**, a region, or one state. A state selection narrows the query
+and can return a different record set. Explain that the interface shows current
+official-source observations; it does not fill gaps with sample prospects.
 
-## 9. Where this goes (future, say only if asked)
-- More states + deeper county coverage; SEC Form 4 liquidity-event triggers; IRS-990 wealth signals;
-  a producer benchmarking dashboard (your conversion funnel by trigger type); best-fit lead routing
-  across a team of agents.
-Frame as roadmap, not promises.
+## 4. Show source health
 
----
+Open **Market coverage**. For each source, read the state shown on screen:
 
-## Honesty guardrails (do not skip — this is the differentiator)
-- Say "illustrative" for premium/pipeline numbers; "estimated from public records" for wealth tier;
-  "advisory, not a credit/FCRA decision" for lapse risk.
-- If a state shows [SAMPLE] or GAP, say so — that honesty is the selling point.
-- Never imply we use private PII. We don't.
+- `LIVE`: the adapter completed a current observation, which may contain zero or
+  more records;
+- `UNAVAILABLE`: the adapter could not complete and returned no substitute; or
+- `NOT_APPLICABLE`: the source does not cover the selected territory.
+
+Use an available official citation to demonstrate that records remain
+independently checkable.
+
+## 5. Open an organization record
+
+Choose a current record and explain these fields in order:
+
+1. **Source-verified business moment** - the organization-level fact returned by
+   the official source.
+2. **Timing** - an observation or recheck window, not proof of a renewal,
+   dissatisfaction, purchase, or insurance need.
+3. **Likely fit** - a research question, not a recommendation, eligibility
+   decision, or quote.
+4. **Proof grade** - evidence quality only, never sales probability.
+5. **Evidence clock** - `CURRENT`, `RECHECK_DUE`, `STALE`, or `UNKNOWN`.
+6. **Counter-evidence** - missing corroboration, identity-review needs, stale
+   evidence, source limitations, and other facts that can weaken the case.
+7. **Permission** - `PUBLIC_RESEARCH_ONLY` until the protected human-clearance
+   process is complete.
+
+Open the source link. Confirm the organization, source-record identifier, date,
+and displayed event before using the card in any decision.
+
+## 6. Show Evidence Constellation
+
+Open **Investor view** and point out that Evidence Constellation does not collapse
+different questions into one score:
+
+- identity links can be deterministic, review-required, or unresolved;
+- corroboration can be single-source or multi-source;
+- authority, freshness, source-receipt integrity, and identity remain separate;
+- the clock states when evidence must be checked again; and
+- counter-evidence is visible on every organization event.
+
+If the current pull contains no deterministic multi-source organization, say so.
+Zero is an observed result, not a reason to imply corroboration.
+
+## 7. Verify a source receipt
+
+Select **Verify source receipt**. Read the returned fields rather than reducing
+them to one green badge:
+
+- **Signature** says whether the configured public key verifies the receipt.
+- **Payload integrity** says whether the bound receipt payload re-derives.
+- **Predecessor chain** distinguishes a verified predecessor, declared genesis,
+  an unverified predecessor, and failure.
+- **Claim scope** states exactly what the verification covers.
+- **Witness** reports threshold state, signing mode, and durability.
+
+The current public receipt cache is process memory. A session-verifiable source
+reference is not a durable historical archive, and the receipt does not cover
+later identity resolution, grade, clock, or counter-evidence.
+
+## 8. Show the contact gate
+
+Return to the record and point to the permission state. The protected broker
+workflow requires a first-party business channel, a named operator, license and
+jurisdiction scope, talk-track version, suppression and rules checks, and an
+unexpired clearance receipt. If any required check is absent, contact remains
+blocked.
+
+## 9. Close
+
+Say:
+
+> This is useful because it preserves the difference between evidence and
+> action. David sees the official observation, its limits, and its proof before
+> deciding what to research. Outreach remains a separate, accountable human
+> decision.
+
+## Claims to avoid
+
+- Do not call an organization record a person who is ready to buy.
+- Do not promise appointments, conversion, premium, revenue, or pipeline.
+- Do not infer wealth, health, family status, insurability, or a coverage gap.
+- Do not call a source live when the current source panel says unavailable.
+- Do not say every receipt is signed; unsigned is the correct state when no real
+  signing key is configured.
+- Do not say the predecessor chain or witness is durable when the response says
+  process-ephemeral or unverified.
+- Do not present the retired portable HTML, historic V8 artifacts, or old
+  person-level walkthroughs as the current product.
+
+The short operating guide is [`FOR_DAVID.md`](FOR_DAVID.md).

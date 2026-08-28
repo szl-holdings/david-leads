@@ -74,6 +74,11 @@ def mark_header_row(row) -> None:
     row_properties.append(marker)
 
 
+def prevent_row_split(row) -> None:
+    row_properties = row._tr.get_or_add_trPr()
+    row_properties.append(OxmlElement("w:cantSplit"))
+
+
 def set_table_geometry(table, widths_dxa: list[int]) -> None:
     if sum(widths_dxa) != CONTENT_DXA:
         raise ValueError("table widths must total 9360 DXA")
@@ -227,13 +232,20 @@ def add_numbering(document: Document, *, bullet: bool) -> int:
     return num_id
 
 
-def add_list_item(document: Document, text: str, num_id: int, *, lead: str | None = None):
+def add_list_item(
+    document: Document,
+    text: str,
+    *,
+    marker: str = "•",
+    lead: str | None = None,
+):
     paragraph = document.add_paragraph()
+    paragraph.paragraph_format.left_indent = Inches(0.375)
+    paragraph.paragraph_format.first_line_indent = Inches(-0.188)
     paragraph.paragraph_format.space_after = Pt(4)
     paragraph.paragraph_format.line_spacing = 1.25
-    num_pr = paragraph._p.get_or_add_pPr().get_or_add_numPr()
-    num_pr.get_or_add_ilvl().val = 0
-    num_pr.get_or_add_numId().val = num_id
+    run = paragraph.add_run(f"{marker} ")
+    set_run(run, bold=marker != "•", color=NAVY)
     if lead:
         run = paragraph.add_run(lead)
         set_run(run, bold=True, color=NAVY)
@@ -372,7 +384,7 @@ def configure_page(document: Document) -> None:
     footer = section.footer
     footer_paragraph = footer.paragraphs[0]
     footer_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run = footer_paragraph.add_run("Verified operating guide  |  August 2026  |  ")
+    run = footer_paragraph.add_run("Operating guide  |  verify the current release at demo time  |  ")
     set_run(run, size=8.5, color=MUTED)
     add_page_number(footer_paragraph)
 
@@ -395,9 +407,6 @@ def build() -> Document:
     document.core_properties.subject = "Plain-English operating guide for David Abraham"
     document.core_properties.author = "SZL Holdings"
     document.core_properties.keywords = "David Leads, broker, public data, Eastern United States"
-    bullet_id = add_numbering(document, bullet=True)
-    number_id = add_numbering(document, bullet=False)
-
     kicker = document.add_paragraph()
     kicker.paragraph_format.space_after = Pt(3)
     run = kicker.add_run("BROKER ENABLEMENT PACK")
@@ -405,10 +414,10 @@ def build() -> Document:
     title = document.add_paragraph(style="Title")
     title.add_run("David Leads")
     subtitle = document.add_paragraph(style="Subtitle")
-    subtitle.add_run("A plain-English field guide for the live Eastern Market Cockpit")
+    subtitle.add_run("A plain-English field guide for Evidence-Backed Broker Research")
     prepared = document.add_paragraph()
     prepared.paragraph_format.space_after = Pt(18)
-    run = prepared.add_run("Prepared for David Abraham  |  Verified August 1, 2026")
+    run = prepared.add_run("Prepared for David Abraham  |  Live state must be verified at demo time")
     set_run(run, size=10.5, bold=True, color=MUTED)
 
     add_callout(
@@ -430,15 +439,15 @@ def build() -> Document:
         document,
         "It gathers current organization-level records from official public sources, shows the business event that changed, explains why the timing may deserve research, and links back to the source record. It is a research desk, not a purchased contact list.",
     )
-    add_list_item(document, "Choose all 27 Eastern markets, a region, or one state.", bullet_id)
-    add_list_item(document, "See live business and facility records with source links and receipts.", bullet_id)
-    add_list_item(document, "Focus on the strongest timing signals before doing manual research.", bullet_id)
-    add_list_item(document, "Keep every outreach decision behind a human compliance check.", bullet_id)
+    add_list_item(document, "Choose all 27 Eastern markets, a region, or one state.")
+    add_list_item(document, "See live business and facility records with source links and receipts.")
+    add_list_item(document, "Focus on the strongest timing signals before doing manual research.")
+    add_list_item(document, "Keep every outreach decision behind a human compliance check.")
 
-    add_heading(document, "Verified live check", 2)
+    add_heading(document, "Live release checklist", 2)
     add_body(
         document,
-        "The figures below were observed during the August 1 verification. Counts change as public sources change.",
+        "Do not reuse a dated count or source state. Read each value from the running release immediately before the demo.",
         italic=True,
         color=MUTED,
     )
@@ -448,13 +457,12 @@ def build() -> Document:
     set_cell_shading(table.cell(0, 0), NAVY)
     set_cell_shading(table.cell(0, 1), NAVY)
     set_table_text(table.cell(0, 0), "Check", bold=True, color=WHITE)
-    set_table_text(table.cell(0, 1), "Observed result", bold=True, color=WHITE)
+    set_table_text(table.cell(0, 1), "Required evidence", bold=True, color=WHITE)
     verified_rows = [
-        ("Access", "Public research opens with no login."),
-        ("Territory", "27 Eastern states are selectable on desktop and mobile."),
-        ("Live records", "70 live records across the Eastern view; 53 in a deeper New York pull."),
-        ("Examples", "0 sample records in the verified live pulls."),
-        ("Health", "Application, public data, and broker database all reported ready."),
+        ("Release identity", "Match /api/build-info to the intended GitHub revision and release attestation."),
+        ("Source health", "Read every LIVE, UNAVAILABLE, or NOT_APPLICABLE state from the current Market coverage panel."),
+        ("Records and samples", "Treat the count as a current-pull observation; the active path must return no sample records."),
+        ("Readiness", "Verify /healthz and /readyz; do not infer readiness from an HTTP 200 alone."),
     ]
     for index, (label, value) in enumerate(verified_rows, start=1):
         cells = table.add_row().cells
@@ -463,26 +471,23 @@ def build() -> Document:
             set_cell_shading(cells[1], "F5F8FB")
         set_table_text(cells[0], label, bold=True, color=NAVY)
         set_table_text(cells[1], value)
+    for row in table.rows:
+        prevent_row_split(row)
     set_table_geometry(table, [2700, 6660])
 
-    document.add_page_break()
     add_heading(document, "Your first five minutes", 1)
-    add_list_item(document, "Open the link. The research workspace loads without a login.", number_id)
-    add_list_item(document, "Choose All East, a region, or one state. One state runs a deeper pull.", number_id)
-    add_list_item(document, "Read the Broker brief near the top. It points to the strongest current timing pattern.", number_id)
-    add_list_item(document, "Use the deal-moment buttons to narrow the list: life-plan timing, growth and awards, operational change, or needs research.", number_id)
-    add_list_item(document, "Open an organization to see the public event, likely fit, evidence, limits, and the next research step.", number_id)
-    add_list_item(document, "Open the official source before using any claim in a conversation.", number_id)
+    add_list_item(document, "Open the link. The research workspace loads without a login.", marker="1.")
+    add_list_item(document, "Choose All East, a region, or one state. One state runs a deeper pull.", marker="2.")
+    add_list_item(document, "Read the Broker brief near the top. It points to the strongest current timing pattern.", marker="3.")
+    add_list_item(document, "Use the deal-moment buttons to narrow the list: life-plan timing, growth and awards, operational change, or needs research.", marker="4.")
+    add_list_item(document, "Open an organization to see the public event, likely fit, evidence, limits, and the next research step.", marker="5.")
+    add_list_item(document, "Open the official source before using any claim in a conversation.", marker="6.")
 
     add_heading(document, "What the screen is telling you", 2)
-    add_body(document, "Live organizations", bold_lead="Live organizations. ")
-    add_body(document, "The number of official records in the selected market. The count changes with the territory and source response.")
-    add_body(document, "Source coverage", bold_lead="Source coverage. ")
-    add_body(document, "How many source lanes answered live. An unavailable source remains visible; it is never replaced by a fake record.")
-    add_body(document, "Needs research", bold_lead="Needs research. ")
-    add_body(document, "Records worth checking. This is not the number of people cleared for contact.")
-    add_body(document, "Timing window", bold_lead="Timing window. ")
-    add_body(document, "A date or filing field that may make the organization worth researching now. It is not proof of a sale, renewal, dissatisfaction, or insurance need.")
+    add_body(document, "The number of official records in the selected market. The count changes with the territory and source response.", bold_lead="Live organizations. ")
+    add_body(document, "How many source lanes answered live. An unavailable source remains visible; it is never replaced by a fake record.", bold_lead="Source coverage. ")
+    add_body(document, "Records worth checking. This is not the number of people cleared for contact.", bold_lead="Needs research. ")
+    add_body(document, "A date or filing field that may make the organization worth researching now. It is not proof of a sale, renewal, dissatisfaction, or insurance need.", bold_lead="Timing window. ")
 
     add_callout(
         document,
@@ -518,7 +523,7 @@ def build() -> Document:
     set_table_text(record_table.cell(0, 0), "Label", bold=True, color=WHITE)
     set_table_text(record_table.cell(0, 1), "Plain-English meaning", bold=True, color=WHITE)
     rows = [
-        ("Verified deal moment", "The fact returned by the official source."),
+        ("Source-verified business moment", "The fact returned by the official source."),
         ("Why now", "Why the event may deserve timely research."),
         ("Likely fit", "A business question to investigate, not advice or eligibility."),
         ("Evidence", "The source link, record ID, and receipt attached to the item."),
@@ -545,16 +550,16 @@ def build() -> Document:
     mark_header_row(source_table.rows[0])
     for cell in source_table.rows[0].cells:
         set_cell_shading(cell, NAVY)
-    for cell, label in zip(source_table.rows[0].cells, ("Official source", "Verified state", "What it can show")):
+    for cell, label in zip(source_table.rows[0].cells, ("Official source", "State at demo time", "What it can show")):
         set_table_text(cell, label, bold=True, color=WHITE, size=10)
     source_rows = [
-        ("U.S. Department of Labor Form 5500", "LIVE", "Benefit-plan filings and reported plan or policy timing fields."),
-        ("FMCSA Company Census", "LIVE", "Organization-level carrier registration activity."),
-        ("USAspending", "LIVE", "Federal contract activity in the current query window."),
-        ("EPA ECHO", "LIVE", "Organization and facility compliance-monitoring activity."),
-        ("FCC ULS", "UNAVAILABLE", "Organization wireless-license activity when the source answers."),
-        ("Chicago business licenses", "UNAVAILABLE", "New active business-license records when applicable."),
-        ("SAM.gov entity updates", "UNAVAILABLE", "Active entity updates when the source and credential are available."),
+        ("U.S. Department of Labor Form 5500", "READ RUNTIME", "Benefit-plan filings and reported plan or policy timing fields."),
+        ("FMCSA Company Census", "READ RUNTIME", "Organization-level carrier registration activity."),
+        ("USAspending", "READ RUNTIME", "Federal contract activity in the current query window."),
+        ("EPA ECHO", "READ RUNTIME", "Organization and facility compliance-monitoring activity."),
+        ("FCC ULS", "READ RUNTIME", "Organization wireless-license activity when the source answers."),
+        ("Chicago business licenses", "READ RUNTIME", "New active business-license records when applicable."),
+        ("SAM.gov entity updates", "READ RUNTIME", "Active entity updates when the source and credential are available."),
     ]
     for index, (source, state, meaning) in enumerate(source_rows, start=1):
         cells = source_table.add_row().cells
@@ -573,21 +578,21 @@ def build() -> Document:
         "Named filing signers, administrators, donors, or executives used as personal leads.",
         "Automatic contact permission, automatic quoting, or an underwriting conclusion.",
     ):
-        add_list_item(document, text, bullet_id)
+        add_list_item(document, text)
 
     document.add_page_break()
     add_heading(document, "A practical daily routine", 1)
     add_heading(document, "Morning: choose the research queue", 2)
-    add_list_item(document, "Open the Broker view and check the release stamp.", bullet_id)
-    add_list_item(document, "Choose your state or region; start with one state for depth.", bullet_id)
-    add_list_item(document, "Read the Broker brief and pick five organizations to verify.", bullet_id)
-    add_list_item(document, "Open every official source before writing a note.", bullet_id)
+    add_list_item(document, "Open the Broker view and check the release stamp.")
+    add_list_item(document, "Choose your state or region; start with one state for depth.")
+    add_list_item(document, "Read the Broker brief and pick five organizations to verify.")
+    add_list_item(document, "Open every official source before writing a note.")
 
     add_heading(document, "Research block: turn records into qualified questions", 2)
-    add_list_item(document, "Confirm the organization and event on the official record.", bullet_id)
-    add_list_item(document, "Check the organization's own website for current operations and a business-published channel.", bullet_id)
-    add_list_item(document, "Write down what is known, what is inferred, and what remains unknown.", bullet_id)
-    add_list_item(document, "Do not copy sensitive person-level fields into your notes.", bullet_id)
+    add_list_item(document, "Confirm the organization and event on the official record.")
+    add_list_item(document, "Check the organization's own website for current operations and a business-published channel.")
+    add_list_item(document, "Write down what is known, what is inferred, and what remains unknown.")
+    add_list_item(document, "Do not copy sensitive person-level fields into your notes.")
 
     add_heading(document, "Before any outreach", 2)
     checklist = [
@@ -599,7 +604,7 @@ def build() -> Document:
         "The record does not rely on a sample or unavailable source.",
     ]
     for item in checklist:
-        add_list_item(document, item, bullet_id, lead="Check: ")
+        add_list_item(document, item, lead="Check: ")
 
     add_callout(
         document,
@@ -616,12 +621,12 @@ def build() -> Document:
         italic=True,
         color=MUTED,
     )
-    add_list_item(document, "Open the app and say: 'This is live organization research from official public records, not a contact list.'", number_id)
-    add_list_item(document, "Show the 27-state territory selector and focus New York.", number_id)
-    add_list_item(document, "Point to Live organizations, Source coverage, and Needs research. Explain that unavailable sources stay visible.", number_id)
-    add_list_item(document, "Open one organization. Read the event, why now, official source, and limitations.", number_id)
-    add_list_item(document, "Show the receipt or proof link. Explain that the public record can be checked before use.", number_id)
-    add_list_item(document, "End with the contact gate: research is public; outreach still requires protected human clearance.", number_id)
+    add_list_item(document, "Open the app and say: 'This is live organization research from official public records, not a contact list.'", marker="1.")
+    add_list_item(document, "Show the 27-state territory selector and focus New York.", marker="2.")
+    add_list_item(document, "Point to Live organizations, Source coverage, and Needs research. Explain that unavailable sources stay visible.", marker="3.")
+    add_list_item(document, "Open one organization. Read the event, why now, official source, and limitations.", marker="4.")
+    add_list_item(document, "Show the receipt or proof link. Explain that the public record can be checked before use.", marker="5.")
+    add_list_item(document, "End with the contact gate: research is public; outreach still requires protected human clearance.", marker="6.")
 
     add_heading(document, "A simple opening line", 2)
     add_callout(
@@ -639,7 +644,7 @@ def build() -> Document:
         "Do not say the system uses private profiles or secret contact data.",
         "Do not call a source LIVE if the coverage panel says UNAVAILABLE.",
     ):
-        add_list_item(document, text, bullet_id)
+        add_list_item(document, text)
 
     document.add_page_break()
     add_heading(document, "If something looks wrong", 1)

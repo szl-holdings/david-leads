@@ -36,7 +36,7 @@ remain protected and are never shown in the public view.
 
 ## Read each account correctly
 
-- **Verified deal moment** is the fact returned by the official source.
+- **Source-verified business moment** is the fact returned by the official source.
 - **Timing** is a research window. A Form 5500 anniversary is not proof of a
   renewal, dissatisfaction, or a buying decision.
 - **Likely fit** is a reason to investigate. It is not a recommendation,

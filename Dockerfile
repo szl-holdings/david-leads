@@ -5,6 +5,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN useradd --create-home --uid 10001 david-leads
 COPY --chown=david-leads:david-leads app ./app
 COPY --chown=david-leads:david-leads PUBLICATION_READINESS.md PUBLIC_DATA_OPERATING_MODEL.md SPACE_PROVENANCE.json ./
+COPY --chown=david-leads:david-leads THIRD_PARTY_NOTICES.md ./
+COPY --chown=david-leads:david-leads research/COMPETITIVE_SYNTHESIS_2026-08-26.md ./research/COMPETITIVE_SYNTHESIS_2026-08-26.md
+COPY --chown=david-leads:david-leads ops/credential-rotation.md ./ops/credential-rotation.md
 USER david-leads
 EXPOSE 7860
 # HF Spaces inject secrets as env vars: SZL_COSIGN_PRIVATE_PEM, SZL_COSIGN_PUBLIC_PEM,

@@ -12,17 +12,35 @@ on:
       - "app/**"
       - "tests/**"
       - "ops/**"
+      - "tools/**"
+      - "research/**"
+      - "qa/**"
+      - "*.md"
+      - "*.txt"
+      - "*.html"
+      - "*.docx"
+      - "build_portable.py"
+      - "doc_build_make_doc.js"
       - "Dockerfile"
       - "requirements*.txt"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
   pull_request:
     paths:
       - "app/**"
       - "tests/**"
       - "ops/**"
+      - "tools/**"
+      - "research/**"
+      - "qa/**"
+      - "*.md"
+      - "*.txt"
+      - "*.html"
+      - "*.docx"
+      - "build_portable.py"
+      - "doc_build_make_doc.js"
       - "Dockerfile"
       - "requirements*.txt"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
   workflow_dispatch: {}
 
 permissions:
@@ -53,5 +71,5 @@ jobs:
         run: python3 -m compileall -q app ops
       - name: Run full safety and application test suite
         run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v
-      - name: Run deterministic data-state transition regression
-        run: node --test tests/data_state_transition.test.mjs
+      - name: Run all browser-state and truth-surface regressions
+        run: node --test tests/*.test.mjs

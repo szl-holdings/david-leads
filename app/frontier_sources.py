@@ -7,11 +7,13 @@ other person-level fields are deliberately excluded at query time.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import html
 import json
 import os
 import re
+import threading
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -35,6 +37,8 @@ US_STATE_CODES = frozenset({
 _ECHO_CACHE: dict[tuple[tuple[str, ...], int], tuple[datetime, dict[str, Any]]] = {}
 _CHICAGO_CACHE: dict[tuple[int, str], tuple[datetime, dict[str, Any]]] = {}
 _SAM_CACHE: dict[tuple[tuple[str, ...], int, str], tuple[datetime, dict[str, Any]]] = {}
+_RECEIPT_LOCK = threading.Lock()
+_FMCSA_PERSON_TYPES = frozenset({"INDIVIDUAL", "SOLE PROPRIETOR", "SOLE PROPRIETORSHIP"})
 
 FMCSA = {
     "id": "fmcsa-company-census",
@@ -97,7 +101,7 @@ class SourceConfigurationUnavailable(RuntimeError):
 
 FMCSA_SELECT = (
     "legal_name,dba_name,dot_number,add_date,status_code,classdef,business_org_desc,"
-    "truck_units,power_units,bus_units,total_drivers,phy_street,phy_city,phy_state,phy_zip"
+    "truck_units,power_units,bus_units,total_drivers,phy_city,phy_state,phy_zip"
 )
 USASPENDING_FIELDS = (
     "Award ID",
@@ -281,7 +285,8 @@ def _attach_receipt(record: dict[str, Any], signal: str) -> dict[str, Any]:
         f"source_record_id={record['source_record_id']}; "
         f"observed_at={record['observed_at']}; parser_version={record['parser_version']}."
     )
-    receipt = _receipt(record, bound_signal)
+    with _RECEIPT_LOCK:
+        receipt = _receipt(record, bound_signal)
     record["receipt_id"] = receipt.get("id") if receipt else None
     record["receipt_signed"] = bool(receipt and receipt.get("signed"))
     record["receipt_witnessed"] = bool(receipt and receipt.get("consensus"))
@@ -300,7 +305,10 @@ def _attach_receipt(record: dict[str, Any], signal: str) -> dict[str, Any]:
 def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return recent active carrier additions without collecting contact/person fields."""
     state_list = _states(states)
-    since = (_now().date() - timedelta(days=45)).strftime("%Y%m%d")
+    current_date = _now().date()
+    since_date = current_date - timedelta(days=45)
+    since = since_date.strftime("%Y%m%d")
+    page_size = max(1, min(int(limit), 50))
     state_sql = ",".join(f"'{state}'" for state in state_list)
     where = (
         f"status_code='A' AND add_date>='{since}' "
@@ -310,7 +318,7 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
         "$select": FMCSA_SELECT,
         "$where": where,
         "$order": "add_date DESC",
-        "$limit": str(max(1, min(int(limit), 50))),
+        "$limit": str(min(50, page_size * 3)),
     })
     rows = _request_json(f"{FMCSA['api']}?{query}")
     if not isinstance(rows, list):
@@ -318,15 +326,20 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
 
     records: list[dict[str, Any]] = []
     for row in rows:
-        name = _clean(row.get("legal_name"), 140)
+        name = _organization_name(row.get("legal_name"))
         dot = _clean(row.get("dot_number"), 20)
         state = _clean(row.get("phy_state"), 2).upper()
-        if not name or not dot or state not in state_list:
+        reported_type = _clean(row.get("business_org_desc"), 60).upper()
+        if (
+            not name
+            or not dot
+            or state not in state_list
+            or reported_type in _FMCSA_PERSON_TYPES
+        ):
             continue
         added = _date8(row.get("add_date"))
         power_units = _nonnegative_int(row.get("power_units"))
         drivers = _nonnegative_int(row.get("total_drivers"))
-        street = _clean(row.get("phy_street"), 120)
         carrier_class = _clean(row.get("classdef"), 80) or "FMCSA carrier"
         signal = (
             f"USDOT {dot} appeared in the FMCSA Company Census addition field on "
@@ -338,9 +351,9 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
             "dba": _clean(row.get("dba_name"), 140),
             "type": "carrier",
             "category": f"Motor carrier · {carrier_class}",
+            "organization_admission": "RECOGNIZED_LEGAL_ORGANIZATION_SUFFIX",
             "credential": f"USDOT {dot}",
             "status": "ACTIVE_CODE_REPORTED",
-            "address": street,
             "city": _clean(row.get("phy_city"), 80),
             "state": state,
             "zip": _clean(row.get("phy_zip"), 12)[:5],
@@ -366,7 +379,7 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
                 "Confirm current authority in FMCSA SAFER, then locate a business-published "
                 "contact channel and document the permitted product conversation."
             ),
-            "contact_quality": "business address (public)" if street else "entity id only",
+            "contact_quality": "entity registry only",
             "citation": {
                 "label": f"FMCSA SAFER · USDOT {dot}",
                 "url": (
@@ -381,10 +394,13 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
             "not_for_underwriting": True,
             "limitations": [
                 "FMCSA status and addition fields are registry observations, not proof of authority, safety, or coverage.",
-                "Phone, email, officer, crash, safety-rating, and insurance fields are not requested or stored.",
+                "A recognized legal organization suffix is required; explicit individual or sole-proprietor classifications fail closed.",
+                "Street, phone, email, officer, crash, safety-rating, and insurance fields are not requested or stored.",
             ],
         }
         records.append(_attach_receipt(record, signal))
+        if len(records) >= page_size:
+            break
 
     return {
         "source": FMCSA["label"],
@@ -392,9 +408,15 @@ def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, A
         "mode": "LIVE",
         "count": len(records),
         "records": records,
-        "query_window": {"start": since, "end": _now().date().isoformat()},
+        "query_window": {"start": since_date.isoformat(), "end": current_date.isoformat()},
         "citation": {"label": FMCSA["label"], "url": FMCSA["portal"]},
         "privacy": "ENTITY_FIELDS_ONLY",
+        "admission": "LEGAL_ORGANIZATION_SUFFIX_REQUIRED_AND_PERSON_TYPES_REJECTED",
+        "reason": (
+            None
+            if records
+            else "NO_SUFFIX_VALIDATED_ORGANIZATIONS_IN_CURRENT_WINDOW"
+        ),
     }
 
 
@@ -1051,7 +1073,7 @@ def frontier_opportunities(
     state_list = _states(states)
     records: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
-    for source, fetcher in (
+    frontiers = (
         (FORM5500, fetch_form5500),
         (FMCSA, fetch_fmcsa),
         (USASPENDING, fetch_usaspending),
@@ -1059,9 +1081,15 @@ def frontier_opportunities(
         (FCC, fetch_fcc_uls),
         (CHICAGO, fetch_chicago_licenses),
         (SAM, fetch_sam_entities),
-    ):
+    )
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="frontier") as pool:
+        futures = [
+            pool.submit(fetcher, state_list, limit_per_source)
+            for _source, fetcher in frontiers
+        ]
+    for (source, _fetcher), future in zip(frontiers, futures):
         try:
-            result = fetcher(state_list, limit_per_source)
+            result = future.result()
             records.extend(result.pop("records", []))
             sources.append(result)
         except Exception as exc:

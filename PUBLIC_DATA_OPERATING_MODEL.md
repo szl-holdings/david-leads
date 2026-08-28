@@ -248,8 +248,8 @@ Lead with measured workflow results, not modeled sales claims:
 - review-required exact-match candidates,
 - unresolved organization identities,
 - current, recheck-due, stale, and unknown evidence events,
-- replayable and partial proof packets,
-- signed, hash-chained unsigned, and unavailable receipt states,
+- session-verifiable and partial source-receipt references,
+- signed, hash-linked unsigned, and unavailable source-receipt states,
 - opportunities awaiting research,
 - opportunities manually cleared,
 - follow-ups due,
@@ -257,8 +257,9 @@ Lead with measured workflow results, not modeled sales claims:
 - meetings booked,
 - proposals, wins, and lost reasons,
 - premium recorded after sale,
-- source freshness and live/cached/example ratio,
+- live, unavailable, and not-applicable source states,
 - permission and suppression coverage.
 
-Modeled appointment and premium potential may remain secondary and must always be
-marked `MODELED` or `ILLUSTRATIVE`.
+Modeled appointments, premium, pipeline, revenue, conversion, and buying-likelihood
+forecasts are out of scope for this release, even when labeled. Present only measured,
+human-recorded meetings, proposals, wins, lost reasons, and post-sale premium.

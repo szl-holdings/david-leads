@@ -9,19 +9,28 @@ from __future__ import annotations
 from datetime import date
 
 
-POLICY_VERSION = "2026-07-28"
+POLICY_VERSION = "2026-08-28"
 
 SOURCE_CLASSES = [
     {
         "id": "official-open-data",
         "label": "Official open data / public API",
         "ingestion": "ALLOWED_WITH_CONTROLS",
-        "examples": ["SEC EDGAR", "U.S. Census", "BLS", "FMCSA", "FEMA", "state open-data portals"],
+        "examples": [
+            "DOL Form 5500",
+            "FMCSA Company Census",
+            "USAspending",
+            "EPA ECHO",
+            "SEC EDGAR",
+            "U.S. Census",
+            "state open-data portals",
+        ],
         "controls": [
             "Use documented endpoints and identify the application.",
             "Respect rate limits, terms, dataset licenses, and retention requirements.",
             "Store source URL, observed timestamp, query, and truth label with every signal.",
             "Re-check the current record before outreach; a filing is a signal, not present-tense truth.",
+            "Bind normalized records to parser version, source record ID, hash, and receipt.",
         ],
     },
     {
@@ -133,16 +142,50 @@ OFFICIAL_GUIDANCE = [
 
 IMPLEMENTED_FRONTIERS = [
     {
+        "id": "dol-form5500-benefit-timing",
+        "status": "LIVE_ORGANIZATION_LIFE_PLAN_FIELDS_ONLY",
+        "purpose": (
+            "Reported organization benefit-plan timing for licensed broker research; "
+            "anniversaries are hypotheses, never renewal or buying-intent claims."
+        ),
+        "included_fields": [
+            "plan sponsor organization",
+            "organization location",
+            "participant count",
+            "plan or policy period",
+            "benefit categories",
+        ],
+        "excluded_fields": [
+            "EIN",
+            "signer, preparer, administrator, or named broker",
+            "person-level address or contact",
+            "commission",
+        ],
+        "contact_permission": "NEVER_INFERRED",
+    },
+    {
         "id": "fmcsa-company-census",
         "status": "LIVE_ENTITY_FIELDS_ONLY",
         "purpose": "Recent carrier-entity additions for owner-continuity and workforce research.",
+        "admission": (
+            "A recognized legal organization suffix is required; explicit individual or "
+            "sole-proprietor classifications and names without that suffix fail closed."
+        ),
+        "included_fields": [
+            "suffix-validated organization legal name and DBA",
+            "USDOT identifier",
+            "city, state, and ZIP",
+            "reported equipment and driver counts",
+        ],
         "excluded_fields": [
+            "physical street address",
             "phone",
             "email",
             "named officers",
             "crash and safety fields",
             "insurance and policy fields",
         ],
+        "contact_permission": "NEVER_INFERRED",
     },
     {
         "id": "usaspending-contract-activity",
@@ -212,8 +255,30 @@ DEFERRED_FRONTIERS = [
 def policy_document() -> dict:
     return {
         "version": POLICY_VERSION,
-        "reviewed_on": str(date(2026, 7, 28)),
+        "reviewed_on": str(date(2026, 8, 28)),
         "purpose": "Entity-level B2B prospecting and first-party broker workflow; not underwriting or consumer profiling.",
+        "evidence_constellation": {
+            "schema": "david.evidence-constellation.v1",
+            "automatic_identity_links": [
+                "shared UEI or SAM UEI",
+                "shared USDOT",
+                "shared EPA FRS ID",
+                "shared SEC CIK",
+            ],
+            "review_required_identity_links": [
+                "exact normalized legal name, state, and ZIP candidate",
+                "any mixed identifier and exact-match component",
+                "unresolved organization identity",
+            ],
+            "prohibited_identity_links": [
+                "unknown identifier systems",
+                "fuzzy or probabilistic links without a labeled benchmark",
+            ],
+            "proof_dimensions": ["authority", "freshness", "corroboration", "integrity", "identity"],
+            "clock_states": ["CURRENT", "RECHECK_DUE", "STALE", "UNKNOWN"],
+            "permission_default": "PUBLIC_RESEARCH_ONLY",
+            "proof_grade_is_sales_probability": False,
+        },
         "source_classes": SOURCE_CLASSES,
         "outreach_gates": OUTREACH_GATES,
         "implemented_frontiers": IMPLEMENTED_FRONTIERS,

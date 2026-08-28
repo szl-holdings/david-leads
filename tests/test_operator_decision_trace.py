@@ -124,7 +124,7 @@ class OperatorSurfaceCopyTests(unittest.TestCase):
         self.assertIn("Observed activity is not revenue", self.html)
 
     def test_public_card_is_operator_copy(self):
-        self.assertIn("Operator Lead Command", self.readme)
+        self.assertIn("Evidence-Backed Broker Research", self.readme)
         self.assertIn("Decision Trace", self.readme)
         self.assertNotIn("Λ", self.readme)
         self.assertNotIn("Ouroboros", self.readme)

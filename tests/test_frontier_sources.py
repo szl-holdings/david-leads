@@ -49,6 +49,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
                 "add_date": "20260727",
                 "status_code": "A",
                 "classdef": "AUTHORIZED FOR HIRE",
+                "business_org_desc": "CORPORATION",
                 "power_units": "4",
                 "truck_units": "3",
                 "bus_units": "0",
@@ -77,6 +78,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             "recordable_crash_rate",
             "safety_rating",
             "insurance_field",
+            "phy_street",
         ):
             self.assertNotIn(forbidden, selected)
 
@@ -87,12 +89,92 @@ class FmcsaFrontierSafety(unittest.TestCase):
             "company_officer_1",
             "safety_rating",
             "insurance_field",
+            "address",
         ):
             self.assertNotIn(forbidden, record)
         self.assertEqual(record["credential"], "USDOT 1234567")
-        self.assertEqual(record["contact_quality"], "business address (public)")
+        self.assertEqual(record["organization_admission"], "RECOGNIZED_LEGAL_ORGANIZATION_SUFFIX")
+        self.assertEqual(record["contact_quality"], "entity registry only")
         self.assertTrue(record["not_for_underwriting"])
         self.assertEqual(record["purpose"], "PROSPECTING_ONLY")
+
+    def test_person_or_nonorganization_names_fail_closed(self):
+        base = {
+            "legal_name": "JANE DOE",
+            "dot_number": "1234567",
+            "add_date": "20260727",
+            "status_code": "A",
+            "classdef": "AUTHORIZED FOR HIRE",
+            "power_units": "1",
+            "total_drivers": "1",
+            "phy_street": "10 PRIVATE RD",
+            "phy_city": "ALBANY",
+            "phy_state": "NY",
+            "phy_zip": "12207",
+        }
+        for organization_type in ("INDIVIDUAL", "SOLE PROPRIETOR", "PARTNERSHIP", "", "CORPORATION"):
+            with self.subTest(organization_type=organization_type):
+                row = {**base, "business_org_desc": organization_type}
+                with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
+                    result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+                self.assertEqual(result["records"], [])
+                self.assertNotIn("10 PRIVATE RD", str(result))
+                self.assertNotIn("JANE DOE", str(result))
+                self.assertEqual(
+                    result["reason"],
+                    "NO_SUFFIX_VALIDATED_ORGANIZATIONS_IN_CURRENT_WINDOW",
+                )
+
+    def test_missing_classification_with_legal_organization_suffix_is_admitted(self):
+        row = {
+            "legal_name": "CURRENT FREIGHT LLC",
+            "dot_number": "7654321",
+            "add_date": "20260825",
+            "status_code": "A",
+            "business_org_desc": "",
+            "phy_city": "ALBANY",
+            "phy_state": "NY",
+            "phy_zip": "12207",
+        }
+        with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
+            result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["records"][0]["name"], "CURRENT FREIGHT LLC")
+        self.assertNotIn("address", result["records"][0])
+        self.assertIsNone(result["reason"])
+
+    def test_parallel_frontier_collection_preserves_declared_source_order(self):
+        def result(label):
+            return {
+                "source": label,
+                "source_id": label.lower(),
+                "mode": "LIVE",
+                "count": 0,
+                "records": [],
+            }
+
+        patches = [
+            mock.patch.object(frontier_sources, name, return_value=result(label))
+            for name, label in (
+                ("fetch_form5500", "DOL"),
+                ("fetch_fmcsa", "FMCSA"),
+                ("fetch_usaspending", "USAspending"),
+                ("fetch_echo", "EPA"),
+                ("fetch_fcc_uls", "FCC"),
+                ("fetch_chicago_licenses", "Chicago"),
+                ("fetch_sam_entities", "SAM"),
+            )
+        ]
+        mocks = [patcher.start() for patcher in patches]
+        self.addCleanup(lambda: [patcher.stop() for patcher in reversed(patches)])
+        output = frontier_sources.frontier_opportunities(["NY"], limit_per_source=2)
+
+        self.assertEqual(
+            [source["source"] for source in output["sources"]],
+            ["DOL", "FMCSA", "USAspending", "EPA", "FCC", "Chicago", "SAM"],
+        )
+        self.assertTrue(all(item.call_count == 1 for item in mocks))
 
 
 class UsaSpendingFrontierSafety(unittest.TestCase):

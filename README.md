@@ -1,6 +1,6 @@
 ---
 thumbnail: https://huggingface.co/spaces/SZLHOLDINGS/david-leads/resolve/main/og-card.png
-title: David Leads — Operator Lead Command
+title: David Leads — Evidence-Backed Broker Research
 emoji: 🛡️
 colorFrom: blue
 colorTo: yellow
@@ -8,7 +8,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Public-record lead command with transparent decision traces
+short_description: Official-source organization research with transparent evidence receipts
 tags:
   - insurance
   - lead-intelligence
@@ -18,26 +18,27 @@ tags:
   - szl-holdings
 ---
 
-# David Leads — Operator Lead Command
+# David Leads — Evidence-Backed Broker Research
 
 David Leads helps insurance operators answer five questions quickly:
 
-1. Who should I call first?
-2. Why is this lead timely?
-3. What should I do next?
-4. What public evidence supports the recommendation?
-5. What remains uncertain or blocks contact?
+1. Which organization should I research first?
+2. What official business event changed?
+3. Why might the timing deserve research?
+4. What public evidence supports the observation?
+5. What remains uncertain or blocks further action?
 
-The workspace combines public-record signals, a prioritized work list, next-best actions,
-territory coverage, best-fit advisor routing, outcomes, and checkable proof records. The
-operator view uses plain language; technical scoring details are kept out of the daily workflow.
+The public workspace combines official organization and facility records, explicit source
+health, a prioritized research queue, Evidence Constellation, checkable source receipts, and a
+fail-closed contact-permission gate. It does not identify a person to contact, substitute sample
+records, or convert public visibility into permission to communicate.
 
 ## The open-box difference
 
-Every ranked lead has a **Decision Trace**. It shows the source path, the reasons that moved the
-lead up or down, contact permission, the recommended human action, proof state, confidence range,
-and explicit caveats. A missing contradiction check is shown as `NOT_EVALUATED`; an offline example
-is shown as `EXAMPLE`; an unavailable signature is shown as `UNSIGNED`.
+Every ranked organization has a **Decision Trace**. It shows the source path, the reasons that
+moved the record up or down, contact permission, the recommended human research action, proof
+state, confidence range, and explicit caveats. A missing contradiction check is shown as
+`NOT_EVALUATED`; an unavailable signature is shown as `UNSIGNED`.
 
 The priority score is an advisory work-order signal. It is not a probability, insurance quote,
 underwriting decision, consumer report, or permission to contact.
@@ -60,31 +61,35 @@ underwriting decision, consumer report, or permission to contact.
   samples, and keeps every signal out of underwriting.
 - **Evidence Constellation** resolves organizations by shared UEI, CIK, USDOT, EPA FRS ID, or a
   review-required exact legal-name/state/ZIP candidate. It keeps authority, freshness,
-  corroboration, integrity, and identity separate; publishes a documented recheck/expiry clock;
-  surfaces counter-evidence; and binds each replayable packet to the normalized event hash,
-  parser version, source record, entity group, and receipt.
+  corroboration, source-receipt integrity, and identity separate; publishes a documented
+  recheck/expiry clock; and surfaces counter-evidence. A session-verifiable reference binds the
+  normalized source record hash, parser version, source record ID, and source receipt. The later
+  organization resolution, grade, clock, and counter-evidence are not covered by that source
+  receipt, and the process-memory receipt cache is not a durable historical archive.
 - **Governed Broker Desk** records a business-published channel, issues a hashed 24-hour clearance
   receipt only after all licensing/suppression checks are affirmative, unlocks a manual call sheet,
   and captures factual outcomes including immediate do-not-call suppression.
 - **Decision Trace** opens the complete operator-readable path from source to action.
 - **Call Brief** gives a concise opening line and next step for human review.
 - **Proof & Sources** exposes the exact evidence record behind a recommendation.
-- **Results** records meeting, sale, and no-sale outcomes without presenting modeled results as facts.
-- **More tools** contains territory, workforce-event, opt-in, export, routing, and CRM actions.
+- Protected operator actions remain separate from the sanitized public research contract and
+  require authentication and affirmative policy checks.
 
 ## Data and safety boundaries
 
-- Public records and explicitly consented submissions only.
-- No private data source is presented as part of the lead signal set.
-- Contact restrictions can block a lead even when its priority score is high.
-- Premium values are illustrative and never quotes.
-- Existing coverage must be confirmed with the person before a recommendation.
+- The public research path admits official organization and facility records only.
+- No private, person-level, modeled, sample, or consent-submission data enters the public research
+  signal set.
+- Contact restrictions remain fail-closed even when an organization ranks highly for research.
 - Proof records are signed only when a real signing key is configured; otherwise they remain honestly unsigned.
 - Social-profile scraping and consumer-data enrichment are prohibited by default. See
   [`PUBLIC_DATA_OPERATING_MODEL.md`](PUBLIC_DATA_OPERATING_MODEL.md).
 - Frontier adapters do not request phone, email, named officer, crash/safety, compliance status,
   penalties, community demographics, insurance, or policy fields. Every resulting packet is
   `PROSPECTING_ONLY` and `not_for_underwriting=true`.
+- The FMCSA lane admits only records with a recognized legal organization suffix and rejects any
+  explicit individual or sole-proprietor classification. It does not request or publish physical
+  street addresses; rows that cannot clear the organization gate fail closed.
 - The Form 5500 adapter additionally excludes EINs, signers, preparers, administrators, named
   brokers, commissions, and person-level addresses. Only a reported Schedule A life-benefit
   indicator informs the life/business-protection fit shown in the queue.
@@ -151,6 +156,4 @@ deployment, GitHub OIDC signs the deployment manifest and the workflow publishes
 non-secret attestation reference to the Space. `receipt_minted=true` is fail-closed and appears
 only when that reference matches the exact running source revision.
 
-
-Last deployment refresh request: 2026-08-08 (for solo end-to-end operational alignment).
 © 2026 SZL Holdings · Apache-2.0

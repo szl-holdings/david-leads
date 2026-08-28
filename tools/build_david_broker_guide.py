@@ -1,25 +1,16 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 from docx import Document
-from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Pt, RGBColor, Twips
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL_ROOT = Path(
-    r"C:\Users\steph\.codex\plugins\cache\openai-primary-runtime"
-    r"\documents\26.727.11326\skills\documents"
-)
-sys.path.insert(0, str(SKILL_ROOT / "scripts"))
-from table_geometry import apply_table_geometry  # noqa: E402
-
-
 OUTPUT = ROOT / "David_Leads_Broker_Guide.docx"
 NAVY = RGBColor(11, 37, 69)
 BLUE = RGBColor(46, 116, 181)
@@ -29,6 +20,71 @@ MUTED = RGBColor(92, 105, 122)
 PALE_BLUE = "E8EEF5"
 PALE_TEAL = "E7F5F3"
 PALE_GOLD = "FFF7E5"
+
+
+def _ensure_child(parent, tag: str):
+    child = parent.find(qn(tag))
+    if child is None:
+        child = OxmlElement(tag)
+        parent.append(child)
+    return child
+
+
+def _set_width(parent, tag: str, width_dxa: int) -> None:
+    width = _ensure_child(parent, tag)
+    width.set(qn("w:type"), "dxa")
+    width.set(qn("w:w"), str(int(width_dxa)))
+
+
+def apply_table_geometry(
+    table,
+    column_widths_dxa,
+    *,
+    table_width_dxa: int,
+    indent_dxa: int,
+    cell_margins_dxa: dict[str, int],
+) -> None:
+    """Apply deterministic table width, grid, cell width, and margins."""
+
+    widths = [int(width) for width in column_widths_dxa]
+    if not widths or any(width <= 0 for width in widths):
+        raise ValueError("table column widths must be positive")
+    if sum(widths) != int(table_width_dxa):
+        raise ValueError("table column widths must sum to table_width_dxa")
+
+    table.autofit = False
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    table_properties = table._tbl.tblPr
+    _set_width(table_properties, "w:tblW", table_width_dxa)
+    table_indent = _ensure_child(table_properties, "w:tblInd")
+    table_indent.set(qn("w:type"), "dxa")
+    table_indent.set(qn("w:w"), str(int(indent_dxa)))
+    layout = _ensure_child(table_properties, "w:tblLayout")
+    layout.set(qn("w:type"), "fixed")
+
+    grid = table._tbl.tblGrid
+    for child in list(grid):
+        grid.remove(child)
+    for width in widths:
+        column = OxmlElement("w:gridCol")
+        column.set(qn("w:w"), str(width))
+        grid.append(column)
+
+    for column_index, width in enumerate(widths):
+        table.columns[column_index].width = Twips(width)
+    for row in table.rows:
+        if len(row.cells) != len(widths):
+            raise ValueError("table rows must be unmerged before geometry is applied")
+        for column_index, cell in enumerate(row.cells):
+            width = widths[column_index]
+            cell.width = Twips(width)
+            cell_properties = cell._tc.get_or_add_tcPr()
+            _set_width(cell_properties, "w:tcW", width)
+            margins = _ensure_child(cell_properties, "w:tcMar")
+            for side in ("top", "bottom", "start", "end"):
+                margin = _ensure_child(margins, f"w:{side}")
+                margin.set(qn("w:w"), str(int(cell_margins_dxa[side])))
+                margin.set(qn("w:type"), "dxa")
 
 
 def set_font(run, *, size=11, bold=False, color=INK, italic=False):
@@ -103,12 +159,13 @@ def add_bullet(doc, text: str, *, bold_lead: str | None = None):
     return paragraph
 
 
-def add_number(doc, title: str, detail: str):
-    paragraph = doc.add_paragraph(style="List Number")
+def add_number(doc, number: int, title: str, detail: str):
+    paragraph = doc.add_paragraph()
     paragraph.paragraph_format.left_indent = Inches(0.375)
     paragraph.paragraph_format.first_line_indent = Inches(-0.188)
     paragraph.paragraph_format.space_after = Pt(6)
     paragraph.paragraph_format.line_spacing = 1.25
+    set_font(paragraph.add_run(f"{number}. "), bold=True, color=NAVY)
     set_font(paragraph.add_run(f"{title}. "), bold=True, color=NAVY)
     set_font(paragraph.add_run(detail), color=INK)
     return paragraph
@@ -243,7 +300,7 @@ def configure_document(doc):
     header_paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
     header_paragraph.paragraph_format.space_after = Pt(0)
     set_font(header_paragraph.add_run("DAVID LEADS"), size=8.5, bold=True, color=TEAL)
-    set_font(header_paragraph.add_run("   |   Eastern Market Cockpit"), size=8.5, color=MUTED)
+    set_font(header_paragraph.add_run("   |   Evidence-Backed Broker Research"), size=8.5, color=MUTED)
 
     footer = section.footer
     footer_paragraph = footer.paragraphs[0]
@@ -280,7 +337,7 @@ def build():
     subtitle = doc.add_paragraph()
     subtitle.paragraph_format.space_after = Pt(18)
     set_font(
-        subtitle.add_run("From verified public signal to the next lawful broker action"),
+        subtitle.add_run("From source-verified business signal to the next lawful broker action"),
         size=14,
         color=MUTED,
     )
@@ -328,11 +385,11 @@ def build():
 
     doc.add_page_break()
     heading(doc, "Start your day in five minutes", 1)
-    add_number(doc, "Read the Broker brief", "It summarizes the strongest timing pattern in the current official-source pull.")
-    add_number(doc, "Choose a territory", "Select All East, a region, or one state. One state runs a deeper market-specific search.")
-    add_number(doc, "Choose a deal moment", "Use Life-plan timing, Growth & awards, Operational change, or Needs research.")
-    add_number(doc, "Open the strongest account", "Review the timing, likely fit, evidence, limitations, and three-step broker action.")
-    add_number(doc, "Verify before doing anything else", "Open the cited official record and confirm that the organization and event are current.")
+    add_number(doc, 1, "Read the Broker brief", "It summarizes the strongest timing pattern in the current official-source pull.")
+    add_number(doc, 2, "Choose a territory", "Select All East, a region, or one state. One state runs a deeper market-specific search.")
+    add_number(doc, 3, "Choose a deal moment", "Use Life-plan timing, Growth & awards, Operational change, or Needs research.")
+    add_number(doc, 4, "Open the strongest account", "Review the timing, likely fit, evidence, limitations, and three-step broker action.")
+    add_number(doc, 5, "Verify before doing anything else", "Open the cited official record and confirm that the organization and event are current.")
 
     heading(doc, "The four deal-moment lanes", 1)
     add_bullet(
@@ -368,7 +425,7 @@ def build():
 
     doc.add_page_break()
     heading(doc, "How to read an account", 1)
-    heading(doc, "Verified deal moment", 2)
+    heading(doc, "Source-verified business moment", 2)
     add_text(doc, "The organization-level fact returned by the official source. Read this before the product idea.")
     heading(doc, "Timing", 2)
     add_text(doc, "The observed date or the next anniversary calculated from a previously reported plan or policy period.")
@@ -382,8 +439,10 @@ def build():
     heading(doc, "Evidence", 2)
     add_text(
         doc,
-        "Direct filing or official record shows the evidence class. Source receipt "
-        "linked means the normalized observation has a checkable proof record.",
+        "A direct filing or official record shows the evidence class. A session-verifiable "
+        "source reference binds the normalized source record to its receipt. Identity "
+        "resolution, proof grade, clock, counter-evidence, and durable history remain "
+        "outside that receipt and must be evaluated separately.",
     )
     heading(doc, "Contact state", 2)
     add_text(
@@ -393,9 +452,9 @@ def build():
     )
 
     heading(doc, "The three-step broker action", 1)
-    add_number(doc, "Verify the moment", "Open the cited source and confirm the organization, reported date, and relevant filing field.")
-    add_number(doc, "Qualify the fit", "Use the organization’s own website to understand its operations and find a business-published channel.")
-    add_number(doc, "Clear outreach", "In the protected workflow, complete suppression, licensing, state-rule, purpose, and channel checks before any call or email.")
+    add_number(doc, 1, "Verify the moment", "Open the cited source and confirm the organization, reported date, and relevant filing field.")
+    add_number(doc, 2, "Qualify the fit", "Use the organization’s own website to understand its operations and find a business-published channel.")
+    add_number(doc, 3, "Clear outreach", "In the protected workflow, complete suppression, licensing, state-rule, purpose, and channel checks before any call or email.")
 
     doc.add_page_break()
     heading(doc, "What David Leads never assumes", 1)
@@ -422,9 +481,9 @@ def build():
     )
 
     heading(doc, "When a source is unavailable", 1)
-    add_number(doc, "Open Market coverage", "Each source reports LIVE, UNAVAILABLE, or NOT APPLICABLE.")
-    add_number(doc, "Read the reason", "A missing credential, source outage, or territory mismatch remains visible.")
-    add_number(doc, "Do not work around it", "The application never substitutes a fake lead for an unavailable source.")
+    add_number(doc, 1, "Open Market coverage", "Each source reports LIVE, UNAVAILABLE, or NOT APPLICABLE.")
+    add_number(doc, 2, "Read the reason", "A missing credential, source outage, or territory mismatch remains visible.")
+    add_number(doc, 3, "Do not work around it", "The application never substitutes a fake lead for an unavailable source.")
 
     heading(doc, "Best practice before every outreach decision", 1)
     add_bullet(doc, "Confirm the official record is current.")
