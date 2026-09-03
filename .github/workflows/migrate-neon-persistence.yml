@@ -5,18 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "app/**"
-      - "requirements.txt"
-      - "Dockerfile"
-      - "README.md"
-      - "PUBLICATION_READINESS.md"
-      - "PUBLIC_DATA_OPERATING_MODEL.md"
-      - "THIRD_PARTY_NOTICES.md"
-      - "SPACE_PROVENANCE.json"
-      - "research/COMPETITIVE_SYNTHESIS_2026-08-26.md"
-      - "ops/credential-rotation.md"
-      - ".github/workflows/hf-deploy.yml"
-      - ".github/workflows/migrate-neon-persistence.yml"
+      - "app/dealdesk_schema.sql"
   workflow_call: {}
   workflow_dispatch: {}
 
