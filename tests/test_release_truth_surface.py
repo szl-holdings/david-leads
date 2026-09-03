@@ -121,9 +121,13 @@ class ReleaseTruthSurfaceTests(unittest.TestCase):
 
     def test_hugging_face_document_links_are_copied_and_trigger_deploy_chain(self):
         dockerfile = (self.root / "Dockerfile").read_text(encoding="utf-8")
+        deployment = (
+            self.root / ".github" / "workflows" / "hf-deploy.yml"
+        ).read_text(encoding="utf-8")
         migration = (
             self.root / ".github" / "workflows" / "migrate-neon-persistence.yml"
         ).read_text(encoding="utf-8")
+        migration_trigger = migration.split("  workflow_call: {}", 1)[0]
         required = (
             "THIRD_PARTY_NOTICES.md",
             "research/COMPETITIVE_SYNTHESIS_2026-08-26.md",
@@ -134,7 +138,8 @@ class ReleaseTruthSurfaceTests(unittest.TestCase):
             with self.subTest(relative_path=relative_path):
                 self.assertTrue((self.root / relative_path).is_file())
                 self.assertIn(relative_path, dockerfile)
-                self.assertIn(f'"{relative_path}"', migration)
+                self.assertIn(f'"{relative_path}"', deployment)
+                self.assertNotIn(f'"{relative_path}"', migration_trigger)
 
     def test_policy_prohibits_modeled_commercial_forecasts(self):
         policy = (
