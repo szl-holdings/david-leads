@@ -28,17 +28,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: true
 
-      - name: Require one current-main-parented workflow diff
+      - name: Require a current-main-rooted workflow-only bootstrap
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/fix/static-public-experience-marker-v1
-          git fetch --no-tags --depth=1 origin main
+          git fetch --no-tags origin main
           current_main="$(git rev-parse FETCH_HEAD)"
-          test "$(git rev-parse HEAD^)" = "$current_main"
+          test "$(git merge-base HEAD "$current_main")" = "$current_main"
           mapfile -t changed < <(git diff --name-only "$current_main" HEAD)
           test "${#changed[@]}" -eq 1
           test "${changed[0]}" = .github/workflows/szl-holographic-space-v2.yml
@@ -68,11 +68,11 @@ jobs:
           PY
           git show origin/main:.github/workflows/szl-holographic-space-v2.yml > .github/workflows/szl-holographic-space-v2.yml
           git diff --check
-          mapfile -t changed < <(git diff --name-only origin/main)
-          test "${#changed[@]}" -eq 1
-          test "${changed[0]}" = app/static/index.html
+          mapfile -t final_changed < <(git diff --name-only origin/main)
+          test "${#final_changed[@]}" -eq 1
+          test "${final_changed[0]}" = app/static/index.html
 
-      - name: Commit the permanent one-file result
+      - name: Commit the permanent one-file cumulative result
         shell: bash
         run: |
           set -euo pipefail
@@ -80,7 +80,9 @@ jobs:
           git config user.email 'stephenlutar2@gmail.com'
           git add app/static/index.html .github/workflows/szl-holographic-space-v2.yml
           mapfile -t staged < <(git diff --cached --name-only)
-          test "${#staged[@]}" -eq 1
-          test "${staged[0]}" = app/static/index.html
+          test "${#staged[@]}" -eq 2
+          printf '%s\n' "${staged[@]}" | grep -Fx .github/workflows/szl-holographic-space-v2.yml
+          printf '%s\n' "${staged[@]}" | grep -Fx app/static/index.html
           git commit -m 'fix(frontend): activate static Public Experience identity' -m 'Bind the responsive CSS contract to the anonymous HTML root without loading the retired compatibility JavaScript.' -m 'Signed-off-by: Stephen Lutar <stephenlutar2@gmail.com>'
+          test "$(git diff --name-only origin/main HEAD)" = app/static/index.html
           git push origin HEAD:fix/static-public-experience-marker-v1
