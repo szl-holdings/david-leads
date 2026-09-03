@@ -1,0 +1,164 @@
+name: Prepare bounded Neon migration trigger repair
+
+on:
+  push:
+    branches:
+      - fix/scope-neon-migration-trigger-20260903
+    paths:
+      - .github/workflows/_prepare_neon_trigger_scope_branch.yml
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: prepare-neon-trigger-scope-repair
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Cancel unrelated migration and emit exact source patch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the schema-only workflow and regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          source = Path('.github/workflows/migrate-neon-persistence.yml')
+          text = source.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'(?ms)^  push:\n'
+              r'    branches: \[main\]\n'
+              r'    paths:\n'
+              r'(?:      - "[^"]+"\n)+'
+              r'  workflow_call: \{\}\n'
+          )
+          replacement = (
+              '  push:\n'
+              '    branches: [main]\n'
+              '    paths:\n'
+              '      - "app/dealdesk_schema.sql"\n'
+              '  workflow_call: {}\n'
+          )
+          patched, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one push-path block, replaced {count}')
+
+          out = Path('prepared/.github/workflows/migrate-neon-persistence.yml')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(patched, encoding='utf-8')
+
+          test = Path('prepared/tests/test_neon_migration_trigger_scope.py')
+          test.parent.mkdir(parents=True, exist_ok=True)
+          test.write_text('''# SPDX-License-Identifier: Apache-2.0
+"""Keep privileged Neon migration execution bound to schema changes only."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOW = ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+
+
+def _workflow() -> dict:
+    value = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+    # PyYAML 1.1 may parse the key `on` as boolean True.
+    trigger = value.get("on", value.get(True))
+    assert isinstance(trigger, dict)
+    value["__trigger__"] = trigger
+    return value
+
+
+def test_automatic_migration_is_schema_only() -> None:
+    value = _workflow()
+    push = value["__trigger__"]["push"]
+    assert push["branches"] == ["main"]
+    assert push["paths"] == ["app/dealdesk_schema.sql"]
+
+
+def test_explicit_governed_entrypoints_remain_available() -> None:
+    value = _workflow()
+    trigger = value["__trigger__"]
+    assert "workflow_dispatch" in trigger
+    assert "workflow_call" in trigger
+
+
+def test_privileged_environment_and_schema_subject_remain_bound() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "name: david-space-credential-rotation" in text
+    assert 'Path("app/dealdesk_schema.sql")' in text
+    assert "DAVID_DATABASE_ADMIN_URL" in text
+    assert "DAVID_DATABASE_URL" in text
+
+
+def test_unrelated_application_and_document_paths_cannot_trigger_migration() -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    trigger_prefix = text.split("  workflow_call: {}", 1)[0]
+    for prohibited in (
+        '"app/**"',
+        '"app/static/**"',
+        '"requirements.txt"',
+        '"Dockerfile"',
+        '"README.md"',
+        '"PUBLICATION_READINESS.md"',
+        '"PUBLIC_DATA_OPERATING_MODEL.md"',
+        '"THIRD_PARTY_NOTICES.md"',
+        '"SPACE_PROVENANCE.json"',
+        '"research/COMPETITIVE_SYNTHESIS_2026-08-26.md"',
+        '"ops/credential-rotation.md"',
+        '".github/workflows/hf-deploy.yml"',
+        '".github/workflows/migrate-neon-persistence.yml"',
+    ):
+        assert prohibited not in trigger_prefix
+''', encoding='utf-8')
+          PY
+
+          diff -u .github/workflows/migrate-neon-persistence.yml \
+            prepared/.github/workflows/migrate-neon-persistence.yml
+          python -m py_compile prepared/tests/test_neon_migration_trigger_scope.py
+
+      - name: Cancel the unrelated CSS-triggered migration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(gh api repos/szl-holdings/david-leads/actions/runs/33780148055 --jq .status)"
+          if [ "$status" = "waiting" ] || [ "$status" = "queued" ] || [ "$status" = "in_progress" ]; then
+            gh api --method POST repos/szl-holdings/david-leads/actions/runs/33780148055/cancel
+          fi
+          for _ in $(seq 1 15); do
+            status="$(gh api repos/szl-holdings/david-leads/actions/runs/33780148055 --jq .status)"
+            if [ "$status" = "completed" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Unrelated migration run did not reach a terminal state"
+          exit 1
+
+      - name: Upload exact prepared patch
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: neon-trigger-scope-repair-${{ github.run_id }}-${{ github.run_attempt }}
+          path: prepared
+          if-no-files-found: error
+          retention-days: 7
