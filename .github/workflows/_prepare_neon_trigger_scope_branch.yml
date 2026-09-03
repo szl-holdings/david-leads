@@ -33,10 +33,14 @@ jobs:
 
       - name: Build the schema-only workflow and regression test
         shell: bash
+        env:
+          TEST_CONTENT_B64: IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogQXBhY2hlLTIuMAoiIiJLZWVwIHByaXZpbGVnZWQgTmVvbiBtaWdyYXRpb24gZXhlY3V0aW9uIGJvdW5kIHRvIHNjaGVtYSBjaGFuZ2VzIG9ubHkuIiIiCmZyb20gX19mdXR1cmVfXyBpbXBvcnQgYW5ub3RhdGlvbnMKCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKaW1wb3J0IHlhbWwKCgpST09UID0gUGF0aChfX2ZpbGVfXykucmVzb2x2ZSgpLnBhcmVudHNbMV0KV09SS0ZMT1cgPSBST09UIC8gIi5naXRodWIiIC8gIndvcmtmbG93cyIgLyAibWlncmF0ZS1uZW9uLXBlcnNpc3RlbmNlLnltbCIKCgpkZWYgX3dvcmtmbG93KCkgLT4gZGljdDoKICAgIHZhbHVlID0geWFtbC5zYWZlX2xvYWQoV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKQogICAgIyBQeVlBTUwgMS4xIG1heSBwYXJzZSB0aGUga2V5IGBvbmAgYXMgYm9vbGVhbiBUcnVlLgogICAgdHJpZ2dlciA9IHZhbHVlLmdldCgib24iLCB2YWx1ZS5nZXQoVHJ1ZSkpCiAgICBhc3NlcnQgaXNpbnN0YW5jZSh0cmlnZ2VyLCBkaWN0KQogICAgdmFsdWVbIl9fdHJpZ2dlcl9fIl0gPSB0cmlnZ2VyCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgdGVzdF9hdXRvbWF0aWNfbWlncmF0aW9uX2lzX3NjaGVtYV9vbmx5KCkgLT4gTm9uZToKICAgIHZhbHVlID0gX3dvcmtmbG93KCkKICAgIHB1c2ggPSB2YWx1ZVsiX190cmlnZ2VyX18iXVsicHVzaCJdCiAgICBhc3NlcnQgcHVzaFsiYnJhbmNoZXMiXSA9PSBbIm1haW4iXQogICAgYXNzZXJ0IHB1c2hbInBhdGhzIl0gPT0gWyJhcHAvZGVhbGRlc2tfc2NoZW1hLnNxbCJdCgoKZGVmIHRlc3RfZXhwbGljaXRfZ292ZXJuZWRfZW50cnlwb2ludHNfcmVtYWluX2F2YWlsYWJsZSgpIC0+IE5vbmU6CiAgICB2YWx1ZSA9IF93b3JrZmxvdygpCiAgICB0cmlnZ2VyID0gdmFsdWVbIl9fdHJpZ2dlcl9fIl0KICAgIGFzc2VydCAid29ya2Zsb3dfZGlzcGF0Y2giIGluIHRyaWdnZXIKICAgIGFzc2VydCAid29ya2Zsb3dfY2FsbCIgaW4gdHJpZ2dlcgoKCmRlZiB0ZXN0X3ByaXZpbGVnZWRfZW52aXJvbm1lbnRfYW5kX3NjaGVtYV9zdWJqZWN0X3JlbWFpbl9ib3VuZCgpIC0+IE5vbmU6CiAgICB0ZXh0ID0gV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCiAgICBhc3NlcnQgIm5hbWU6IGRhdmlkLXNwYWNlLWNyZWRlbnRpYWwtcm90YXRpb24iIGluIHRleHQKICAgIGFzc2VydCAnUGF0aCgiYXBwL2RlYWxkZXNrX3NjaGVtYS5zcWwiKScgaW4gdGV4dAogICAgYXNzZXJ0ICJEQVZJRF9EQVRBQkFTRV9BRE1JTl9VUkwiIGluIHRleHQKICAgIGFzc2VydCAiREFWSURfREFUQUJBU0VfVVJMIiBpbiB0ZXh0CgoKZGVmIHRlc3RfdW5yZWxhdGVkX2FwcGxpY2F0aW9uX2FuZF9kb2N1bWVudF9wYXRoc19jYW5ub3RfdHJpZ2dlcl9taWdyYXRpb24oKSAtPiBOb25lOgogICAgdGV4dCA9IFdPUktGTE9XLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQogICAgdHJpZ2dlcl9wcmVmaXggPSB0ZXh0LnNwbGl0KCIgIHdvcmtmbG93X2NhbGw6IHt9IiwgMSlbMF0KICAgIGZvciBwcm9oaWJpdGVkIGluICgKICAgICAgICAnImFwcC8qKiInLAogICAgICAgICciYXBwL3N0YXRpYy8qKiInLAogICAgICAgICcicmVxdWlyZW1lbnRzLnR4dCInLAogICAgICAgICciRG9ja2VyZmlsZSInLAogICAgICAgICciUkVBRE1FLm1kIicsCiAgICAgICAgJyJQVUJMSUNBVElPTl9SRUFESU5FU1MubWQiJywKICAgICAgICAnIlBVQkxJQ19EQVRBX09QRVJBVElOR19NT0RFTC5tZCInLAogICAgICAgICciVEhJUkRfUEFSVFlfTk9USUNFUy5tZCInLAogICAgICAgICciU1BBQ0VfUFJPVkVOQU5DRS5qc29uIicsCiAgICAgICAgJyJyZXNlYXJjaC9DT01QRVRJVElWRV9TWU5USEVTSVNfMjAyNi0wOC0yNi5tZCInLAogICAgICAgICcib3BzL2NyZWRlbnRpYWwtcm90YXRpb24ubWQiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL2hmLWRlcGxveS55bWwiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL21pZ3JhdGUtbmVvbi1wZXJzaXN0ZW5jZS55bWwiJywKICAgICk6CiAgICAgICAgYXNzZXJ0IHByb2hpYml0ZWQgbm90IGluIHRyaWdnZXJfcHJlZml4Cg==
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import base64
+          import os
           import re
 
           source = Path('.github/workflows/migrate-neon-persistence.yml')
@@ -65,70 +69,7 @@ jobs:
 
           test = Path('prepared/tests/test_neon_migration_trigger_scope.py')
           test.parent.mkdir(parents=True, exist_ok=True)
-          test.write_text('''# SPDX-License-Identifier: Apache-2.0
-"""Keep privileged Neon migration execution bound to schema changes only."""
-from __future__ import annotations
-
-from pathlib import Path
-
-import yaml
-
-
-ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
-
-
-def _workflow() -> dict:
-    value = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
-    # PyYAML 1.1 may parse the key `on` as boolean True.
-    trigger = value.get("on", value.get(True))
-    assert isinstance(trigger, dict)
-    value["__trigger__"] = trigger
-    return value
-
-
-def test_automatic_migration_is_schema_only() -> None:
-    value = _workflow()
-    push = value["__trigger__"]["push"]
-    assert push["branches"] == ["main"]
-    assert push["paths"] == ["app/dealdesk_schema.sql"]
-
-
-def test_explicit_governed_entrypoints_remain_available() -> None:
-    value = _workflow()
-    trigger = value["__trigger__"]
-    assert "workflow_dispatch" in trigger
-    assert "workflow_call" in trigger
-
-
-def test_privileged_environment_and_schema_subject_remain_bound() -> None:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    assert "name: david-space-credential-rotation" in text
-    assert 'Path("app/dealdesk_schema.sql")' in text
-    assert "DAVID_DATABASE_ADMIN_URL" in text
-    assert "DAVID_DATABASE_URL" in text
-
-
-def test_unrelated_application_and_document_paths_cannot_trigger_migration() -> None:
-    text = WORKFLOW.read_text(encoding="utf-8")
-    trigger_prefix = text.split("  workflow_call: {}", 1)[0]
-    for prohibited in (
-        '"app/**"',
-        '"app/static/**"',
-        '"requirements.txt"',
-        '"Dockerfile"',
-        '"README.md"',
-        '"PUBLICATION_READINESS.md"',
-        '"PUBLIC_DATA_OPERATING_MODEL.md"',
-        '"THIRD_PARTY_NOTICES.md"',
-        '"SPACE_PROVENANCE.json"',
-        '"research/COMPETITIVE_SYNTHESIS_2026-08-26.md"',
-        '"ops/credential-rotation.md"',
-        '".github/workflows/hf-deploy.yml"',
-        '".github/workflows/migrate-neon-persistence.yml"',
-    ):
-        assert prohibited not in trigger_prefix
-''', encoding='utf-8')
+          test.write_bytes(base64.b64decode(os.environ['TEST_CONTENT_B64']))
           PY
 
           diff -u .github/workflows/migrate-neon-persistence.yml \
