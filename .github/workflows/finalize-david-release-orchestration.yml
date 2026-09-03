@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   finalize:
-    name: Patch, prove, self-delete, and commit
+    name: Patch, prove, and commit test contracts
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -31,46 +31,25 @@ jobs:
           ref: ${{ github.ref_name }}
           fetch-depth: 0
 
-      - name: Reconcile release ownership and add permanent regression
+      - name: Repair and prove release test ownership
         run: |
           set -euo pipefail
           python3 -m py_compile scripts/finalize_david_release_orchestration.py
           python3 scripts/finalize_david_release_orchestration.py
-
-      - name: Prove exact release topology without provider access
-        run: |
-          set -euo pipefail
           python3 -m unittest discover -s tests -p 'test_hf_deploy_release_sequencing.py' -v
-          python3 -m py_compile tests/test_hf_deploy_release_sequencing.py
-          python3 - <<'PY'
-          from pathlib import Path
-
-          dockerfile = Path('Dockerfile').read_text(encoding='utf-8')
-          migration = Path('.github/workflows/migrate-neon-persistence.yml').read_text(encoding='utf-8')
-          for value in (
-              'THIRD_PARTY_NOTICES.md',
-              'research/COMPETITIVE_SYNTHESIS_2026-08-26.md',
-              'ops/credential-rotation.md',
-          ):
-              assert value in dockerfile
-              assert f'"{value}"' in migration
-          automatic = migration.split('  workflow_call: {}', 1)[0]
-          assert '      - "app/dealdesk_schema.sql"' in automatic
-          PY
+          python3 -m py_compile \
+            tests/test_hf_deploy_release_sequencing.py \
+            tests/test_release_truth_surface.py
           git diff --check
 
-      - name: Commit production diff and remove temporary machinery
+      - name: Commit verified non-workflow test diff
         run: |
           set -euo pipefail
           git config user.name "Lutar, Stephen P."
           git config user.email "stephenlutar2@gmail.com"
           git add \
-            .github/workflows/hf-deploy.yml \
-            .github/workflows/migrate-neon-persistence.yml \
-            tests/test_hf_deploy_release_sequencing.py
-          git rm \
-            .github/workflows/finalize-david-release-orchestration.yml \
-            scripts/finalize_david_release_orchestration.py
+            tests/test_hf_deploy_release_sequencing.py \
+            tests/test_release_truth_surface.py
           git diff --cached --check
-          git commit -s -m "fix(release): restore David migrate-first deploy sequencing"
+          git commit -s -m "test(release): prove David migrate-first deploy sequencing"
           git push origin "HEAD:${GITHUB_REF_NAME}"
