@@ -14,6 +14,9 @@ concurrency:
   group: apply-neon-trigger-scope-repair
   cancel-in-progress: false
 
+env:
+  SZL_WORKFLOW_TOKEN: ${{ secrets.ORG_REPO_WORKFLOW_TOKEN || secrets.SZL_ORG_PAT || secrets.SZL_GITHUB_PAT || secrets.SZL_GITHUB_TOKEN || secrets.SZL_GH_PAT || secrets.GH_PAT || secrets.GITHUB_PAT || secrets.ADMIN_PAT || secrets.ORG_GITHUB_TOKEN || secrets.PAT_TOKEN || secrets.CROSS_REPO_TOKEN || github.token }}
+
 jobs:
   apply:
     name: Commit exact schema-only trigger repair
@@ -25,12 +28,13 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Check out exact repair branch
+      - name: Check out exact repair branch with governed publisher
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: fix/scope-neon-migration-trigger-20260903
           fetch-depth: 0
           persist-credentials: true
+          token: ${{ env.SZL_WORKFLOW_TOKEN }}
 
       - name: Apply and prove the bounded repair
         shell: bash
