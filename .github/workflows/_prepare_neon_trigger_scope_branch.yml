@@ -1,4 +1,4 @@
-name: Apply bounded Neon migration trigger repair
+name: Stage verified Neon migration workflow bytes
 
 on:
   push:
@@ -11,15 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-neon-trigger-scope-repair
+  group: stage-neon-trigger-scope-repair
   cancel-in-progress: false
 
-env:
-  SZL_WORKFLOW_TOKEN: ${{ secrets.ORG_REPO_WORKFLOW_TOKEN || secrets.SZL_ORG_PAT || secrets.SZL_GITHUB_PAT || secrets.SZL_GITHUB_TOKEN || secrets.SZL_GH_PAT || secrets.GH_PAT || secrets.GITHUB_PAT || secrets.ADMIN_PAT || secrets.ORG_GITHUB_TOKEN || secrets.PAT_TOKEN || secrets.CROSS_REPO_TOKEN || github.token }}
-
 jobs:
-  apply:
-    name: Commit exact schema-only trigger repair
+  stage:
+    name: Publish ordinary blobs for atomic admin promotion
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -28,15 +25,14 @@ jobs:
         with:
           egress-policy: audit
 
-      - name: Check out exact repair branch with governed publisher
+      - name: Check out exact repair branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: fix/scope-neon-migration-trigger-20260903
           fetch-depth: 0
           persist-credentials: true
-          token: ${{ env.SZL_WORKFLOW_TOKEN }}
 
-      - name: Apply and prove the bounded repair
+      - name: Generate and prove exact replacement bytes
         shell: bash
         env:
           TEST_CONTENT_B64: IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogQXBhY2hlLTIuMAoiIiJLZWVwIHByaXZpbGVnZWQgTmVvbiBtaWdyYXRpb24gZXhlY3V0aW9uIGJvdW5kIHRvIHNjaGVtYSBjaGFuZ2VzIG9ubHkuIiIiCmZyb20gX19mdXR1cmVfXyBpbXBvcnQgYW5ub3RhdGlvbnMKCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKaW1wb3J0IHlhbWwKCgpST09UID0gUGF0aChfX2ZpbGVfXykucmVzb2x2ZSgpLnBhcmVudHNbMV0KV09SS0ZMT1cgPSBST09UIC8gIi5naXRodWIiIC8gIndvcmtmbG93cyIgLyAibWlncmF0ZS1uZW9uLXBlcnNpc3RlbmNlLnltbCIKCgpkZWYgX3dvcmtmbG93KCkgLT4gZGljdDoKICAgIHZhbHVlID0geWFtbC5zYWZlX2xvYWQoV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKQogICAgIyBQeVlBTUwgMS4xIG1heSBwYXJzZSB0aGUga2V5IGBvbmAgYXMgYm9vbGVhbiBUcnVlLgogICAgdHJpZ2dlciA9IHZhbHVlLmdldCgib24iLCB2YWx1ZS5nZXQoVHJ1ZSkpCiAgICBhc3NlcnQgaXNpbnN0YW5jZSh0cmlnZ2VyLCBkaWN0KQogICAgdmFsdWVbIl9fdHJpZ2dlcl9fIl0gPSB0cmlnZ2VyCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgdGVzdF9hdXRvbWF0aWNfbWlncmF0aW9uX2lzX3NjaGVtYV9vbmx5KCkgLT4gTm9uZToKICAgIHZhbHVlID0gX3dvcmtmbG93KCkKICAgIHB1c2ggPSB2YWx1ZVsiX190cmlnZ2VyX18iXVsicHVzaCJdCiAgICBhc3NlcnQgcHVzaFsiYnJhbmNoZXMiXSA9PSBbIm1haW4iXQogICAgYXNzZXJ0IHB1c2hbInBhdGhzIl0gPT0gWyJhcHAvZGVhbGRlc2tfc2NoZW1hLnNxbCJdCgoKZGVmIHRlc3RfZXhwbGljaXRfZ292ZXJuZWRfZW50cnlwb2ludHNfcmVtYWluX2F2YWlsYWJsZSgpIC0+IE5vbmU6CiAgICB2YWx1ZSA9IF93b3JrZmxvdygpCiAgICB0cmlnZ2VyID0gdmFsdWVbIl9fdHJpZ2dlcl9fIl0KICAgIGFzc2VydCAid29ya2Zsb3dfZGlzcGF0Y2giIGluIHRyaWdnZXIKICAgIGFzc2VydCAid29ya2Zsb3dfY2FsbCIgaW4gdHJpZ2dlcgoKCmRlZiB0ZXN0X3ByaXZpbGVnZWRfZW52aXJvbm1lbnRfYW5kX3NjaGVtYV9zdWJqZWN0X3JlbWFpbl9ib3VuZCgpIC0+IE5vbmU6CiAgICB0ZXh0ID0gV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCiAgICBhc3NlcnQgIm5hbWU6IGRhdmlkLXNwYWNlLWNyZWRlbnRpYWwtcm90YXRpb24iIGluIHRleHQKICAgIGFzc2VydCAnUGF0aCgiYXBwL2RlYWxkZXNrX3NjaGVtYS5zcWwiKScgaW4gdGV4dAogICAgYXNzZXJ0ICJEQVZJRF9EQVRBQkFTRV9BRE1JTl9VUkwiIGluIHRleHQKICAgIGFzc2VydCAiREFWSURfREFUQUJBU0VfVVJMIiBpbiB0ZXh0CgoKZGVmIHRlc3RfdW5yZWxhdGVkX2FwcGxpY2F0aW9uX2FuZF9kb2N1bWVudF9wYXRoc19jYW5ub3RfdHJpZ2dlcl9taWdyYXRpb24oKSAtPiBOb25lOgogICAgdGV4dCA9IFdPUktGTE9XLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQogICAgdHJpZ2dlcl9wcmVmaXggPSB0ZXh0LnNwbGl0KCIgIHdvcmtmbG93X2NhbGw6IHt9IiwgMSlbMF0KICAgIGZvciBwcm9oaWJpdGVkIGluICgKICAgICAgICAnImFwcC8qKiInLAogICAgICAgICciYXBwL3N0YXRpYy8qKiInLAogICAgICAgICcicmVxdWlyZW1lbnRzLnR4dCInLAogICAgICAgICciRG9ja2VyZmlsZSInLAogICAgICAgICciUkVBRE1FLm1kIicsCiAgICAgICAgJyJQVUJMSUNBVElPTl9SRUFESU5FU1MubWQiJywKICAgICAgICAnIlBVQkxJQ19EQVRBX09QRVJBVElOR19NT0RFTC5tZCInLAogICAgICAgICciVEhJUkRfUEFSVFlfTk9USUNFUy5tZCInLAogICAgICAgICciU1BBQ0VfUFJPVkVOQU5DRS5qc29uIicsCiAgICAgICAgJyJyZXNlYXJjaC9DT01QRVRJVElWRV9TWU5USEVTSVNfMjAyNi0wOC0yNi5tZCInLAogICAgICAgICcib3BzL2NyZWRlbnRpYWwtcm90YXRpb24ubWQiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL2hmLWRlcGxveS55bWwiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL21pZ3JhdGUtbmVvbi1wZXJzaXN0ZW5jZS55bWwiJywKICAgICk6CiAgICAgICAgYXNzZXJ0IHByb2hpYml0ZWQgbm90IGluIHRyaWdnZXJfcHJlZml4Cg==
@@ -48,8 +44,8 @@ jobs:
           import os
           import re
 
-          workflow = Path('.github/workflows/migrate-neon-persistence.yml')
-          text = workflow.read_text(encoding='utf-8')
+          source = Path('.github/workflows/migrate-neon-persistence.yml')
+          text = source.read_text(encoding='utf-8')
           pattern = re.compile(
               r'(?ms)^  push:\n'
               r'    branches: \[main\]\n'
@@ -67,37 +63,33 @@ jobs:
           patched, count = pattern.subn(replacement, text, count=1)
           if count != 1:
               raise SystemExit(f'expected one push-path block, replaced {count}')
-          workflow.write_text(patched, encoding='utf-8')
 
+          staged = Path('staged-neon-migration-workflow.yml')
+          staged.write_text(patched, encoding='utf-8')
           test = Path('tests/test_neon_migration_trigger_scope.py')
           test.write_bytes(base64.b64decode(os.environ['TEST_CONTENT_B64']))
 
           trigger = patched.split('  workflow_call: {}', 1)[0]
-          if '      - "app/dealdesk_schema.sql"' not in trigger:
-              raise SystemExit('schema-only trigger was not installed')
+          assert '      - "app/dealdesk_schema.sql"' in trigger
           for prohibited in ('"app/**"', '"app/static/**"', '"requirements.txt"',
                              '"Dockerfile"', '"README.md"',
                              '".github/workflows/migrate-neon-persistence.yml"'):
-              if prohibited in trigger:
-                  raise SystemExit(f'unrelated migration trigger survived: {prohibited}')
-          if 'name: david-space-credential-rotation' not in patched:
-              raise SystemExit('protected migration environment was lost')
-          if 'Path("app/dealdesk_schema.sql")' not in patched:
-              raise SystemExit('schema subject binding was lost')
+              assert prohibited not in trigger
+          assert 'name: david-space-credential-rotation' in patched
+          assert 'Path("app/dealdesk_schema.sql")' in patched
           PY
 
           python -m py_compile tests/test_neon_migration_trigger_scope.py
-          rm -f .github/workflows/_prepare_neon_trigger_scope_branch.yml
+          rm -rf tests/__pycache__
           git diff --check
-          test "$(git status --porcelain | wc -l | tr -d ' ')" = "3"
 
-      - name: Commit the exact reviewed scope
+      - name: Commit only non-workflow staging paths
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "3"
-          git commit -s -m "fix(ci): scope Neon migration to schema changes"
+          git add staged-neon-migration-workflow.yml tests/test_neon_migration_trigger_scope.py
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "2"
+          git commit -s -m "chore(ci): stage verified Neon trigger bytes"
           git push origin HEAD:fix/scope-neon-migration-trigger-20260903
