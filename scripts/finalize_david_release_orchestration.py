@@ -8,25 +8,41 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def reconcile_migration_documentation() -> None:
-    path = ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
+def repair_release_truth_test() -> None:
+    path = ROOT / "tests" / "test_release_truth_surface.py"
     text = path.read_text(encoding="utf-8")
-    marker = "  workflow_dispatch: {}\n\npermissions:"
-    replacement = """  workflow_dispatch: {}
+    start_marker = (
+        "    def test_hugging_face_document_links_are_copied_and_trigger_deploy_chain(self):\n"
+    )
+    end_marker = "\n    def test_policy_prohibits_modeled_commercial_forecasts(self):\n"
+    start = text.find(start_marker)
+    end = text.find(end_marker, start + 1)
+    if start < 0 or end < 0:
+        raise SystemExit("release-truth method boundaries are missing")
 
-# Non-schema release payloads remain owned by hf-deploy.yml and never trigger
-# this privileged database migration. These exact Docker inputs are documented
-# here for the legacy release-truth contract while execution remains schema-only:
-# - \"THIRD_PARTY_NOTICES.md\"
-# - \"research/COMPETITIVE_SYNTHESIS_2026-08-26.md\"
-# - \"ops/credential-rotation.md\"
+    replacement = '''    def test_hugging_face_document_links_are_copied_and_trigger_deploy_chain(self):
+        dockerfile = (self.root / "Dockerfile").read_text(encoding="utf-8")
+        deployment = (
+            self.root / ".github" / "workflows" / "hf-deploy.yml"
+        ).read_text(encoding="utf-8")
+        migration = (
+            self.root / ".github" / "workflows" / "migrate-neon-persistence.yml"
+        ).read_text(encoding="utf-8")
+        migration_trigger = migration.split("  workflow_call: {}", 1)[0]
+        required = (
+            "THIRD_PARTY_NOTICES.md",
+            "research/COMPETITIVE_SYNTHESIS_2026-08-26.md",
+            "ops/credential-rotation.md",
+        )
 
-permissions:"""
-    if marker in text:
-        path.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
-        return
-    if "Non-schema release payloads remain owned by hf-deploy.yml" not in text:
-        raise SystemExit("migration insertion point is missing")
+        for relative_path in required:
+            with self.subTest(relative_path=relative_path):
+                self.assertTrue((self.root / relative_path).is_file())
+                self.assertIn(relative_path, dockerfile)
+                self.assertIn(f'"{relative_path}"', deployment)
+                self.assertNotIn(f'"{relative_path}"', migration_trigger)
+'''
+    path.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
 
 
 def write_regression() -> None:
@@ -105,19 +121,6 @@ class DavidReleaseSequencingTests(unittest.TestCase):
         self.assertIn("DAVID_DATABASE_ADMIN_URL", migration)
         self.assertIn('Path("app/dealdesk_schema.sql")', migration)
 
-    def test_legacy_release_truth_paths_are_documented_without_triggering_migration(self) -> None:
-        migration = MIGRATE.read_text(encoding="utf-8")
-        for relative_path in (
-            "THIRD_PARTY_NOTICES.md",
-            "research/COMPETITIVE_SYNTHESIS_2026-08-26.md",
-            "ops/credential-rotation.md",
-        ):
-            self.assertIn(f'"{relative_path}"', migration)
-        self.assertIn(
-            "Non-schema release payloads remain owned by hf-deploy.yml",
-            migration,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()
@@ -127,9 +130,9 @@ if __name__ == "__main__":
 
 
 def main() -> None:
-    reconcile_migration_documentation()
+    repair_release_truth_test()
     write_regression()
-    print("David release orchestration finalization prepared")
+    print("David release orchestration test repairs prepared")
 
 
 if __name__ == "__main__":
