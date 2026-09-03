@@ -8,7 +8,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Official-source organization research with transparent evidence receipts
+short_description: Official-source broker research with evidence receipts
 tags:
   - insurance
   - lead-intelligence
