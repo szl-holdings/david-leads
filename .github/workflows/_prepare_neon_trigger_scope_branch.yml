@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 concurrency:
   group: prepare-neon-trigger-scope-repair
@@ -17,7 +16,7 @@ concurrency:
 
 jobs:
   prepare:
-    name: Cancel unrelated migration and emit exact source patch
+    name: Emit exact schema-only trigger patch
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -31,7 +30,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build the schema-only workflow and regression test
+      - name: Build and verify the schema-only workflow patch
         shell: bash
         env:
           TEST_CONTENT_B64: IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogQXBhY2hlLTIuMAoiIiJLZWVwIHByaXZpbGVnZWQgTmVvbiBtaWdyYXRpb24gZXhlY3V0aW9uIGJvdW5kIHRvIHNjaGVtYSBjaGFuZ2VzIG9ubHkuIiIiCmZyb20gX19mdXR1cmVfXyBpbXBvcnQgYW5ub3RhdGlvbnMKCmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKaW1wb3J0IHlhbWwKCgpST09UID0gUGF0aChfX2ZpbGVfXykucmVzb2x2ZSgpLnBhcmVudHNbMV0KV09SS0ZMT1cgPSBST09UIC8gIi5naXRodWIiIC8gIndvcmtmbG93cyIgLyAibWlncmF0ZS1uZW9uLXBlcnNpc3RlbmNlLnltbCIKCgpkZWYgX3dvcmtmbG93KCkgLT4gZGljdDoKICAgIHZhbHVlID0geWFtbC5zYWZlX2xvYWQoV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpKQogICAgIyBQeVlBTUwgMS4xIG1heSBwYXJzZSB0aGUga2V5IGBvbmAgYXMgYm9vbGVhbiBUcnVlLgogICAgdHJpZ2dlciA9IHZhbHVlLmdldCgib24iLCB2YWx1ZS5nZXQoVHJ1ZSkpCiAgICBhc3NlcnQgaXNpbnN0YW5jZSh0cmlnZ2VyLCBkaWN0KQogICAgdmFsdWVbIl9fdHJpZ2dlcl9fIl0gPSB0cmlnZ2VyCiAgICByZXR1cm4gdmFsdWUKCgpkZWYgdGVzdF9hdXRvbWF0aWNfbWlncmF0aW9uX2lzX3NjaGVtYV9vbmx5KCkgLT4gTm9uZToKICAgIHZhbHVlID0gX3dvcmtmbG93KCkKICAgIHB1c2ggPSB2YWx1ZVsiX190cmlnZ2VyX18iXVsicHVzaCJdCiAgICBhc3NlcnQgcHVzaFsiYnJhbmNoZXMiXSA9PSBbIm1haW4iXQogICAgYXNzZXJ0IHB1c2hbInBhdGhzIl0gPT0gWyJhcHAvZGVhbGRlc2tfc2NoZW1hLnNxbCJdCgoKZGVmIHRlc3RfZXhwbGljaXRfZ292ZXJuZWRfZW50cnlwb2ludHNfcmVtYWluX2F2YWlsYWJsZSgpIC0+IE5vbmU6CiAgICB2YWx1ZSA9IF93b3JrZmxvdygpCiAgICB0cmlnZ2VyID0gdmFsdWVbIl9fdHJpZ2dlcl9fIl0KICAgIGFzc2VydCAid29ya2Zsb3dfZGlzcGF0Y2giIGluIHRyaWdnZXIKICAgIGFzc2VydCAid29ya2Zsb3dfY2FsbCIgaW4gdHJpZ2dlcgoKCmRlZiB0ZXN0X3ByaXZpbGVnZWRfZW52aXJvbm1lbnRfYW5kX3NjaGVtYV9zdWJqZWN0X3JlbWFpbl9ib3VuZCgpIC0+IE5vbmU6CiAgICB0ZXh0ID0gV09SS0ZMT1cucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCiAgICBhc3NlcnQgIm5hbWU6IGRhdmlkLXNwYWNlLWNyZWRlbnRpYWwtcm90YXRpb24iIGluIHRleHQKICAgIGFzc2VydCAnUGF0aCgiYXBwL2RlYWxkZXNrX3NjaGVtYS5zcWwiKScgaW4gdGV4dAogICAgYXNzZXJ0ICJEQVZJRF9EQVRBQkFTRV9BRE1JTl9VUkwiIGluIHRleHQKICAgIGFzc2VydCAiREFWSURfREFUQUJBU0VfVVJMIiBpbiB0ZXh0CgoKZGVmIHRlc3RfdW5yZWxhdGVkX2FwcGxpY2F0aW9uX2FuZF9kb2N1bWVudF9wYXRoc19jYW5ub3RfdHJpZ2dlcl9taWdyYXRpb24oKSAtPiBOb25lOgogICAgdGV4dCA9IFdPUktGTE9XLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQogICAgdHJpZ2dlcl9wcmVmaXggPSB0ZXh0LnNwbGl0KCIgIHdvcmtmbG93X2NhbGw6IHt9IiwgMSlbMF0KICAgIGZvciBwcm9oaWJpdGVkIGluICgKICAgICAgICAnImFwcC8qKiInLAogICAgICAgICciYXBwL3N0YXRpYy8qKiInLAogICAgICAgICcicmVxdWlyZW1lbnRzLnR4dCInLAogICAgICAgICciRG9ja2VyZmlsZSInLAogICAgICAgICciUkVBRE1FLm1kIicsCiAgICAgICAgJyJQVUJMSUNBVElPTl9SRUFESU5FU1MubWQiJywKICAgICAgICAnIlBVQkxJQ19EQVRBX09QRVJBVElOR19NT0RFTC5tZCInLAogICAgICAgICciVEhJUkRfUEFSVFlfTk9USUNFUy5tZCInLAogICAgICAgICciU1BBQ0VfUFJPVkVOQU5DRS5qc29uIicsCiAgICAgICAgJyJyZXNlYXJjaC9DT01QRVRJVElWRV9TWU5USEVTSVNfMjAyNi0wOC0yNi5tZCInLAogICAgICAgICcib3BzL2NyZWRlbnRpYWwtcm90YXRpb24ubWQiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL2hmLWRlcGxveS55bWwiJywKICAgICAgICAnIi5naXRodWIvd29ya2Zsb3dzL21pZ3JhdGUtbmVvbi1wZXJzaXN0ZW5jZS55bWwiJywKICAgICk6CiAgICAgICAgYXNzZXJ0IHByb2hpYml0ZWQgbm90IGluIHRyaWdnZXJfcHJlZml4Cg==
@@ -63,7 +62,7 @@ jobs:
           if count != 1:
               raise SystemExit(f'expected one push-path block, replaced {count}')
 
-          out = Path('prepared/.github/workflows/migrate-neon-persistence.yml')
+          out = Path('prepared/migrate-neon-persistence.yml')
           out.parent.mkdir(parents=True, exist_ok=True)
           out.write_text(patched, encoding='utf-8')
 
@@ -74,31 +73,12 @@ jobs:
 
           set +e
           diff -u .github/workflows/migrate-neon-persistence.yml \
-            prepared/.github/workflows/migrate-neon-persistence.yml
+            prepared/migrate-neon-persistence.yml
           diff_status=$?
           set -e
           test "$diff_status" -eq 1
           python -m py_compile prepared/tests/test_neon_migration_trigger_scope.py
-
-      - name: Cancel the unrelated CSS-triggered migration
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          status="$(gh api repos/szl-holdings/david-leads/actions/runs/33780148055 --jq .status)"
-          if [ "$status" = "waiting" ] || [ "$status" = "queued" ] || [ "$status" = "in_progress" ]; then
-            gh api --method POST repos/szl-holdings/david-leads/actions/runs/33780148055/cancel
-          fi
-          for _ in $(seq 1 15); do
-            status="$(gh api repos/szl-holdings/david-leads/actions/runs/33780148055 --jq .status)"
-            if [ "$status" = "completed" ]; then
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "::error::Unrelated migration run did not reach a terminal state"
-          exit 1
+          rm -rf prepared/tests/__pycache__
 
       - name: Upload exact prepared patch
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
