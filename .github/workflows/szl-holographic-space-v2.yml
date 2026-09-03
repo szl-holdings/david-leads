@@ -1,88 +1,108 @@
-name: Materialize David Leads static Public Experience identity once
+name: SZL Public Experience v3 Contract
 
 on:
+  pull_request:
   push:
-    branches:
-      - fix/static-public-experience-marker-v1
-    paths:
-      - .github/workflows/szl-holographic-space-v2.yml
+    branches: [main]
 
 permissions:
-  contents: write
-
-concurrency:
-  group: david-static-public-experience-marker-v1
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  materialize:
+  public-experience-contract:
+    name: Verify active responsive CSS and inert compatibility asset
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
 
-      - name: Checkout exact execution commit
+      - name: Checkout exact candidate
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
-      - name: Require a current-main-rooted workflow-only bootstrap
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF" = refs/heads/fix/static-public-experience-marker-v1
-          git fetch --no-tags origin main
-          current_main="$(git rev-parse FETCH_HEAD)"
-          test "$(git merge-base HEAD "$current_main")" = "$current_main"
-          mapfile -t changed < <(git diff --name-only "$current_main" HEAD)
-          test "${#changed[@]}" -eq 1
-          test "${changed[0]}" = .github/workflows/szl-holographic-space-v2.yml
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
 
-      - name: Bind the CSS-only contract to the HTML root
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Verify product-owned public experience contract
         shell: bash
+        env:
+          SZL_HOLO_ENTRYPOINT: app/static/index.html
+          SZL_HOLO_CSS: app/static/holo.css
+          SZL_HOLO_JS: app/static/holo.js
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
+          import os
 
-          path = Path('app/static/index.html')
-          text = path.read_text(encoding='utf-8')
-          old = '<html lang="en">'
-          new = '<html lang="en" data-szl-public-experience-v3="true" data-szl-space-holo-v2="true">'
-          if new not in text:
-              if text.count(old) != 1:
-                  raise SystemExit('anonymous shell lacks one exact HTML root')
-              text = text.replace(old, new, 1)
-          if 'holo.js' in text:
-              raise SystemExit('retired compatibility JavaScript must remain absent')
-          if text.count('data-szl-public-experience-v3="true"') != 1:
-              raise SystemExit('Public Experience marker must occur exactly once')
-          if text.count('data-szl-space-holo-v2="true"') != 1:
-              raise SystemExit('CSS activation marker must occur exactly once')
-          path.write_text(text, encoding='utf-8')
+          entrypoint = Path(os.environ['SZL_HOLO_ENTRYPOINT'])
+          css = Path(os.environ['SZL_HOLO_CSS'])
+          javascript = Path(os.environ['SZL_HOLO_JS'])
+          for path in (entrypoint, css, javascript):
+              if not path.is_file():
+                  raise SystemExit(f'missing required public-experience file: {path}')
+
+          css_text = css.read_text(encoding='utf-8')
+          for marker in (
+              'SZL Public Experience v3',
+              '--szl-touch-target',
+              '100dvh',
+              'safe-area-inset',
+              'overflow-x: clip',
+              'max-width: 479px',
+              'min-width: 768px',
+              'min-width: 1440px',
+              'min-width: 1920px',
+              'min-width: 2560px',
+              'prefers-reduced-motion',
+              'prefers-contrast',
+              'forced-colors',
+              '@media print',
+          ):
+              if marker not in css_text:
+                  raise SystemExit(f'{css}: missing responsive contract {marker}')
+          if any(value in css_text for value in ('@import', 'cdn.', 'unpkg.', 'jsdelivr.')):
+              raise SystemExit(f'{css}: external runtime asset is prohibited')
+          if css_text.count('{') != css_text.count('}'):
+              raise SystemExit(f'{css}: unbalanced CSS braces')
+
+          js_text = javascript.read_text(encoding='utf-8')
+          for marker in (
+              'RETIRED / INERT COMPATIBILITY STUB',
+              'global.Holo',
+              'retired: true',
+          ):
+              if marker not in js_text:
+                  raise SystemExit(f'{javascript}: missing inert compatibility contract {marker}')
+          if len(js_text.encode('utf-8')) >= 2_000:
+              raise SystemExit(f'{javascript}: dormant compatibility asset exceeds 2 KB')
+          for value in (
+              'fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage',
+              'sessionStorage', 'document.cookie', 'MutationObserver',
+              'addEventListener(', 'requestAnimationFrame',
+          ):
+              if value in js_text:
+                  raise SystemExit(f'{javascript}: prohibited active compatibility behavior {value}')
+
+          html = entrypoint.read_text(encoding='utf-8')
+          if css.name not in html:
+              raise SystemExit(f'{entrypoint}: active CSS binding missing for {css.name}')
+          if javascript.name in html:
+              raise SystemExit(
+                  f'{entrypoint}: {javascript.name} must remain absent from the anonymous shell '
+                  'under the product release-truth contract'
+              )
           PY
-          git show origin/main:.github/workflows/szl-holographic-space-v2.yml > .github/workflows/szl-holographic-space-v2.yml
+          node --check "${SZL_HOLO_JS}"
           git diff --check
-          mapfile -t final_changed < <(git diff --name-only origin/main)
-          test "${#final_changed[@]}" -eq 1
-          test "${final_changed[0]}" = app/static/index.html
-
-      - name: Commit the permanent one-file cumulative result
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'Stephen Lutar'
-          git config user.email 'stephenlutar2@gmail.com'
-          git add app/static/index.html .github/workflows/szl-holographic-space-v2.yml
-          mapfile -t staged < <(git diff --cached --name-only)
-          test "${#staged[@]}" -eq 2
-          printf '%s\n' "${staged[@]}" | grep -Fx .github/workflows/szl-holographic-space-v2.yml
-          printf '%s\n' "${staged[@]}" | grep -Fx app/static/index.html
-          git commit -m 'fix(frontend): activate static Public Experience identity' -m 'Bind the responsive CSS contract to the anonymous HTML root without loading the retired compatibility JavaScript.' -m 'Signed-off-by: Stephen Lutar <stephenlutar2@gmail.com>'
-          test "$(git diff --name-only origin/main HEAD)" = app/static/index.html
-          git push origin HEAD:fix/static-public-experience-marker-v1
