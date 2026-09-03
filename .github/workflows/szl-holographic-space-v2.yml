@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   public-experience-contract:
-    name: Verify active responsive CSS and dormant compatibility asset
+    name: Verify active responsive CSS and inert compatibility asset
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -79,17 +79,21 @@ jobs:
 
           js_text = javascript.read_text(encoding='utf-8')
           for marker in (
-              '__SZL_PUBLIC_EXPERIENCE_V3__',
-              'szlPublicExperienceV3',
-              'szlViewportTier',
-              'visualViewport',
-              'requestAnimationFrame',
+              'RETIRED / INERT COMPATIBILITY STUB',
+              'global.Holo',
+              'retired: true',
           ):
               if marker not in js_text:
-                  raise SystemExit(f'{javascript}: missing compatibility contract {marker}')
-          for value in ('fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage', 'sessionStorage', 'document.cookie'):
+                  raise SystemExit(f'{javascript}: missing inert compatibility contract {marker}')
+          if len(js_text.encode('utf-8')) >= 2_000:
+              raise SystemExit(f'{javascript}: dormant compatibility asset exceeds 2 KB')
+          for value in (
+              'fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage',
+              'sessionStorage', 'document.cookie', 'MutationObserver',
+              'addEventListener(', 'requestAnimationFrame',
+          ):
               if value in js_text:
-                  raise SystemExit(f'{javascript}: prohibited client behavior {value}')
+                  raise SystemExit(f'{javascript}: prohibited active compatibility behavior {value}')
 
           html = entrypoint.read_text(encoding='utf-8')
           if css.name not in html:
