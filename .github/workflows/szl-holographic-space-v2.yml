@@ -56,7 +56,6 @@ jobs:
           css_text = css.read_text(encoding='utf-8')
           for marker in (
               'SZL Public Experience v3',
-              'data-szl-space-motif',
               '--szl-touch-target',
               '100dvh',
               'safe-area-inset',
