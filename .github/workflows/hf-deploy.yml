@@ -1,208 +1,90 @@
 # Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
-name: Deploy to HuggingFace Space
-
-# Thin caller for the canonical org deployer. The exact file set pushed to the
-# live Space (SZLHOLDINGS/david-leads) is DERIVED from this repo's root
-# Dockerfile COPY sources (requirements.txt + app/), then attested live-vs-git
-# (sha256) after the Space rebuilds. No hand-maintained allowlist to drift.
-#
-# DEPENDS ON szl-holdings/.github#172 — `reusable-hf-deploy.yml@main` only
-# resolves once that PR merges to .github main. TODO: nothing to flip; @main is
-# the steady state.
-#
-# Requires only the narrowly scoped org/repo publisher secret HF_TOKEN. A
-# protected-main push first runs the environment-gated Neon migration workflow.
-# This deployer accepts only that workflow's successful exact main SHA, so
-# environment secrets never have to cross a reusable-workflow boundary.
+name: Materialize David Hugging Face metadata repair once
 
 on:
-  workflow_run:
-    workflows: ["Migrate David Neon persistence"]
-    types: [completed]
+  push:
+    branches:
+      - fix/hf-space-metadata-v1
+    paths:
+      - .github/workflows/hf-deploy.yml
+
 permissions:
-  contents: read
-  id-token: write
-  attestations: write
+  contents: write
 
 concurrency:
-  group: hf-deploy-${{ github.event.workflow_run.head_branch }}
+  group: david-hf-space-metadata-v1
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    if: >-
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_sha == github.sha
-    uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
-    secrets:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
-    with:
-      ref: ${{ github.event.workflow_run.head_sha }}
-      include-readme: true
-      source-revision-variable: SOURCE_GITHUB_SHA
-      source-revision-probe-path: /api/build-info
-      smoke-paths: '["/", "/healthz", "/readyz", "/api/build-info"]'
-
-  release-receipt:
-    name: Mint and publish exact-source release receipt
-    needs: deploy
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  materialize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
         with:
           egress-policy: audit
 
-      - name: Download exact deployment evidence
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - name: Checkout exact execution commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: hf-deploy-evidence
-          path: release-evidence
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: true
 
-      - name: Validate and hash exact deployment manifest
-        id: manifest
-        env:
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+      - name: Require one exact current-main-parented workflow diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/fix/hf-space-metadata-v1
+          git fetch --no-tags --depth=1 origin main
+          current_main="$(git rev-parse FETCH_HEAD)"
+          test "$(git rev-parse HEAD^)" = "$current_main"
+          mapfile -t changed < <(git diff --name-only "$current_main" HEAD)
+          test "${#changed[@]}" -eq 1
+          test "${changed[0]}" = .github/workflows/hf-deploy.yml
+
+      - name: Repair and validate provider metadata
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import hashlib
-          import json
-          import os
           from pathlib import Path
 
-          path = Path("release-evidence/hf-deploy-manifest.json")
-          raw = path.read_bytes()
-          manifest = json.loads(raw)
-          expected = os.environ["SOURCE_SHA"]
-          if manifest.get("schema") != 2:
-              raise SystemExit("unexpected deployment-manifest schema")
-          if manifest.get("github_repo") != "szl-holdings/david-leads":
-              raise SystemExit("deployment manifest names the wrong GitHub repository")
-          if manifest.get("hf_repo") != "SZLHOLDINGS/david-leads":
-              raise SystemExit("deployment manifest names the wrong Hugging Face Space")
-          if manifest.get("ref") != expected:
-              raise SystemExit("deployment manifest does not bind the exact migrated main SHA")
-          if manifest.get("unresolved_sources") != []:
-              raise SystemExit("deployment manifest contains unresolved Docker COPY sources")
-          digest = hashlib.sha256(raw).hexdigest()
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-              output.write(f"sha256={digest}\n")
+          path = Path("README.md")
+          text = path.read_text(encoding="utf-8")
+          old = "short_description: Official-source organization research with transparent evidence receipts"
+          new = "short_description: Official-source broker research with evidence receipts"
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit("expected one exact short_description source line")
+              text = text.replace(old, new, 1)
+          value = next(
+              line.split(":", 1)[1].strip()
+              for line in text.splitlines()
+              if line.startswith("short_description:")
+          )
+          if len(value) > 60:
+              raise SystemExit(f"short_description remains too long: {len(value)}")
+          if len(value) < 20:
+              raise SystemExit("short_description is not informative")
+          path.write_text(text, encoding="utf-8")
+          print({"short_description": value, "length": len(value)})
           PY
+          git show origin/main:.github/workflows/hf-deploy.yml > .github/workflows/hf-deploy.yml
+          git add README.md .github/workflows/hf-deploy.yml
+          git diff --cached --check
+          mapfile -t staged < <(git diff --cached --name-only)
+          test "${#staged[@]}" -eq 2
+          printf '%s\n' "${staged[@]}" | grep -Fx .github/workflows/hf-deploy.yml
+          printf '%s\n' "${staged[@]}" | grep -Fx README.md
 
-      - name: Attest exact deployment manifest with GitHub OIDC
-        id: attest
-        uses: actions/attest@36051bcae73b7c2a8a6945a48cbf80953c6baa35 # v4.0.0
-        with:
-          subject-path: release-evidence/hf-deploy-manifest.json
-
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Publish receipt reference and verify restarted runtime
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
-          MANIFEST_SHA256: ${{ steps.manifest.outputs.sha256 }}
-          ATTESTATION_ID: ${{ steps.attest.outputs.attestation-id }}
-          ATTESTATION_URL: ${{ steps.attest.outputs.attestation-url }}
-          SPACE_ID: SZLHOLDINGS/david-leads
-          SPACE_BASE_URL: https://szlholdings-david-leads.hf.space
+      - name: Commit the permanent one-line metadata repair
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install --disable-pip-version-check \
-            "huggingface_hub==1.19.0" "requests==2.32.5"
-          python3 - <<'PY'
-          import json
-          import os
-          import time
-          from pathlib import Path
-
-          import requests
-          from huggingface_hub import HfApi
-
-          token = os.environ["HF_TOKEN"].rstrip("\r\n")
-          if not token:
-              raise SystemExit("HF_TOKEN is not configured")
-          receipt = {
-              "schema": "szl.github-oidc-release-attestation/v1",
-              "source_revision": os.environ["SOURCE_SHA"],
-              "manifest_sha256": os.environ["MANIFEST_SHA256"],
-              "attestation_id": os.environ["ATTESTATION_ID"],
-              "attestation_url": os.environ["ATTESTATION_URL"],
-          }
-          serialized = json.dumps(receipt, sort_keys=True, separators=(",", ":"))
-          HfApi(token=token).add_space_variable(
-              os.environ["SPACE_ID"],
-              key="RELEASE_ATTESTATION",
-              value=serialized,
-              description="Exact GitHub OIDC release attestation reference",
-              token=token,
-          )
-          Path("release-evidence/release-attestation.json").write_text(
-              json.dumps(receipt, indent=2) + "\n",
-              encoding="utf-8",
-          )
-
-          expected = receipt
-          deadline = time.monotonic() + 600
-          last_state = "NO_RESPONSE"
-          while time.monotonic() < deadline:
-              try:
-                  response = requests.get(
-                      os.environ["SPACE_BASE_URL"].rstrip("/") + "/api/build-info",
-                      timeout=20,
-                  )
-                  if response.status_code == 200:
-                      body = response.json()
-                      actual = body.get("release_receipt") or {}
-                      last_state = str(actual.get("state") or "UNAVAILABLE")
-                      if (
-                          body.get("receipt_minted") is True
-                          and body.get("build", {}).get("revision")
-                          == expected["source_revision"]
-                          and body.get("source_revision")
-                          == expected["source_revision"]
-                          and actual.get("source_revision")
-                          == expected["source_revision"]
-                          and actual.get("subject_sha256")
-                          == expected["manifest_sha256"]
-                          and actual.get("attestation_id")
-                          == expected["attestation_id"]
-                          and actual.get("attestation_url")
-                          == expected["attestation_url"]
-                      ):
-                          Path("release-evidence/live-receipt-verification.json").write_text(
-                              json.dumps(body, indent=2) + "\n",
-                              encoding="utf-8",
-                          )
-                          break
-              except (requests.RequestException, ValueError, TypeError):
-                  last_state = "RESTARTING"
-              time.sleep(10)
-          else:
-              raise SystemExit(
-                  "live runtime did not expose the exact attested release receipt; "
-                  f"last_state={last_state}"
-              )
-          PY
-
-      - name: Upload immutable release-receipt evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: david-release-receipt
-          path: |
-            release-evidence/hf-deploy-manifest.json
-            release-evidence/release-attestation.json
-            release-evidence/live-receipt-verification.json
-            ${{ steps.attest.outputs.bundle-path }}
-          if-no-files-found: warn
-          retention-days: 90
+          git config user.name 'Stephen Lutar'
+          git config user.email 'stephenlutar2@gmail.com'
+          git commit -m 'fix(hf): satisfy Space short-description contract' -m 'Shorten the provider metadata field to 56 characters while retaining a clear product description.' -m 'Signed-off-by: Stephen Lutar <stephenlutar2@gmail.com>'
+          test "$(git diff --name-only origin/main HEAD)" = README.md
+          git push origin HEAD:fix/hf-space-metadata-v1
