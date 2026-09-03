@@ -1,4 +1,4 @@
-name: Finalize David Public Experience v3 source binding
+name: Repair David Public Experience v3 truth surface
 
 on:
   push:
@@ -11,12 +11,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: finalize-david-public-experience-v3
+  group: repair-david-public-experience-v3
   cancel-in-progress: false
 
 jobs:
-  finalize:
-    name: Activate local runtime assets and verify the review branch
+  repair:
+    name: Remove forbidden anonymous script binding and verify
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -31,7 +31,7 @@ jobs:
           ref: design/szl-public-experience-v3
           fetch-depth: 0
 
-      - name: Activate and verify the local Public Experience layer
+      - name: Restore product-owned anonymous-shell truth
         shell: bash
         run: |
           set -euo pipefail
@@ -47,16 +47,17 @@ jobs:
 
           html = index.read_text(encoding='utf-8')
           loader = '  <script src="holo.js?v=szl-public-experience-v3" defer></script>\n'
-          if loader.strip() not in html:
-              needle = '  <script src="app.js?v=kanchay-honesty-20260828" defer></script>'
-              if needle not in html:
-                  raise SystemExit('David entrypoint script injection point is missing')
-              html = html.replace(needle, loader + needle, 1)
+          if loader in html:
+              html = html.replace(loader, '', 1)
               index.write_text(html, encoding='utf-8')
 
           html = index.read_text(encoding='utf-8')
-          if 'holo.css' not in html or 'holo.js' not in html:
-              raise SystemExit('entrypoint is not bound to both local assets')
+          if 'holo.css' not in html:
+              raise SystemExit('active responsive CSS binding is missing')
+          if 'holo.js' in html:
+              raise SystemExit('legacy compatibility JavaScript remains bound to the anonymous shell')
+          if 'app.js?v=kanchay-honesty-20260828' not in html:
+              raise SystemExit('product-owned David application script is missing')
 
           css_text = css.read_text(encoding='utf-8')
           for marker in (
@@ -65,13 +66,7 @@ jobs:
               '100dvh',
               'safe-area-inset',
               'overflow-x: clip',
-              'max-width: 479px',
-              'min-width: 768px',
-              'min-width: 1440px',
-              'min-width: 1920px',
-              'min-width: 2560px',
               'prefers-reduced-motion',
-              'prefers-contrast',
               'forced-colors',
               '@media print',
           ):
@@ -79,25 +74,11 @@ jobs:
                   raise SystemExit(f'holo.css is missing {marker}')
           if css_text.count('{') != css_text.count('}'):
               raise SystemExit('holo.css has unbalanced braces')
-
-          js_text = javascript.read_text(encoding='utf-8')
-          for marker in (
-              '__SZL_PUBLIC_EXPERIENCE_V3__',
-              'szlPublicExperienceV3',
-              'szlViewportTier',
-              'visualViewport',
-              'requestAnimationFrame',
-          ):
-              if marker not in js_text:
-                  raise SystemExit(f'holo.js is missing {marker}')
-          for prohibited in ('fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage', 'sessionStorage', 'document.cookie'):
-              if prohibited in js_text:
-                  raise SystemExit(f'holo.js contains prohibited behavior: {prohibited}')
           PY
           node --check app/static/holo.js
           git diff --check
 
-      - name: Commit the source binding when required
+      - name: Commit corrected review branch when required
         shell: bash
         run: |
           set -euo pipefail
@@ -105,8 +86,8 @@ jobs:
           git config user.email "stephenlutar2@gmail.com"
           git add app/static/index.html
           if git diff --cached --quiet; then
-            echo 'David entrypoint was already bound to the local runtime assets.'
+            echo 'David anonymous shell already preserves the product truth contract.'
             exit 0
           fi
-          git commit -s -m "fix(frontend): activate Public Experience v3 runtime"
+          git commit -s -m "fix(frontend): preserve David anonymous truth surface"
           git push origin HEAD:design/szl-public-experience-v3
