@@ -1,0 +1,101 @@
+name: SZL Public Experience v3 Contract
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  public-experience-contract:
+    name: Verify responsive assets and active source binding
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Verify local responsive assets and source binding
+        shell: bash
+        env:
+          SZL_HOLO_ENTRYPOINT: app/static/index.html
+          SZL_HOLO_CSS: app/static/holo.css
+          SZL_HOLO_JS: app/static/holo.js
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+
+          entrypoint = Path(os.environ['SZL_HOLO_ENTRYPOINT'])
+          css = Path(os.environ['SZL_HOLO_CSS'])
+          javascript = Path(os.environ['SZL_HOLO_JS'])
+          for path in (entrypoint, css, javascript):
+              if not path.is_file():
+                  raise SystemExit(f'missing required public-experience file: {path}')
+
+          css_text = css.read_text(encoding='utf-8')
+          for marker in (
+              'SZL Public Experience v3',
+              'data-szl-space-motif',
+              '--szl-touch-target',
+              '100dvh',
+              'safe-area-inset',
+              'overflow-x: clip',
+              'max-width: 479px',
+              'min-width: 768px',
+              'min-width: 1440px',
+              'min-width: 1920px',
+              'min-width: 2560px',
+              'prefers-reduced-motion',
+              'prefers-contrast',
+              'forced-colors',
+              '@media print',
+          ):
+              if marker not in css_text:
+                  raise SystemExit(f'{css}: missing responsive contract {marker}')
+          if any(value in css_text for value in ('@import', 'cdn.', 'unpkg.', 'jsdelivr.')):
+              raise SystemExit(f'{css}: external runtime asset is prohibited')
+          if css_text.count('{') != css_text.count('}'):
+              raise SystemExit(f'{css}: unbalanced CSS braces')
+
+          js_text = javascript.read_text(encoding='utf-8')
+          for marker in (
+              '__SZL_PUBLIC_EXPERIENCE_V3__',
+              'szlPublicExperienceV3',
+              'szlViewportTier',
+              'visualViewport',
+              'requestAnimationFrame',
+          ):
+              if marker not in js_text:
+                  raise SystemExit(f'{javascript}: missing runtime contract {marker}')
+          for value in ('fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage', 'sessionStorage', 'document.cookie'):
+              if value in js_text:
+                  raise SystemExit(f'{javascript}: prohibited client behavior {value}')
+
+          html = entrypoint.read_text(encoding='utf-8')
+          for asset in (css.name, javascript.name):
+              if asset not in html:
+                  raise SystemExit(f'{entrypoint}: active source binding missing for {asset}')
+          PY
+          node --check "${SZL_HOLO_JS}"
+          git diff --check
