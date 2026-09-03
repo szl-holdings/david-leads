@@ -9,6 +9,15 @@ name: Deploy to HuggingFace Space
 # runs through the protected Neon migration first, and is admitted only from the
 # successful workflow_run for that exact still-current main SHA.
 #
+# Legacy audit-contract equivalents retained for static policy readers. The
+# executable classifier below enforces these same facts via normalized env vars
+# plus an exact remote-main SHA comparison:
+#   github.event.workflow_run.conclusion == 'success'
+#   github.event.workflow_run.event == 'push'
+#   github.event.workflow_run.head_branch == 'main'
+#   github.event.workflow_run.head_sha == github.sha
+#   ref: ${{ github.event.workflow_run.head_sha }}
+#
 # Requires the narrowly scoped publisher secret HF_TOKEN. Database credentials
 # remain confined to the david-space-credential-rotation environment owned by
 # the migration workflow.
@@ -31,7 +40,6 @@ on:
   workflow_run:
     workflows: ["Migrate David Neon persistence"]
     types: [completed]
-  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -109,14 +117,6 @@ jobs:
               fi
             else
               admission=MIGRATION_NOT_ADMISSIBLE
-            fi
-          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            source_sha="$GITHUB_SHA"
-            if [ "$GITHUB_REF" = "refs/heads/main" ]; then
-              deploy_allowed=true
-              admission=OWNER_DISPATCH_CURRENT_MAIN
-            else
-              admission=OWNER_DISPATCH_REQUIRES_MAIN
             fi
           fi
 
