@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   public-experience-contract:
-    name: Verify responsive assets and active source binding
+    name: Verify active responsive CSS and dormant compatibility asset
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Verify local responsive assets and source binding
+      - name: Verify product-owned public experience contract
         shell: bash
         env:
           SZL_HOLO_ENTRYPOINT: app/static/index.html
@@ -56,7 +56,6 @@ jobs:
           css_text = css.read_text(encoding='utf-8')
           for marker in (
               'SZL Public Experience v3',
-              'data-szl-space-motif',
               '--szl-touch-target',
               '100dvh',
               'safe-area-inset',
@@ -87,15 +86,19 @@ jobs:
               'requestAnimationFrame',
           ):
               if marker not in js_text:
-                  raise SystemExit(f'{javascript}: missing runtime contract {marker}')
+                  raise SystemExit(f'{javascript}: missing compatibility contract {marker}')
           for value in ('fetch(', 'XMLHttpRequest', 'sendBeacon', 'localStorage', 'sessionStorage', 'document.cookie'):
               if value in js_text:
                   raise SystemExit(f'{javascript}: prohibited client behavior {value}')
 
           html = entrypoint.read_text(encoding='utf-8')
-          for asset in (css.name, javascript.name):
-              if asset not in html:
-                  raise SystemExit(f'{entrypoint}: active source binding missing for {asset}')
+          if css.name not in html:
+              raise SystemExit(f'{entrypoint}: active CSS binding missing for {css.name}')
+          if javascript.name in html:
+              raise SystemExit(
+                  f'{entrypoint}: {javascript.name} must remain absent from the anonymous shell '
+                  'under the product release-truth contract'
+              )
           PY
           node --check "${SZL_HOLO_JS}"
           git diff --check
