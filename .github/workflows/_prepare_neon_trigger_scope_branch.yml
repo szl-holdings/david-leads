@@ -72,8 +72,12 @@ jobs:
           test.write_bytes(base64.b64decode(os.environ['TEST_CONTENT_B64']))
           PY
 
+          set +e
           diff -u .github/workflows/migrate-neon-persistence.yml \
             prepared/.github/workflows/migrate-neon-persistence.yml
+          diff_status=$?
+          set -e
+          test "$diff_status" -eq 1
           python -m py_compile prepared/tests/test_neon_migration_trigger_scope.py
 
       - name: Cancel the unrelated CSS-triggered migration
