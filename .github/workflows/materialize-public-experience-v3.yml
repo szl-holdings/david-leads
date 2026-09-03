@@ -1,0 +1,94 @@
+name: Materialize SZL Public Experience v3 locally
+
+on:
+  push:
+    branches:
+      - automation/local-public-experience-v3-20260903
+    paths:
+      - .github/workflows/materialize-public-experience-v3.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: local-public-experience-v3-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    name: Plan and open the repository-local rollout PR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact protected rollout tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: szl-holdings/.github
+          ref: e99f628b78458ad9560e8e06ed6cb795f1871c0c
+          path: tooling
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Run network-free controller contracts
+        working-directory: tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile \
+            .github/scripts/rollout_holographic_spaces_v2.py \
+            .github/scripts/run_holographic_spaces_v2.py \
+            .github/scripts/responsive_space_contract.py \
+            .github/scripts/holographic_target_contract.py
+          node --check design/holographic-v2/szl-space-hologram.js
+          node --check design/responsive-v3/szl-responsive-v3.js
+          python .github/tests/test_holographic_spaces_v2.py
+          python .github/tests/test_responsive_space_contract.py
+          python .github/tests/test_holographic_target_contract.py
+
+      - name: Materialize review branch and pull request in this repository
+        working-directory: tooling
+        shell: bash
+        env:
+          SZL_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo_filter="${GITHUB_REPOSITORY#*/}"
+          report="${RUNNER_TEMP}/public-experience-v3-${repo_filter}.json"
+          python .github/scripts/run_holographic_spaces_v2.py \
+            --org szl-holdings \
+            --repo-filter "${repo_filter}" \
+            --max-repos 500 \
+            --assets-root design/holographic-v2 \
+            --report "${report}" \
+            --apply
+          python - "${report}" "${GITHUB_REPOSITORY}" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+          expected = sys.argv[2]
+          if report.get('secrets_recorded') is not False:
+              raise SystemExit('secret-recording invariant failed')
+          if report.get('default_branch_writes') is not False or report.get('force_pushes') is not False:
+              raise SystemExit('source-control safety invariant failed')
+          rows = [row for row in report.get('repositories', []) if row.get('repository') == expected]
+          if len(rows) != 1:
+              raise SystemExit(f'expected exactly one repository result for {expected}, found {len(rows)}')
+          row = rows[0]
+          if row.get('status') not in {'pull-opened', 'pull-existing', 'already-integrated'}:
+              raise SystemExit(json.dumps(row, indent=2, sort_keys=True))
+          print(json.dumps(row, indent=2, sort_keys=True))
+          PY
