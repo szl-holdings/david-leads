@@ -1,0 +1,170 @@
+name: Stage two-stage Neon release gate
+
+on:
+  push:
+    branches:
+      - fix/scope-neon-migration-trigger-20260903
+    paths:
+      - .github/workflows/_stage_neon_release_gate_v2.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage-neon-release-gate-v2
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    name: Generate exact unprivileged-classifier architecture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/scope-neon-migration-trigger-20260903
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Generate and prove release-gate replacement bytes
+        shell: bash
+        env:
+          TEST_CONTENT_B64: IyBTUERYLUxpY2Vuc2UtSWRlbnRpZmllcjogQXBhY2hlLTIuMAoiIiJQcm92ZSByZWxlYXNlIHB1YmxpY2F0aW9uIGNhbm5vdCBhY3F1aXJlIGRhdGFiYXNlIGF1dGhvcml0eSBieSBwYXRoIGFsb25lLiIiIgpmcm9tIF9fZnV0dXJlX18gaW1wb3J0IGFubm90YXRpb25zCgpmcm9tIHBhdGhsaWIgaW1wb3J0IFBhdGgKaW1wb3J0IHVuaXR0ZXN0CgppbXBvcnQgeWFtbAoKClJPT1QgPSBQYXRoKF9fZmlsZV9fKS5yZXNvbHZlKCkucGFyZW50c1sxXQpNSUdSQVRJT04gPSBST09UIC8gIi5naXRodWIiIC8gIndvcmtmbG93cyIgLyAibWlncmF0ZS1uZW9uLXBlcnNpc3RlbmNlLnltbCIKREVQTE9ZID0gUk9PVCAvICIuZ2l0aHViIiAvICJ3b3JrZmxvd3MiIC8gImhmLWRlcGxveS55bWwiClNDSEVNQV9QQVRIID0gImFwcC9kZWFsZGVza19zY2hlbWEuc3FsIgoKCmRlZiBfd29ya2Zsb3cocGF0aDogUGF0aCkgLT4gZGljdDoKICAgIHZhbHVlID0geWFtbC5zYWZlX2xvYWQocGF0aC5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikpCiAgICB0cmlnZ2VyID0gdmFsdWUuZ2V0KCJvbiIsIHZhbHVlLmdldChUcnVlKSkKICAgIGlmIG5vdCBpc2luc3RhbmNlKHRyaWdnZXIsIGRpY3QpOgogICAgICAgIHJhaXNlIEFzc2VydGlvbkVycm9yKGYie3BhdGh9OiB3b3JrZmxvdyB0cmlnZ2VyIGlzIG5vdCBhIG1hcHBpbmciKQogICAgdmFsdWVbIl9fdHJpZ2dlcl9fIl0gPSB0cmlnZ2VyCiAgICByZXR1cm4gdmFsdWUKCgpjbGFzcyBOZW9uTWlncmF0aW9uVHJpZ2dlclNjb3BlVGVzdHModW5pdHRlc3QuVGVzdENhc2UpOgogICAgZGVmIHNldFVwKHNlbGYpIC0+IE5vbmU6CiAgICAgICAgc2VsZi53b3JrZmxvdyA9IF93b3JrZmxvdyhNSUdSQVRJT04pCiAgICAgICAgc2VsZi50cmlnZ2VyID0gc2VsZi53b3JrZmxvd1siX190cmlnZ2VyX18iXQogICAgICAgIHNlbGYuam9icyA9IHNlbGYud29ya2Zsb3dbImpvYnMiXQogICAgICAgIHNlbGYudGV4dCA9IE1JR1JBVElPTi5yZWFkX3RleHQoZW5jb2Rpbmc9InV0Zi04IikKCiAgICBkZWYgdGVzdF9yZWxlYXNlX2lucHV0c19zdGlsbF90cmlnZ2VyX3RoZV91bnByaXZpbGVnZWRfZ2F0ZShzZWxmKSAtPiBOb25lOgogICAgICAgIHBhdGhzID0gc2V0KHNlbGYudHJpZ2dlclsicHVzaCJdWyJwYXRocyJdKQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoc2VsZi50cmlnZ2VyWyJwdXNoIl1bImJyYW5jaGVzIl0sIFsibWFpbiJdKQogICAgICAgIGZvciByZXF1aXJlZCBpbiAoCiAgICAgICAgICAgICJhcHAvKioiLAogICAgICAgICAgICAicmVxdWlyZW1lbnRzLnR4dCIsCiAgICAgICAgICAgICJEb2NrZXJmaWxlIiwKICAgICAgICAgICAgIlJFQURNRS5tZCIsCiAgICAgICAgICAgICJQVUJMSUNBVElPTl9SRUFESU5FU1MubWQiLAogICAgICAgICAgICAiUFVCTElDX0RBVEFfT1BFUkFUSU5HX01PREVMLm1kIiwKICAgICAgICAgICAgIlRISVJEX1BBUlRZX05PVElDRVMubWQiLAogICAgICAgICAgICAiU1BBQ0VfUFJPVkVOQU5DRS5qc29uIiwKICAgICAgICAgICAgInJlc2VhcmNoL0NPTVBFVElUSVZFX1NZTlRIRVNJU18yMDI2LTA4LTI2Lm1kIiwKICAgICAgICAgICAgIm9wcy9jcmVkZW50aWFsLXJvdGF0aW9uLm1kIiwKICAgICAgICAgICAgIi5naXRodWIvd29ya2Zsb3dzL2hmLWRlcGxveS55bWwiLAogICAgICAgICAgICAiLmdpdGh1Yi93b3JrZmxvd3MvbWlncmF0ZS1uZW9uLXBlcnNpc3RlbmNlLnltbCIsCiAgICAgICAgKToKICAgICAgICAgICAgd2l0aCBzZWxmLnN1YlRlc3QocmVxdWlyZWQ9cmVxdWlyZWQpOgogICAgICAgICAgICAgICAgc2VsZi5hc3NlcnRJbihyZXF1aXJlZCwgcGF0aHMpCgogICAgZGVmIHRlc3RfY2xhc3NpZmllcl9pc191bnByaXZpbGVnZWRfYW5kX2V4cG9ydHNfc2NoZW1hX2RlY2lzaW9uKHNlbGYpIC0+IE5vbmU6CiAgICAgICAgY2xhc3NpZnkgPSBzZWxmLmpvYnNbImNsYXNzaWZ5Il0KICAgICAgICBzZWxmLmFzc2VydE5vdEluKCJlbnZpcm9ubWVudCIsIGNsYXNzaWZ5KQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoY2xhc3NpZnlbIm91dHB1dHMiXVsic2NoZW1hX2NoYW5nZWQiXSwgIiR7eyBzdGVwcy5zY29wZS5vdXRwdXRzLnNjaGVtYV9jaGFuZ2VkIH19IikKICAgICAgICBzZWxmLmFzc2VydEVxdWFsKHNlbGYud29ya2Zsb3dbInBlcm1pc3Npb25zIl0sIHsiY29udGVudHMiOiAicmVhZCJ9KQogICAgICAgIHNjcmlwdCA9IGNsYXNzaWZ5WyJzdGVwcyJdWzFdWyJydW4iXQogICAgICAgIHNlbGYuYXNzZXJ0SW4oJ3Rlc3QgIiRHSVRIVUJfUkVGIiA9ICJyZWZzL2hlYWRzL21haW4iJywgc2NyaXB0KQogICAgICAgIHNlbGYuYXNzZXJ0SW4oJ2lmIFsgIiRHSVRIVUJfRVZFTlRfTkFNRSIgIT0gInB1c2giIF0nLCBzY3JpcHQpCiAgICAgICAgc2VsZi5hc3NlcnRJbihmJ2dyZXAgLUZ4cSAie1NDSEVNQV9QQVRIfSInLCBzY3JpcHQpCiAgICAgICAgc2VsZi5hc3NlcnRJbignZWNobyAic2NoZW1hX2NoYW5nZWQ9ZmFsc2UiID4+ICIkR0lUSFVCX09VVFBVVCInLCBzY3JpcHQpCgogICAgZGVmIHRlc3Rfb25seV9wb3NpdGl2ZV9zY2hlbWFfZGVjaXNpb25fcmVhY2hlc19wcm90ZWN0ZWRfZW52aXJvbm1lbnQoc2VsZikgLT4gTm9uZToKICAgICAgICBtaWdyYXRlID0gc2VsZi5qb2JzWyJtaWdyYXRlIl0KICAgICAgICBzZWxmLmFzc2VydEVxdWFsKG1pZ3JhdGVbIm5lZWRzIl0sICJjbGFzc2lmeSIpCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbCgKICAgICAgICAgICAgbWlncmF0ZVsiaWYiXSwKICAgICAgICAgICAgIm5lZWRzLmNsYXNzaWZ5Lm91dHB1dHMuc2NoZW1hX2NoYW5nZWQgPT0gJ3RydWUnIiwKICAgICAgICApCiAgICAgICAgc2VsZi5hc3NlcnRFcXVhbCgKICAgICAgICAgICAgbWlncmF0ZVsiZW52aXJvbm1lbnQiXSwKICAgICAgICAgICAgeyJuYW1lIjogImRhdmlkLXNwYWNlLWNyZWRlbnRpYWwtcm90YXRpb24ifSwKICAgICAgICApCiAgICAgICAgcmVuZGVyZWQgPSB5YW1sLnNhZmVfZHVtcChzZWxmLmpvYnNbImNsYXNzaWZ5Il0sIHNvcnRfa2V5cz1UcnVlKQogICAgICAgIHNlbGYuYXNzZXJ0Tm90SW4oIkRBVklEX0RBVEFCQVNFX0FETUlOX1VSTCIsIHJlbmRlcmVkKQogICAgICAgIHNlbGYuYXNzZXJ0Tm90SW4oIkRBVklEX0RBVEFCQVNFX1VSTCIsIHJlbmRlcmVkKQogICAgICAgIG1pZ3JhdGlvbl9yZW5kZXJlZCA9IHlhbWwuc2FmZV9kdW1wKG1pZ3JhdGUsIHNvcnRfa2V5cz1UcnVlKQogICAgICAgIHNlbGYuYXNzZXJ0SW4oIkRBVklEX0RBVEFCQVNFX0FETUlOX1VSTCIsIG1pZ3JhdGlvbl9yZW5kZXJlZCkKICAgICAgICBzZWxmLmFzc2VydEluKCJEQVZJRF9EQVRBQkFTRV9VUkwiLCBtaWdyYXRpb25fcmVuZGVyZWQpCiAgICAgICAgc2VsZi5hc3NlcnRJbihmJ1BhdGgoIntTQ0hFTUFfUEFUSH0iKScsIHNlbGYudGV4dCkKCiAgICBkZWYgdGVzdF9leHBsaWNpdF9nb3Zlcm5lZF9lbnRyeXBvaW50c19yZW1haW5fYXZhaWxhYmxlKHNlbGYpIC0+IE5vbmU6CiAgICAgICAgc2VsZi5hc3NlcnRJbigid29ya2Zsb3dfZGlzcGF0Y2giLCBzZWxmLnRyaWdnZXIpCiAgICAgICAgc2VsZi5hc3NlcnRJbigid29ya2Zsb3dfY2FsbCIsIHNlbGYudHJpZ2dlcikKICAgICAgICBjbGFzc2lmaWVyID0gc2VsZi5qb2JzWyJjbGFzc2lmeSJdWyJzdGVwcyJdWzFdWyJydW4iXQogICAgICAgIHNlbGYuYXNzZXJ0SW4oJ2VjaG8gInNjaGVtYV9jaGFuZ2VkPXRydWUiID4+ICIkR0lUSFVCX09VVFBVVCInLCBjbGFzc2lmaWVyKQoKICAgIGRlZiB0ZXN0X3N1Y2Nlc3NmdWxfcmVsZWFzZV9nYXRlX3N0aWxsX2RyaXZlc19leGFjdF9zaGFfZGVwbG95bWVudChzZWxmKSAtPiBOb25lOgogICAgICAgIGRlcGxveSA9IF93b3JrZmxvdyhERVBMT1kpCiAgICAgICAgd29ya2Zsb3dfcnVuID0gZGVwbG95WyJfX3RyaWdnZXJfXyJdWyJ3b3JrZmxvd19ydW4iXQogICAgICAgIHNlbGYuYXNzZXJ0RXF1YWwoCiAgICAgICAgICAgIHdvcmtmbG93X3J1blsid29ya2Zsb3dzIl0sCiAgICAgICAgICAgIFsiTWlncmF0ZSBEYXZpZCBOZW9uIHBlcnNpc3RlbmNlIl0sCiAgICAgICAgKQogICAgICAgIGNvbmRpdGlvbiA9IGRlcGxveVsiam9icyJdWyJkZXBsb3kiXVsiaWYiXQogICAgICAgIHNlbGYuYXNzZXJ0SW4oIndvcmtmbG93X3J1bi5jb25jbHVzaW9uID09ICdzdWNjZXNzJyIsIGNvbmRpdGlvbikKICAgICAgICBzZWxmLmFzc2VydEluKCJ3b3JrZmxvd19ydW4uaGVhZF9icmFuY2ggPT0gJ21haW4nIiwgY29uZGl0aW9uKQogICAgICAgIHNlbGYuYXNzZXJ0SW4oIndvcmtmbG93X3J1bi5oZWFkX3NoYSA9PSBnaXRodWIuc2hhIiwgY29uZGl0aW9uKQoKCmlmIF9fbmFtZV9fID09ICJfX21haW5fXyI6CiAgICB1bml0dGVzdC5tYWluKCkK
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import base64
+          import os
+          import re
+
+          source = Path('.github/workflows/migrate-neon-persistence.yml')
+          text = source.read_text(encoding='utf-8')
+
+          release_paths = '''      - "app/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "README.md"
+      - "PUBLICATION_READINESS.md"
+      - "PUBLIC_DATA_OPERATING_MODEL.md"
+      - "THIRD_PARTY_NOTICES.md"
+      - "SPACE_PROVENANCE.json"
+      - "research/COMPETITIVE_SYNTHESIS_2026-08-26.md"
+      - "ops/credential-rotation.md"
+      - ".github/workflows/hf-deploy.yml"
+      - ".github/workflows/migrate-neon-persistence.yml"
+'''
+          trigger_pattern = re.compile(
+              r'(?ms)^  push:\n'
+              r'    branches: \[main\]\n'
+              r'    paths:\n'
+              r'(?:      - "[^"]+"\n)+'
+              r'  workflow_call: \{\}\n'
+          )
+          trigger_replacement = (
+              '  push:\n'
+              '    branches: [main]\n'
+              '    paths:\n'
+              + release_paths
+              + '  workflow_call: {}\n'
+          )
+          text, count = trigger_pattern.subn(trigger_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected one trigger block, replaced {count}')
+
+          classify = '''jobs:
+  classify:
+    name: Classify release input before privileged migration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      schema_changed: ${{ steps.scope.outputs.schema_changed }}
+    steps:
+      - name: Check out exact protected source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Classify schema change without provider credentials
+        id: scope
+        shell: bash
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "::error::Persistence release gate may run only from protected main"
+            exit 1
+          }
+
+          if [ "$GITHUB_EVENT_NAME" != "push" ]; then
+            echo "schema_changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          after="$GITHUB_SHA"
+          before="${BEFORE_SHA:-}"
+          if [ -z "$before" ] || [[ "$before" =~ ^0+$ ]]; then
+            git show --pretty='' --name-only "$after" > /tmp/david-release-paths
+          else
+            git fetch --no-tags --depth=1 origin "$before"
+            git diff --name-only "$before" "$after" > /tmp/david-release-paths
+          fi
+
+          if grep -Fxq "app/dealdesk_schema.sql" /tmp/david-release-paths; then
+            echo "schema_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "schema_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  migrate:
+    needs: classify
+    if: needs.classify.outputs.schema_changed == 'true'
+'''
+          text, count = re.subn(
+              r"jobs:\n  migrate:\n    runs-on: ubuntu-latest\n",
+              classify + '    runs-on: ubuntu-latest\n',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'expected one migration job prefix, replaced {count}')
+
+          staged = Path('staged-neon-release-gate-v2.yml')
+          staged.write_text(text, encoding='utf-8')
+          test = Path('tests/test_neon_migration_trigger_scope.py')
+          test.write_bytes(base64.b64decode(os.environ['TEST_CONTENT_B64']))
+
+          import yaml
+          parsed = yaml.safe_load(text)
+          trigger = parsed.get('on', parsed.get(True))
+          assert trigger['push']['paths'][0] == 'app/**'
+          assert parsed['jobs']['classify'].get('environment') is None
+          assert parsed['jobs']['migrate']['needs'] == 'classify'
+          assert parsed['jobs']['migrate']['if'] == "needs.classify.outputs.schema_changed == 'true'"
+          assert parsed['jobs']['migrate']['environment']['name'] == 'david-space-credential-rotation'
+          PY
+
+          python -m py_compile tests/test_neon_migration_trigger_scope.py
+          python -m unittest tests.test_neon_migration_trigger_scope -v
+          rm -rf tests/__pycache__
+          git diff --check
+
+      - name: Commit only ordinary staging paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add staged-neon-release-gate-v2.yml tests/test_neon_migration_trigger_scope.py
+          test "$(git diff --cached --name-only | wc -l | tr -d ' ')" = "2"
+          git commit -s -m "chore(ci): stage two-stage Neon release gate bytes"
+          git push origin HEAD:fix/scope-neon-migration-trigger-20260903
