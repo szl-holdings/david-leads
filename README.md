@@ -6,7 +6,7 @@ colorFrom: blue
 colorTo: yellow
 sdk: docker
 app_port: 7860
-pinned: false
+pinned: true
 license: apache-2.0
 short_description: Official-source broker research with evidence receipts
 tags:
@@ -19,6 +19,8 @@ tags:
 ---
 
 # David Leads — Evidence-Backed Broker Research
+
+> **SZL Holdings flagship:** the governed lead-intelligence and broker-research surface.
 
 David Leads helps insurance operators answer five questions quickly:
 
