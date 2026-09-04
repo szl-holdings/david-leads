@@ -8,6 +8,8 @@ name: Deploy to HuggingFace Space
 # from protected main. A schema change is withheld from the direct push path,
 # runs through the protected Neon migration first, and is admitted only from the
 # successful workflow_run for that exact still-current main SHA.
+# Owner dispatch is retained as an explicit current-main-only recovery route;
+# non-main dispatches are classified and refused before any provider mutation.
 #
 # Requires the narrowly scoped publisher secret HF_TOKEN. Database credentials
 # remain confined to the david-space-credential-rotation environment owned by
