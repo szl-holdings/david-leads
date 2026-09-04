@@ -49,3 +49,45 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_DATASET_WRITE_TOKEN }}
         run: python -m tools.ingestor.publish_snapshot --dataset SZLHOLDINGS/david-leads-data --snapshot snapshot-motus/
+
+  dol-5500-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download DOL Form 5500 bulk dataset (official FOIA publication)
+        run: |
+          curl -fsSL --max-time 900 -o f5500_latest.zip \
+            https://www.dol.gov/sites/dolgov/files/EBSA/ebsa-key-documents/foia/5500/f_5500_latest.zip
+          sha256sum f5500_latest.zip
+      - name: Normalize, snapshot, receipt
+        run: python -m tools.ingestor.dol_5500_ingestor_cli --zip f5500_latest.zip --out snapshot-dol/
+      - name: Verify receipt hash-chain
+        run: python -m tools.ingestor.verify_snapshot snapshot-dol/
+      - name: Publish snapshot to HF Dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_DATASET_WRITE_TOKEN }}
+        run: python -m tools.ingestor.publish_snapshot --dataset SZLHOLDINGS/david-leads-data --snapshot snapshot-dol/
+
+  usaspending-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download USAspending monthly award archive (official bulk product)
+        run: |
+          curl -fsSL --max-time 900 -o usaspending_awards.zip \
+            https://files.usaspending.gov/award_data_archive/award_data_archive_latest.zip
+          sha256sum usaspending_awards.zip
+      - name: Normalize, snapshot, receipt
+        run: python -m tools.ingestor.usaspending_ingestor_cli --zip usaspending_awards.zip --out snapshot-usaspending/
+      - name: Verify receipt hash-chain
+        run: python -m tools.ingestor.verify_snapshot snapshot-usaspending/
+      - name: Publish snapshot to HF Dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_DATASET_WRITE_TOKEN }}
+        run: python -m tools.ingestor.publish_snapshot --dataset SZLHOLDINGS/david-leads-data --snapshot snapshot-usaspending/
