@@ -49,31 +49,41 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("branches: [main]", migration_workflow)
+        self.assertIn("workflow_dispatch: {}", migration_workflow)
+        self.assertIn("workflow_call: {}", migration_workflow)
+        self.assertNotIn("workflow_dispatch: {}", deploy_workflow)
         self.assertIn(
             'workflows: ["Migrate David Neon persistence"]',
             deploy_workflow,
         )
         self.assertIn(
-            "github.event.workflow_run.conclusion == 'success'",
+            "WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion || '' }}",
             deploy_workflow,
         )
         self.assertIn(
-            "github.event.workflow_run.event == 'push'",
+            "WORKFLOW_EVENT: ${{ github.event.workflow_run.event || '' }}",
             deploy_workflow,
         )
         self.assertIn(
-            "github.event.workflow_run.head_branch == 'main'",
+            "WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch || '' }}",
             deploy_workflow,
         )
         self.assertIn(
-            "github.event.workflow_run.head_sha == github.sha",
+            "WORKFLOW_SHA: ${{ github.event.workflow_run.head_sha || '' }}",
             deploy_workflow,
         )
+        self.assertIn('[ "$WORKFLOW_CONCLUSION" = "success" ]', deploy_workflow)
+        self.assertIn('[ "$WORKFLOW_EVENT" = "push" ]', deploy_workflow)
+        self.assertIn('[ "$WORKFLOW_BRANCH" = "main" ]', deploy_workflow)
+        self.assertIn("git ls-remote origin refs/heads/main", deploy_workflow)
+        self.assertIn('[ "$source_sha" = "$current_main" ]', deploy_workflow)
+        self.assertIn("WAIT_FOR_SCHEMA_MIGRATION", deploy_workflow)
+        self.assertIn("SCHEMA_MIGRATION_SUCCEEDED", deploy_workflow)
+        self.assertIn("STALE_MIGRATION_RESULT", deploy_workflow)
         self.assertIn(
-            "ref: ${{ github.event.workflow_run.head_sha }}",
+            "ref: ${{ needs.classify.outputs.source_sha }}",
             deploy_workflow,
         )
-        self.assertNotIn("workflow_dispatch", deploy_workflow)
         self.assertNotIn("rotate-app-secrets", deploy_workflow)
         self.assertNotIn("secrets: inherit", deploy_workflow)
         self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy_workflow)
