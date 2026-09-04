@@ -39,30 +39,42 @@ jobs:
           marker = "/* Public Experience receipt 33819473183: fixed header reflows under high CSS zoom. */"
           if marker in css:
               raise SystemExit("zoom repair already present")
-          css += f'''\n\n{marker}\nhtml[style*="zoom"] .app-header,\nhtml[data-szl-zoom-tier="high"] .app-header,\nhtml[data-szl-zoom-tier="extreme"] .app-header {{\n  position: relative;\n  top: auto;\n}}\n'''
+          css += (
+              "\n\n" + marker + "\n"
+              "html[style*=\"zoom\"] .app-header,\n"
+              "html[data-szl-zoom-tier=\"high\"] .app-header,\n"
+              "html[data-szl-zoom-tier=\"extreme\"] .app-header {\n"
+              "  position: relative;\n"
+              "  top: auto;\n"
+              "}\n"
+          )
           css_path.write_text(css, encoding="utf-8")
 
-          test_path = Path("tests/test_public_experience_zoom.py")
-          test_path.write_text('''from __future__ import annotations
-
-import unittest
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]
-
-
-class PublicExperienceZoomTests(unittest.TestCase):
-    def test_header_reflows_instead_of_covering_zoomed_viewport(self) -> None:
-        css = (ROOT / "app/static/holo.css").read_text(encoding="utf-8")
-        self.assertIn('html[style*="zoom"] .app-header', css)
-        self.assertIn('html[data-szl-zoom-tier="extreme"] .app-header', css)
-        self.assertIn("position: relative", css)
-        self.assertIn("top: auto", css)
-
-
-if __name__ == "__main__":
-    unittest.main()
-''', encoding="utf-8")
+          test_lines = [
+              "from __future__ import annotations",
+              "",
+              "import unittest",
+              "from pathlib import Path",
+              "",
+              "ROOT = Path(__file__).resolve().parents[1]",
+              "",
+              "",
+              "class PublicExperienceZoomTests(unittest.TestCase):",
+              "    def test_header_reflows_instead_of_covering_zoomed_viewport(self) -> None:",
+              "        css = (ROOT / 'app/static/holo.css').read_text(encoding='utf-8')",
+              "        self.assertIn('html[style*=\"zoom\"] .app-header', css)",
+              "        self.assertIn('html[data-szl-zoom-tier=\"extreme\"] .app-header', css)",
+              "        self.assertIn('position: relative', css)",
+              "        self.assertIn('top: auto', css)",
+              "",
+              "",
+              "if __name__ == '__main__':",
+              "    unittest.main()",
+          ]
+          Path("tests/test_public_experience_zoom.py").write_text(
+              "\n".join(test_lines) + "\n",
+              encoding="utf-8",
+          )
           PY
           python -m unittest tests.test_public_experience_zoom -v
           git diff --check
