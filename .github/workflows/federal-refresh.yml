@@ -1,0 +1,26 @@
+name: federal-refresh
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  echo-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download ECHO Exporter (official bulk product)
+        run: |
+          curl -fsSL --max-time 600 -o echo_exporter.zip \
+            https://echo.epa.gov/files/echodownloads/echo_exporter.zip
+          sha256sum echo_exporter.zip
+      - name: Normalize, snapshot, receipt
+        run: python -m tools.ingestor.echo_ingestor_cli --zip echo_exporter.zip --out snapshot/
+      - name: Verify receipt hash-chain
+        run: python -m tools.ingestor.verify_snapshot snapshot/
