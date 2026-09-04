@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2",
+  "schema_version": "1.3",
   "service": "david-leads",
   "portfolio_classification": "ORG_FLAGSHIP",
   "portfolio_state": "ACTIVE",
@@ -8,7 +8,10 @@
   "restoration": {
     "space_repository_bootstrapped": true,
     "bootstrap_workflow_retired": true,
-    "canonical_exact_source_publish_required": true,
+    "runtime_configuration_restored": true,
+    "runtime_recovery_verified": true,
+    "temporary_recovery_workflows_retired": true,
+    "canonical_exact_source_publish_triggered_by_this_revision": true,
     "retired_archive_membership": false
   },
   "runtime_source_binding": {
@@ -16,6 +19,16 @@
     "probe": "/api/build-info",
     "state_field": "build.state",
     "revision_field": "build.revision"
+  },
+  "runtime_contract": {
+    "visibility": "PUBLIC",
+    "stage": "RUNNING",
+    "access_mode": "public_readonly",
+    "authentication": "CONFIGURED",
+    "deal_desk_persistence": "POSTGRES_READY",
+    "replacement_login_verified": true,
+    "replacement_logout_verified": true,
+    "credential_values_recorded": false
   },
   "truth_labels": {
     "process_health": "OBSERVED_BY_/healthz",
