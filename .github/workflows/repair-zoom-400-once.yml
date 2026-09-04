@@ -1,0 +1,84 @@
+name: Repair 400 percent zoom once
+
+on:
+  push:
+    branches:
+      - fix/public-experience-v3-zoom-400-20260903
+    paths:
+      - .github/workflows/repair-zoom-400-once.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: david-leads-zoom-400-once
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Checkout exact repair branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/public-experience-v3-zoom-400-20260903
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply receipt-derived header reflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object app/static/holo.css)" = 51be3a2d07d4110d0a16b13ee7b242395b3eae5e
+          python - <<'PY'
+          from pathlib import Path
+
+          css_path = Path("app/static/holo.css")
+          css = css_path.read_text(encoding="utf-8")
+          marker = "/* Public Experience receipt 33819473183: fixed header reflows under high CSS zoom. */"
+          if marker in css:
+              raise SystemExit("zoom repair already present")
+          css += f'''\n\n{marker}\nhtml[style*="zoom"] .app-header,\nhtml[data-szl-zoom-tier="high"] .app-header,\nhtml[data-szl-zoom-tier="extreme"] .app-header {{\n  position: relative;\n  top: auto;\n}}\n'''
+          css_path.write_text(css, encoding="utf-8")
+
+          test_path = Path("tests/test_public_experience_zoom.py")
+          test_path.write_text('''from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+class PublicExperienceZoomTests(unittest.TestCase):
+    def test_header_reflows_instead_of_covering_zoomed_viewport(self) -> None:
+        css = (ROOT / "app/static/holo.css").read_text(encoding="utf-8")
+        self.assertIn('html[style*="zoom"] .app-header', css)
+        self.assertIn('html[data-szl-zoom-tier="extreme"] .app-header', css)
+        self.assertIn("position: relative", css)
+        self.assertIn("top: auto", css)
+
+
+if __name__ == "__main__":
+    unittest.main()
+''', encoding="utf-8")
+          PY
+          python -m unittest tests.test_public_experience_zoom -v
+          git diff --check
+          git rm .github/workflows/repair-zoom-400-once.yml
+          mapfile -t changed < <(git diff --name-only | sort)
+          test "${#changed[@]}" -eq 3
+          test "${changed[0]}" = .github/workflows/repair-zoom-400-once.yml
+          test "${changed[1]}" = app/static/holo.css
+          test "${changed[2]}" = tests/test_public_experience_zoom.py
+
+      - name: Commit exact repair and remove bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Lutar, Stephen P.'
+          git config user.email 'stephenlutar2@gmail.com'
+          git add app/static/holo.css tests/test_public_experience_zoom.py
+          git commit -m 'fix(ux): reflow David Leads header at 400 percent zoom' -m 'Signed-off-by: Stephen Lutar <stephenlutar2@gmail.com>'
+          git push origin HEAD:fix/public-experience-v3-zoom-400-20260903
