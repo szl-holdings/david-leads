@@ -1,0 +1,164 @@
+name: Finalize Neon trigger-scope repair once
+
+on:
+  push:
+    branches:
+      - fix/scope-neon-migration-trigger-20260903
+    paths:
+      - .github/workflows/_finalize_neon_trigger_scope_once.yml
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  issues: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: apply-neon-trigger-scope-repair-once
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Produce the final two-file candidate and merge only after exact-head success
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      GH_ADMIN_TOKEN: ${{ secrets.SZL_GITHUB_TOKEN || secrets.GH_ADMIN_TOKEN || secrets.GITHUB_ADMIN_TOKEN || secrets.ORG_ADMIN_TOKEN || secrets.GH_PAT || github.token }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact recovery branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/scope-neon-migration-trigger-20260903
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Materialize the verified patch idempotently
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/szl-holdings/david-leads/actions/artifacts/9903766545/zip > /tmp/repair.zip
+          rm -rf /tmp/repair && mkdir -p /tmp/repair
+          unzip -q /tmp/repair.zip -d /tmp/repair
+          test -f /tmp/repair/.github/workflows/migrate-neon-persistence.yml
+          test -f /tmp/repair/tests/test_neon_migration_trigger_scope.py
+          cp /tmp/repair/.github/workflows/migrate-neon-persistence.yml .github/workflows/migrate-neon-persistence.yml
+          cp /tmp/repair/tests/test_neon_migration_trigger_scope.py tests/test_neon_migration_trigger_scope.py
+          git rm --ignore-unmatch \
+            .github/workflows/_prepare_neon_trigger_scope_branch.yml \
+            .github/workflows/_apply_neon_trigger_scope_once.yml \
+            .github/workflows/_finalize_neon_trigger_scope_once.yml
+
+      - name: Run the focused and full safety suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check --requirement requirements-dev.txt
+          python -m pytest tests/test_neon_migration_trigger_scope.py -q
+          python -m unittest discover -s tests -t . -p 'test_*.py' -v
+          git diff --check
+
+      - name: Push the exact final candidate
+        id: push
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add --all
+          changed="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' \
+            .github/workflows/_apply_neon_trigger_scope_once.yml \
+            .github/workflows/_finalize_neon_trigger_scope_once.yml \
+            .github/workflows/_prepare_neon_trigger_scope_branch.yml \
+            .github/workflows/migrate-neon-persistence.yml \
+            tests/test_neon_migration_trigger_scope.py | sort)"
+          test "$changed" = "$expected" || {
+            echo '::error::Final recovery diff contains an unexpected path'
+            printf 'observed:\n%s\nexpected:\n%s\n' "$changed" "$expected"
+            exit 1
+          }
+          git commit -s -m "fix(ci): bind privileged Neon migration to schema changes only"
+          git push origin HEAD:fix/scope-neon-migration-trigger-20260903
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create or normalize the protected pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ env.GH_ADMIN_TOKEN }}
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          head='szl-holdings:fix/scope-neon-migration-trigger-20260903'
+          number="$(gh api 'repos/szl-holdings/david-leads/pulls?state=open&head=szl-holdings%3Afix%2Fscope-neon-migration-trigger-20260903' --jq '.[0].number // empty')"
+          body=$(cat <<'EOF'
+          ## Root cause
+
+          The privileged Neon migration listened to broad application and documentation paths. A CSS-only public-experience merge therefore queued a protected database migration even though `app/dealdesk_schema.sql` was unchanged.
+
+          ## Repair
+
+          - Automatic migration now triggers only when `app/dealdesk_schema.sql` changes.
+          - Explicit governed `workflow_dispatch` and `workflow_call` entrypoints remain available.
+          - The protected environment, both database credentials, Neon/TLS validation, transactionality, ownership checks, least-privilege grants, and schema-version proof remain unchanged.
+          - A regression contract proves unrelated application, static, documentation, container, dependency, deployment, and workflow-file changes cannot queue the privileged migration.
+          - The unrelated run `33780148055` was cancelled before environment admission; no database migration executed.
+
+          Final net diff: exactly the existing migration workflow plus one regression test. All temporary recovery workflows removed themselves before review.
+
+          Signed-off-by: Stephen Lutar <stephenlutar2@gmail.com>
+          EOF
+          )
+          if [ -z "$number" ]; then
+            number="$(gh api --method POST repos/szl-holdings/david-leads/pulls \
+              -f title='fix(ci): bind privileged Neon migration to schema changes only' \
+              -f head='fix/scope-neon-migration-trigger-20260903' \
+              -f base='main' \
+              -f body="$body" \
+              -F maintainer_can_modify=true --jq .number)"
+          else
+            gh api --method PATCH "repos/szl-holdings/david-leads/pulls/${number}" \
+              -f title='fix(ci): bind privileged Neon migration to schema changes only' \
+              -f body="$body" \
+              -f state='open' >/dev/null
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for exact-head checks and request protected squash merge
+        env:
+          GH_TOKEN: ${{ env.GH_ADMIN_TOKEN }}
+          HEAD_SHA: ${{ steps.push.outputs.sha }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 90); do
+            current="$(gh api "repos/szl-holdings/david-leads/pulls/${PR_NUMBER}" --jq .head.sha)"
+            test "$current" = "$HEAD_SHA"
+            checks="$(gh api -H 'Accept: application/vnd.github+json' "repos/szl-holdings/david-leads/commits/${HEAD_SHA}/check-runs?per_page=100")"
+            count="$(printf '%s' "$checks" | jq '.check_runs | length')"
+            pending="$(printf '%s' "$checks" | jq '[.check_runs[] | select(.status != "completed")] | length')"
+            failed="$(printf '%s' "$checks" | jq '[.check_runs[] | select(.status == "completed" and (.conclusion | IN("success", "neutral", "skipped") | not))] | length')"
+            if [ "$count" -gt 0 ] && [ "$pending" -eq 0 ]; then
+              test "$failed" -eq 0
+              gh api --method PUT "repos/szl-holdings/david-leads/pulls/${PR_NUMBER}/merge" \
+                -f sha="$HEAD_SHA" \
+                -f merge_method='squash' \
+                -f commit_title="fix(ci): bind privileged Neon migration to schema changes only (#${PR_NUMBER})" \
+                -f commit_message=$'Prevent unrelated front-end and documentation changes from queuing the protected Neon schema migration while preserving explicit governed entrypoints and all database safety controls.\n\nSigned-off-by: Stephen Lutar <stephenlutar2@gmail.com>' \
+                --jq '{merged, message, sha}'
+              exit 0
+            fi
+            sleep 20
+          done
+          echo '::error::Exact final head did not reach a terminal green check state'
+          exit 1
