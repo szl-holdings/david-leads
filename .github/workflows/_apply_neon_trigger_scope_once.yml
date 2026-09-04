@@ -1,0 +1,82 @@
+name: Apply verified Neon trigger-scope repair once
+
+on:
+  push:
+    branches:
+      - fix/scope-neon-migration-trigger-20260903
+    paths:
+      - .github/workflows/_apply_neon_trigger_scope_once.yml
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: apply-neon-trigger-scope-repair-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    name: Promote the verified two-file patch and remove recovery controllers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Check out exact recovery branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/scope-neon-migration-trigger-20260903
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Download the already-verified prepared artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api repos/szl-holdings/david-leads/actions/artifacts/9903766545/zip > /tmp/repair.zip
+          mkdir -p /tmp/repair
+          unzip -q /tmp/repair.zip -d /tmp/repair
+          test -f /tmp/repair/.github/workflows/migrate-neon-persistence.yml
+          test -f /tmp/repair/tests/test_neon_migration_trigger_scope.py
+          cp /tmp/repair/.github/workflows/migrate-neon-persistence.yml .github/workflows/migrate-neon-persistence.yml
+          cp /tmp/repair/tests/test_neon_migration_trigger_scope.py tests/test_neon_migration_trigger_scope.py
+
+      - name: Verify exact trigger and regression contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check pyyaml pytest
+          python -m pytest tests/test_neon_migration_trigger_scope.py -q
+          python - <<'PY'
+          from pathlib import Path
+          text = Path('.github/workflows/migrate-neon-persistence.yml').read_text(encoding='utf-8')
+          prefix = text.split('  workflow_call: {}', 1)[0]
+          assert '      - "app/dealdesk_schema.sql"' in prefix
+          assert '"app/**"' not in prefix
+          assert '.github/workflows/migrate-neon-persistence.yml' not in prefix
+          PY
+          git diff --check
+
+      - name: Remove one-shot recovery machinery and push final candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm --ignore-unmatch \
+            .github/workflows/_prepare_neon_trigger_scope_branch.yml \
+            .github/workflows/_apply_neon_trigger_scope_once.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            .github/workflows/migrate-neon-persistence.yml \
+            tests/test_neon_migration_trigger_scope.py
+          changed="$(git diff --cached --name-only | sort)"
+          expected="$(printf '%s\n' .github/workflows/_apply_neon_trigger_scope_once.yml .github/workflows/_prepare_neon_trigger_scope_branch.yml .github/workflows/migrate-neon-persistence.yml tests/test_neon_migration_trigger_scope.py | sort)"
+          test "$changed" = "$expected"
+          git commit -s -m "fix(ci): bind privileged Neon migration to schema changes only"
+          git push origin HEAD:fix/scope-neon-migration-trigger-20260903
