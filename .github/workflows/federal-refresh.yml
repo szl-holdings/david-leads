@@ -10,11 +10,14 @@ permissions:
 jobs:
   echo-refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pinned snapshot publisher
+        run: python -m pip install --disable-pip-version-check -r requirements-ingestor.txt
       - name: Download ECHO Exporter (official bulk product)
         run: |
           curl -fsSL --max-time 600 -o echo_exporter.zip \
@@ -31,11 +34,14 @@ jobs:
 
   motus-refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pinned snapshot publisher
+        run: python -m pip install --disable-pip-version-check -r requirements-ingestor.txt
       - name: Download MOTUS Carrier extract (DOT Data Portal)
         run: |
           curl -fsSL --max-time 900 -o motus_carrier.csv \
@@ -52,11 +58,14 @@ jobs:
 
   dol-5500-refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pinned snapshot publisher
+        run: python -m pip install --disable-pip-version-check -r requirements-ingestor.txt
       - name: Download DOL Form 5500 bulk dataset (official FOIA publication)
         run: |
           curl -fsSL --max-time 900 -o f5500_latest.zip \
@@ -73,11 +82,14 @@ jobs:
 
   usaspending-refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install pinned snapshot publisher
+        run: python -m pip install --disable-pip-version-check -r requirements-ingestor.txt
       - name: Download USAspending monthly award archive (official bulk product)
         run: |
           curl -fsSL --max-time 900 -o usaspending_awards.zip \
