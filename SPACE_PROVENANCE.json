@@ -1,10 +1,16 @@
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "service": "david-leads",
   "portfolio_classification": "ORG_FLAGSHIP",
   "portfolio_state": "ACTIVE",
   "source_of_record": "https://github.com/szl-holdings/david-leads",
   "deployment_target": "https://huggingface.co/spaces/SZLHOLDINGS/david-leads",
+  "restoration": {
+    "space_repository_bootstrapped": true,
+    "bootstrap_workflow_retired": true,
+    "canonical_exact_source_publish_required": true,
+    "retired_archive_membership": false
+  },
   "runtime_source_binding": {
     "variable": "SOURCE_GITHUB_SHA",
     "probe": "/api/build-info",
