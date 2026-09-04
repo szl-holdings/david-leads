@@ -1,0 +1,82 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: David frontier live-lanes canary
+
+on:
+  pull_request:
+    paths:
+      - "app/frontier_sources.py"
+      - "app/benefit_frontier.py"
+      - "app/server.py"
+      - "ops/frontier_live_canary.py"
+      - "tests/test_frontier_live_canary.py"
+      - ".github/workflows/frontier-live-canary.yml"
+  push:
+    branches: [main]
+    paths:
+      - "ops/frontier_live_canary.py"
+      - "tests/test_frontier_live_canary.py"
+      - ".github/workflows/frontier-live-canary.yml"
+  workflow_run:
+    workflows: ["Deploy to HuggingFace Space"]
+    types: [completed]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: david-frontier-live-canary-${{ github.event.workflow_run.head_sha || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  live-lanes:
+    name: Prove four federal lanes through deployed runtime
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      EXPECTED_REVISION: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || '' }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+
+      - name: Check out canary contract
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Verify canary's fail-closed and data-minimization contract
+        run: python3 -m unittest tests.test_frontier_live_canary -v
+
+      - name: Probe exact public runtime and four federal lanes
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--output david-frontier-live-canary.json)
+          if [ -n "$EXPECTED_REVISION" ]; then
+            args+=(--expected-revision "$EXPECTED_REVISION")
+          fi
+          python3 ops/frontier_live_canary.py "${args[@]}"
+
+      - name: Upload immutable aggregate canary evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: david-frontier-live-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: david-frontier-live-canary.json
+          if-no-files-found: warn
+          retention-days: 90
