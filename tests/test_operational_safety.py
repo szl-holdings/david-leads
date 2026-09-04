@@ -49,6 +49,9 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "migrate-neon-persistence.yml"
         ).read_text(encoding="utf-8")
         self.assertIn("branches: [main]", migration_workflow)
+        self.assertIn("workflow_dispatch: {}", migration_workflow)
+        self.assertIn("workflow_call: {}", migration_workflow)
+        self.assertNotIn("workflow_dispatch: {}", deploy_workflow)
         self.assertIn(
             'workflows: ["Migrate David Neon persistence"]',
             deploy_workflow,
@@ -81,8 +84,6 @@ class PublicCredentialSafety(unittest.TestCase):
             "ref: ${{ needs.classify.outputs.source_sha }}",
             deploy_workflow,
         )
-        self.assertIn("workflow_dispatch: {}", deploy_workflow)
-        self.assertIn("OWNER_DISPATCH_REQUIRES_MAIN", deploy_workflow)
         self.assertNotIn("rotate-app-secrets", deploy_workflow)
         self.assertNotIn("secrets: inherit", deploy_workflow)
         self.assertIn("HF_TOKEN: ${{ secrets.HF_TOKEN }}", deploy_workflow)
