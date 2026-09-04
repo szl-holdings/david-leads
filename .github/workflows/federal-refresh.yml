@@ -21,6 +21,31 @@ jobs:
             https://echo.epa.gov/files/echodownloads/echo_exporter.zip
           sha256sum echo_exporter.zip
       - name: Normalize, snapshot, receipt
-        run: python -m tools.ingestor.echo_ingestor_cli --zip echo_exporter.zip --out snapshot/
+        run: python -m tools.ingestor.echo_ingestor_cli --zip echo_exporter.zip --out snapshot-echo/
       - name: Verify receipt hash-chain
-        run: python -m tools.ingestor.verify_snapshot snapshot/
+        run: python -m tools.ingestor.verify_snapshot snapshot-echo/
+      - name: Publish snapshot to HF Dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_DATASET_WRITE_TOKEN }}
+        run: python -m tools.ingestor.publish_snapshot --dataset SZLHOLDINGS/david-leads-data --snapshot snapshot-echo/
+
+  motus-refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Download MOTUS Carrier extract (DOT Data Portal)
+        run: |
+          curl -fsSL --max-time 900 -o motus_carrier.csv \
+            https://data.transportation.gov/api/views/motus-carrier/rows.csv
+          sha256sum motus_carrier.csv
+      - name: Normalize, snapshot, receipt
+        run: python -m tools.ingestor.motus_ingestor_cli --csv motus_carrier.csv --out snapshot-motus/
+      - name: Verify receipt hash-chain
+        run: python -m tools.ingestor.verify_snapshot snapshot-motus/
+      - name: Publish snapshot to HF Dataset
+        env:
+          HF_TOKEN: ${{ secrets.HF_DATASET_WRITE_TOKEN }}
+        run: python -m tools.ingestor.publish_snapshot --dataset SZLHOLDINGS/david-leads-data --snapshot snapshot-motus/
