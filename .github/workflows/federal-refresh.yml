@@ -1,26 +1,174 @@
 name: federal-refresh
+
 on:
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+concurrency:
+  group: federal-refresh
+  cancel-in-progress: false
+
 permissions:
   contents: read
+  id-token: write
+  attestations: write
 
 jobs:
   echo-refresh:
-    runs-on: ubuntu-latest
+    name: EPA ECHO verified bulk refresh
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Harden runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout exact parser source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
-      - name: Download ECHO Exporter (official bulk product)
+          cache: pip
+
+      - name: Download official ECHO Exporter archive
+        shell: bash
         run: |
-          curl -fsSL --max-time 600 -o echo_exporter.zip \
+          set -euo pipefail
+          mkdir -p evidence
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --connect-timeout 30 --max-time 1800 \
+            --retry 5 --retry-delay 5 --retry-all-errors \
+            --dump-header evidence/download-headers.txt \
+            --output echo_exporter.zip.part \
             https://echo.epa.gov/files/echodownloads/echo_exporter.zip
-          sha256sum echo_exporter.zip
-      - name: Normalize, snapshot, receipt
-        run: python -m tools.ingestor.echo_ingestor_cli --zip echo_exporter.zip --out snapshot/
-      - name: Verify receipt hash-chain
-        run: python -m tools.ingestor.verify_snapshot snapshot/
+          test -s echo_exporter.zip.part
+          mv echo_exporter.zip.part echo_exporter.zip
+          test -s echo_exporter.zip
+          sha256sum echo_exporter.zip | tee evidence/source.sha256
+
+      - name: Normalize and create standalone receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m tools.ingestor.echo_ingestor_cli \
+            --zip echo_exporter.zip \
+            --out snapshot \
+            --source-revision "$GITHUB_SHA"
+
+      - name: Verify standalone receipt integrity
+        id: verify_snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m tools.ingestor.verify_snapshot snapshot | tee evidence/verification.txt
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+
+          with open("snapshot/snapshot.json", encoding="utf-8") as handle:
+              print(f"digest={json.load(handle)['snapshot_digest']}")
+          PY
+
+      - name: Attest exact snapshot manifest with GitHub OIDC
+        id: attest_snapshot
+        uses: actions/attest@36051bcae73b7c2a8a6945a48cbf80953c6baa35 # v4.0.0
+        with:
+          subject-path: snapshot/snapshot.json
+
+      - name: Record non-secret attestation reference
+        env:
+          ATTESTATION_ID: ${{ steps.attest_snapshot.outputs.attestation-id }}
+          ATTESTATION_URL: ${{ steps.attest_snapshot.outputs.attestation-url }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          Path("evidence/attestation.json").write_text(
+              json.dumps(
+                  {
+                      "attestation_id": os.environ["ATTESTATION_ID"],
+                      "attestation_url": os.environ["ATTESTATION_URL"],
+                      "subject": "snapshot/snapshot.json",
+                  },
+                  indent=2,
+                  sort_keys=True,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Install pinned Hugging Face publisher
+        run: >-
+          python -m pip install --disable-pip-version-check --no-cache-dir
+          huggingface_hub==1.19.0
+
+      - name: Publish one atomic verified dataset commit
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: >-
+          python -m tools.ingestor.publish_snapshot
+          --dataset SZLHOLDINGS/david-leads-data
+          --snapshot snapshot
+          --receipt-out publication.json
+
+      - name: Record bounded run status
+        if: ${{ always() }}
+        env:
+          JOB_STATUS: ${{ job.status }}
+          SNAPSHOT_DIGEST: ${{ steps.verify_snapshot.outputs.digest }}
+          ATTESTATION_ID: ${{ steps.attest_snapshot.outputs.attestation-id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = Path("evidence")
+          evidence.mkdir(exist_ok=True)
+          status = {
+              "workflow": "federal-refresh",
+              "job_status_at_evidence_step": os.environ.get("JOB_STATUS", "unknown"),
+              "source_revision": os.environ.get("GITHUB_SHA", ""),
+              "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+              "run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+              "snapshot_digest": os.environ.get("SNAPSHOT_DIGEST", ""),
+              "snapshot_manifest_present": Path("snapshot/snapshot.json").is_file(),
+              "snapshot_receipt_present": Path("snapshot/receipt.json").is_file(),
+              "publication_receipt_present": Path("publication.json").is_file(),
+              "attestation_id": os.environ.get("ATTESTATION_ID", ""),
+          }
+          (evidence / "run-status.json").write_text(
+              json.dumps(status, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+              summary.write("## Federal Refresh evidence\n\n")
+              summary.write(f"- Source revision: `{status['source_revision']}`\n")
+              summary.write(f"- Snapshot digest: `{status['snapshot_digest'] or 'UNAVAILABLE'}`\n")
+              summary.write(f"- Publication receipt present: `{status['publication_receipt_present']}`\n")
+              summary.write(f"- Attestation ID: `{status['attestation_id'] or 'UNAVAILABLE'}`\n")
+          PY
+
+      - name: Upload bounded refresh evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: federal-refresh-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.verify_snapshot.outputs.digest }}
+          path: |
+            evidence/
+            snapshot/snapshot.json
+            snapshot/receipt.json
+            publication.json
+            ${{ steps.attest_snapshot.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

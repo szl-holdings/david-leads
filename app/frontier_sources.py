@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from . import benefit_frontier
+from . import echo_snapshot
 from . import evidence_constellation as constellation
 from . import receipts as rc
 
@@ -57,9 +58,9 @@ USASPENDING = {
 }
 ECHO = {
     "id": "epa-echo-monitoring-activity",
-    "label": "EPA ECHO compliance-monitoring activity",
-    "api": "https://echodata.epa.gov/echo",
-    "portal": "https://echo.epa.gov/tools/web-services",
+    "label": "EPA ECHO facility inspection activity",
+    "dataset": echo_snapshot.DATASET_LANDING_URL,
+    "portal": "https://echo.epa.gov/tools/data-downloads",
 }
 FCC = {
     "id": "fcc-uls-organization-licenses",
@@ -132,22 +133,6 @@ _NON_COMMERCIAL_TERMS = (
     " TRANSIT AUTHORITY",
     " DEPARTMENT OF ",
 )
-_FEDERAL_FACILITY_PREFIXES = (
-    "US AIR FORCE",
-    "US ARMY",
-    "US COAST GUARD",
-    "US DEPARTMENT",
-    "US MARINE CORPS",
-    "US NAVY",
-    "U.S. AIR FORCE",
-    "U.S. ARMY",
-    "U.S. COAST GUARD",
-    "U.S. DEPARTMENT",
-    "U.S. MARINE CORPS",
-    "U.S. NAVY",
-)
-
-
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -193,13 +178,6 @@ def _request_json_headers(url: str, headers: dict[str, str]) -> Any:
 def _date8(value: Any) -> str:
     try:
         return datetime.strptime(str(value), "%Y%m%d").date().isoformat()
-    except (TypeError, ValueError):
-        return ""
-
-
-def _date_us(value: Any) -> str:
-    try:
-        return datetime.strptime(str(value), "%m/%d/%Y").date().isoformat()
     except (TypeError, ValueError):
         return ""
 
@@ -428,112 +406,86 @@ def _commercial_recipient(name: str) -> bool:
 
 
 def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
-    """Return recent facility monitoring activity with adverse/risk fields omitted.
-
-    This is a small, on-demand query against EPA's documented ECHO web service.
-    Production-scale collection belongs on EPA's weekly bulk exporter instead.
-    """
+    """Return a verified selection from the durable weekly ECHO snapshot."""
     state_list = _states(states)
     page_size = max(1, min(int(limit), 50))
     cache_key = (tuple(state_list), page_size)
     cached = _ECHO_CACHE.get(cache_key)
     if cached and cached[0] > _now():
         return json.loads(json.dumps(cached[1]))
-    search_query = urllib.parse.urlencode({
-        "output": "JSON",
-        "p_st": ",".join(state_list),
-        "p_act": "Y",
-        "p_ysl": "W",
-        "p_ysly": "1",
-        "responseset": str(page_size),
-    })
-    search = _request_json(
-        f"{ECHO['api']}/echo_rest_services.get_facilities?{search_query}"
-    )
-    search_result = search.get("Results") if isinstance(search, dict) else None
-    qid = search_result.get("QueryID") if isinstance(search_result, dict) else None
-    if not qid:
-        raise ValueError("EPA ECHO search did not return a query identifier")
-    result_query = urllib.parse.urlencode({
-        "output": "JSON",
-        "qid": str(qid),
-        "pageno": "1",
-        "newsort": "43",
-        "descending": "Y",
-        "qcolumns": "1,2,3,4,5,6,16,42,43",
-    })
-    response = _request_json(
-        f"{ECHO['api']}/echo_rest_services.get_qid?{result_query}"
-    )
-    result = response.get("Results") if isinstance(response, dict) else None
-    rows = result.get("Facilities", []) if isinstance(result, dict) else []
-    if not isinstance(rows, list):
-        raise ValueError("EPA ECHO facilities were not an array")
+    try:
+        verified = echo_snapshot.load_verified_records(state_list, page_size)
+    except echo_snapshot.EchoSnapshotUnavailable as exc:
+        raise SourceConfigurationUnavailable(
+            f"ECHO_VERIFIED_SNAPSHOT_UNAVAILABLE: {exc}"
+        ) from exc
 
     records: list[dict[str, Any]] = []
-    for row in rows[:page_size]:
-        name = _clean(row.get("FacName"), 140)
-        state = _clean(row.get("FacState"), 2).upper()
-        registry_id = _clean(row.get("RegistryID"), 24)
-        observed = _date_us(row.get("FacDateLastInspection"))
-        if (
-            not name
-            or not registry_id
-            or state not in state_list
-            or not _commercial_recipient(name)
-            or name.upper().startswith(_FEDERAL_FACILITY_PREFIXES)
-            or re.match(r"^\d+\s+[A-Z]", name.upper())
-        ):
-            continue
-        street = _clean(row.get("FacStreet"), 120)
-        naics = _clean(row.get("FacNAICSCodes"), 80)
-        days = _nonnegative_int(row.get("FacDaysLastInspection"))
+    for row in verified["records"]:
+        source_id = str(row["source_record_id"])
+        registry_id = source_id.removeprefix("echo:")
+        observed = str(row["last_inspection_date"])
+        days = int(row["days_since_last_inspection"])
         signal = (
-            f"EPA ECHO reported compliance-monitoring activity for facility registry "
-            f"{registry_id} on {observed or 'date unavailable'} ({days} days before the "
-            "ECHO query)."
+            f"The EPA ECHO Exporter records an inspection date of {observed} for "
+            f"facility registry {registry_id}; the source reports {days} days since "
+            "that inspection at snapshot creation."
         )
         record = {
-            "name": name,
+            "name": _clean(row["org_name"], 200),
             "type": "facility",
-            "category": "EPA-regulated facility monitoring activity",
+            "category": "EPA facility inspection activity",
             "credential": f"FRS {registry_id}",
             "status": "MONITORING_ACTIVITY_OBSERVED",
-            "address": street,
-            "city": _clean(row.get("FacCity"), 80),
-            "state": state,
-            "zip": _clean(row.get("FacZip"), 12)[:5],
+            "city": _clean(row["city"], 100),
+            "state": str(row["state"]),
+            "zip": str(row["postal_code"]),
             "license_or_issue_date": observed,
-            "observed_trigger": "EPA compliance-monitoring activity",
+            "observed_trigger": "EPA facility inspection date",
             "trigger_date": observed,
             "signal_summary": signal,
-            "operational_snapshot": {"naics_codes": naics, "days_since_activity": days},
+            "operational_snapshot": {
+                "naics_codes": list(row["naics_codes"]),
+                "programs": list(row["programs"]),
+                "inspection_count": row["inspection_count"],
+                "days_since_activity": days,
+                "epa_region": row["epa_region"],
+                "delivery": "VERIFIED_BULK_SNAPSHOT",
+                "dataset_snapshot_id": verified["snapshot"]["snapshot_id"],
+                "dataset_snapshot_created_at": verified["snapshot"]["created_at"],
+                "dataset_immutable_path": verified["dataset"]["immutable_path"],
+                "dataset_source_path": "echo-exporter",
+                "dataset_receipt_state": verified["receipt"]["state"],
+                "dataset_source_receipt": row["source_receipt"],
+            },
             "authoritative_entity_ids": [{"system": "EPA FRS", "value": registry_id}],
-            "product_angle": "Licensed environmental, property, and operational-continuity review",
+            "product_angle": "Coverage administration and operational-continuity review",
             "product": "BIZ",
             "why": (
-                "A recent public monitoring event can justify a factual business review of "
-                "operational change and coverage administration. It does not establish a "
-                "violation, unsafe condition, loss likelihood, or insurability."
+                "This official facility record supplies a bounded research timestamp and "
+                "organization identifier. It does not establish buying intent, a violation, "
+                "an unsafe condition, loss likelihood, or insurability."
             ),
             "recommended_next_action": (
-                "Open the current ECHO facility report, confirm the business identity, then "
-                "research only a channel published on the business's own website."
+                "Open the cited facility report, confirm the organization identity, then "
+                "research only a channel published by that organization."
             ),
-            "contact_quality": "business address (public)" if street else "entity id only",
+            "contact_quality": "entity id only",
             "citation": {
                 "label": f"EPA ECHO facility · FRS {registry_id}",
-                "url": f"https://echo.epa.gov/detailed-facility-report?fid={registry_id}",
+                "url": row["facility_report_url"],
             },
             "source_record": {"label": ECHO["label"], "url": ECHO["portal"]},
+            "source_path": ["echo-exporter"],
+            "source_record_id": source_id,
             "source_frontier": "EPA_ECHO",
             "source_class": "OFFICIAL_OPEN_DATA",
             "purpose": "PROSPECTING_ONLY",
             "not_for_underwriting": True,
             "limitations": [
-                "Monitoring activity is not a violation, enforcement finding, or risk score.",
-                "Compliance status, penalties, demographics, and personal contact fields are not requested or stored.",
-                "ECHO data can lag or be incomplete; re-open the current facility report before outreach.",
+                "An inspection date is not a violation, enforcement finding, or risk score.",
+                "Compliance status, penalties, demographics, precise location, and personal contact fields are excluded.",
+                "The weekly ECHO export can lag or be incomplete; re-open the cited facility report before relying on it.",
             ],
         }
         records.append(_attach_receipt(record, signal))
@@ -542,14 +494,32 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
         "source": ECHO["label"],
         "source_id": ECHO["id"],
         "mode": "LIVE",
+        "delivery": "VERIFIED_BULK_SNAPSHOT",
         "count": len(records),
         "records": records,
-        "query_window": {"lookback": "within one year, newest results first"},
+        "query_window": {
+            "inspection_age_days_max": echo_snapshot.MAX_INSPECTION_AGE_DAYS,
+            "selection": "newest activity first with deterministic organization tie-breaks",
+        },
         "citation": {"label": ECHO["label"], "url": ECHO["portal"]},
+        "dataset": verified["dataset"],
+        "snapshot": verified["snapshot"],
+        "snapshot_receipt": verified["receipt"],
         "privacy": "ENTITY_AND_FACILITY_FIELDS_ONLY",
+        "reason": None if records else "NO_MATCHING_RECORDS_IN_VERIFIED_SNAPSHOT",
     }
-    _ECHO_CACHE[cache_key] = (_now() + timedelta(minutes=15), output)
+    snapshot_created = datetime.strptime(
+        verified["snapshot"]["created_at"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc)
+    cache_expiry = min(
+        _now() + timedelta(minutes=15),
+        snapshot_created + timedelta(days=echo_snapshot.FRESHNESS_DAYS),
+    )
+    if cache_expiry > _now():
+        _ECHO_CACHE[cache_key] = (cache_expiry, output)
     return json.loads(json.dumps(output))
+
+
 def fetch_usaspending(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return federal contract activity as a research signal, never as a new-award claim."""
     state_list = _states(states)
