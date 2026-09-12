@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "app/dealdesk_schema.sql"
+      - "app/evidence_schema.sql"
   workflow_call: {}
   workflow_dispatch: {}
 
@@ -109,11 +110,15 @@ jobs:
           if not runtime_role:
               raise SystemExit("runtime URL must identify its least-privilege role")
 
-          schema_path = Path("app/dealdesk_schema.sql")
-          schema_bytes = schema_path.read_bytes()
+          schema_paths = (
+              Path("app/dealdesk_schema.sql"),
+              Path("app/evidence_schema.sql"),
+          )
+          schema_bytes = b"".join(path.read_bytes() for path in schema_paths)
           statements = [
               statement.strip()
-              for statement in schema_bytes.decode("utf-8").split(";")
+              for path in schema_paths
+              for statement in path.read_text(encoding="utf-8").split(";")
               if statement.strip()
           ]
           try:
@@ -229,6 +234,16 @@ jobs:
                           "david_dealdesk_schema": {"SELECT"},
                           "david_dealdesk_state": {"SELECT", "INSERT", "UPDATE"},
                           "david_dealdesk_events": {"SELECT", "INSERT"},
+                          "source_grants": {"SELECT", "INSERT", "UPDATE"},
+                          "observations": {"SELECT", "INSERT", "UPDATE"},
+                          "identity_candidates": {"SELECT", "INSERT", "UPDATE"},
+                          "evidence_nodes": {"SELECT", "INSERT", "UPDATE"},
+                          "evidence_edges": {"SELECT", "INSERT"},
+                          "derivations": {"SELECT", "INSERT", "UPDATE"},
+                          "clearances": {"SELECT", "INSERT", "UPDATE"},
+                          "suppressions": {"SELECT", "INSERT", "UPDATE"},
+                          "outcomes": {"SELECT", "INSERT", "UPDATE"},
+                          "outbox": {"SELECT", "INSERT", "UPDATE"},
                       }
                       for table_name in table_privileges:
                           cursor.execute(
@@ -364,6 +379,13 @@ jobs:
                       )
                       if cursor.fetchone() != (2,):
                           raise RuntimeError("unsupported schema version")
+                      cursor.execute(
+                          "SELECT schema_version FROM david_dealdesk_schema "
+                          "WHERE schema_name = %s",
+                          ("evidence",),
+                      )
+                      if cursor.fetchone() != (1,):
+                          raise RuntimeError("unsupported evidence schema version")
           except Exception:
               raise SystemExit("versioned Neon schema migration failed")
 

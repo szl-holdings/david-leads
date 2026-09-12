@@ -22,6 +22,7 @@ from typing import Any
 from . import benefit_frontier
 from . import evidence_constellation as constellation
 from . import receipts as rc
+from .domain.source_policy import FRONTIER_HOLDS
 
 
 UA = {"User-Agent": "SZL-David-Leads/1.2 research@szlholdings.com"}
@@ -671,9 +672,9 @@ def fetch_usaspending(states: list[str] | None = None, limit: int = 18) -> dict[
 
 
 def fetch_fcc_uls(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
-    """Fail closed until the large ULS archives have a durable ingestion lane."""
+    """Fail closed. FCC ULS collection is not implemented and is not enabled."""
     del states, limit
-    raise SourceConfigurationUnavailable("FCC_DURABLE_INGEST_NOT_CONFIGURED")
+    raise SourceConfigurationUnavailable("NOT_IMPLEMENTED")
 
 
 def fetch_chicago_licenses(
@@ -1065,11 +1066,29 @@ def triangulate(records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], in
     return records, multi_source_accounts
 
 
+def _held_source(source: dict[str, str]) -> dict[str, Any]:
+    status, reason = FRONTIER_HOLDS[source["id"]]
+    return {
+        "source": source["label"],
+        "source_id": source["id"],
+        "mode": status,
+        "count": 0,
+        "records": [],
+        "citation": {"label": source["label"], "url": source["portal"]},
+        "reason": reason,
+        "privacy": "ENTITY_FIELDS_ONLY",
+        "enabled": False,
+    }
+
+
 def frontier_opportunities(
     states: list[str] | None = None,
     limit_per_source: int = 18,
 ) -> dict[str, Any]:
-    """Collect independent official sources; one outage never fabricates another source."""
+    """Collect independent official sources; one outage never fabricates another source.
+
+    DOL is first and enabled. FCC/Chicago/SAM are reported honestly and are not collected.
+    """
     state_list = _states(states)
     records: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
@@ -1078,10 +1097,8 @@ def frontier_opportunities(
         (FMCSA, fetch_fmcsa),
         (USASPENDING, fetch_usaspending),
         (ECHO, fetch_echo),
-        (FCC, fetch_fcc_uls),
-        (CHICAGO, fetch_chicago_licenses),
-        (SAM, fetch_sam_entities),
     )
+    held = (FCC, CHICAGO, SAM)
     with ThreadPoolExecutor(max_workers=4, thread_name_prefix="frontier") as pool:
         futures = [
             pool.submit(fetcher, state_list, limit_per_source)
@@ -1107,6 +1124,8 @@ def frontier_opportunities(
                 "reason": reason,
                 "privacy": "ENTITY_FIELDS_ONLY",
             })
+    for source in held:
+        sources.append(_held_source(source))
     records, constellation_summary = constellation.annotate_constellation(records)
     multi_source_accounts = int(constellation_summary["multi_source_entities"])
     return {

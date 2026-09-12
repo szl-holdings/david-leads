@@ -52,12 +52,14 @@ class DavidReleaseSequencingTests(unittest.TestCase):
         self.assertIn("STALE_MIGRATION_RESULT", deploy)
         self.assertIn("git ls-remote origin refs/heads/main", deploy)
         self.assertIn("grep -Fxq 'app/dealdesk_schema.sql'", deploy)
+        self.assertIn("grep -Fxq 'app/evidence_schema.sql'", deploy)
         self.assertIn("needs.classify.outputs.source_sha", deploy)
 
     def test_privileged_migration_remains_automatic_for_schema_only(self) -> None:
         migration = MIGRATE.read_text(encoding="utf-8")
         automatic = migration.split("  workflow_call: {}", 1)[0]
         self.assertIn('      - "app/dealdesk_schema.sql"', automatic)
+        self.assertIn('      - "app/evidence_schema.sql"', automatic)
         for prohibited in (
             '"app/**"',
             '"requirements.txt"',
@@ -70,6 +72,7 @@ class DavidReleaseSequencingTests(unittest.TestCase):
         self.assertIn("name: david-space-credential-rotation", migration)
         self.assertIn("DAVID_DATABASE_ADMIN_URL", migration)
         self.assertIn('Path("app/dealdesk_schema.sql")', migration)
+        self.assertIn('Path("app/evidence_schema.sql")', migration)
 
 
 if __name__ == "__main__":

@@ -90,7 +90,8 @@ jobs:
               changed="$(git diff --name-only "$before" "$source_sha")"
             fi
             printf '%s\n' "$changed" > /tmp/david-release-changed-files.txt
-            if grep -Fxq 'app/dealdesk_schema.sql' /tmp/david-release-changed-files.txt; then
+            if grep -Fxq 'app/dealdesk_schema.sql' /tmp/david-release-changed-files.txt \
+               || grep -Fxq 'app/evidence_schema.sql' /tmp/david-release-changed-files.txt; then
               admission=WAIT_FOR_SCHEMA_MIGRATION
             else
               deploy_allowed=true
