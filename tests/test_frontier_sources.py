@@ -161,20 +161,38 @@ class FmcsaFrontierSafety(unittest.TestCase):
                 ("fetch_fmcsa", "FMCSA"),
                 ("fetch_usaspending", "USAspending"),
                 ("fetch_echo", "EPA"),
-                ("fetch_fcc_uls", "FCC"),
-                ("fetch_chicago_licenses", "Chicago"),
-                ("fetch_sam_entities", "SAM"),
             )
         ]
-        mocks = [patcher.start() for patcher in patches]
-        self.addCleanup(lambda: [patcher.stop() for patcher in reversed(patches)])
+        held = [
+            mock.patch.object(frontier_sources, name, side_effect=AssertionError("held source must not collect"))
+            for name in (
+                "fetch_fcc_uls",
+                "fetch_chicago_licenses",
+                "fetch_sam_entities",
+            )
+        ]
+        mocks = [patcher.start() for patcher in patches + held]
+        self.addCleanup(lambda: [patcher.stop() for patcher in reversed(patches + held)])
         output = frontier_sources.frontier_opportunities(["NY"], limit_per_source=2)
 
         self.assertEqual(
             [source["source"] for source in output["sources"]],
-            ["DOL", "FMCSA", "USAspending", "EPA", "FCC", "Chicago", "SAM"],
+            [
+                "DOL",
+                "FMCSA",
+                "USAspending",
+                "EPA",
+                frontier_sources.FCC["label"],
+                frontier_sources.CHICAGO["label"],
+                frontier_sources.SAM["label"],
+            ],
         )
-        self.assertTrue(all(item.call_count == 1 for item in mocks))
+        self.assertEqual(output["sources"][0]["source"], "DOL")
+        self.assertEqual(output["sources"][-3]["mode"], "NOT_IMPLEMENTED")
+        self.assertEqual(output["sources"][-2]["mode"], "AUTH_REQUIRED")
+        self.assertEqual(output["sources"][-1]["mode"], "AUTH_REQUIRED")
+        self.assertTrue(all(item.call_count == 1 for item in mocks[:4]))
+        self.assertTrue(all(item.call_count == 0 for item in mocks[4:]))
 
 
 class UsaSpendingFrontierSafety(unittest.TestCase):
@@ -292,7 +310,7 @@ class FccFrontierSafety(unittest.TestCase):
         with mock.patch.object(frontier_sources, "_request_json") as request:
             with self.assertRaisesRegex(
                 frontier_sources.SourceConfigurationUnavailable,
-                "FCC_DURABLE_INGEST_NOT_CONFIGURED",
+                "NOT_IMPLEMENTED",
             ):
                 frontier_sources.fetch_fcc_uls(["NY"], limit=4)
         request.assert_not_called()
@@ -531,23 +549,6 @@ class FrontierAggregationSafety(unittest.TestCase):
                 "source": "EPA ECHO",
                 "source_id": "epa-echo-monitoring-activity",
             }),
-            mock.patch.object(frontier_sources, "fetch_fcc_uls", return_value={
-                **live,
-                "source": "FCC ULS",
-                "source_id": "fcc-uls-organization-licenses",
-            }),
-            mock.patch.object(frontier_sources, "fetch_chicago_licenses", return_value={
-                **live,
-                "source": "Chicago licenses",
-                "source_id": "chicago-new-business-licenses",
-            }),
-            mock.patch.object(
-                frontier_sources,
-                "fetch_sam_entities",
-                side_effect=frontier_sources.SourceConfigurationUnavailable(
-                    "SAM_GOV_API_KEY_NOT_CONFIGURED"
-                ),
-            ),
         ):
             result = frontier_sources.frontier_opportunities(["NY"])
         self.assertEqual(result["leads"], [])
@@ -557,9 +558,11 @@ class FrontierAggregationSafety(unittest.TestCase):
             if source["source_id"] == "fmcsa-company-census"
         )
         self.assertEqual(fmcsa["mode"], "UNAVAILABLE")
+        self.assertEqual(result["sources"][-3]["mode"], "NOT_IMPLEMENTED")
+        self.assertEqual(result["sources"][-2]["mode"], "AUTH_REQUIRED")
         self.assertEqual(
             result["sources"][-1]["reason"],
-            "SAM_GOV_API_KEY_NOT_CONFIGURED",
+            "AUTH_REQUIRED",
         )
         self.assertNotIn("SAMPLE", str(result))
 

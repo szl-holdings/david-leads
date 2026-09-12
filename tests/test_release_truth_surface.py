@@ -65,10 +65,11 @@ class ReleaseTruthSurfaceTests(unittest.TestCase):
         )
         self.assertIn("/api/frontier-desk", schema["paths"])
         self.assertIn("/api/verify/{rid}", schema["paths"])
+        self.assertIn("/api/v1/public/capabilities", schema["paths"])
         self.assertNotIn("/api/run", schema["paths"])
         self.assertNotIn("/api/outcome", schema["paths"])
         self.assertNotIn("/api/export.csv", schema["paths"])
-        self.assertLessEqual(len(schema["paths"]), 12)
+        self.assertLessEqual(len(schema["paths"]), 13)
 
     def test_public_shell_has_compression_and_browser_security_headers(self):
         response = self.client.get("/", headers={"Accept-Encoding": "gzip"})
