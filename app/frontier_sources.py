@@ -248,7 +248,7 @@ def _attach_receipt(record: dict[str, Any], signal: str) -> dict[str, Any]:
     record["observed_at"] = _now().isoformat()
     record["parser_version"] = "frontier-sources/1.2"
     ids = record.get("authoritative_entity_ids") or []
-    record["source_record_id"] = _clean(record.get("source_record_id"), 80) or (
+    record["source_record_id"] = _clean(record.get("source_record_id"), 220) or (
         _clean(ids[0].get("value"), 80)
         if ids and isinstance(ids[0], dict)
         else _clean(record.get("credential"), 80)

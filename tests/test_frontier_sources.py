@@ -206,6 +206,17 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         frontier_sources.collect_usaspending_live(["NY"], limit=3)
 
+    def test_runtime_receipt_preserves_full_generated_award_identifier(self):
+        identity = "CONT_AWD_" + "A" * 180
+        record = {
+            "source_record_id": identity,
+            "name": "SYNTHETIC FIXTURE LLC",
+            "state": "NY",
+            "citation": {"label": "Official award", "url": f"https://www.usaspending.gov/award/{identity}/latest"},
+        }
+        bound = frontier_sources._attach_receipt(record, "Synthetic receipt regression")
+        self.assertEqual(bound["source_record_id"], identity)
+
     def test_contract_activity_is_not_labeled_a_new_award(self):
         captured = {}
 

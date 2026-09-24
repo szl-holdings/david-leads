@@ -42,6 +42,7 @@ POLICY = {
     "admission": "LEGAL_ORGANIZATIONS_ONLY_PUBLIC_RESEARCH_ONLY",
     "optional_postal_code": "PRESERVE_VALID_FIVE_DIGIT_CODE_ELSE_EMPTY_NO_INFERENCE",
     "benefit_timing": "COUNTDOWN_BOUND_TO_CAPTURE_QUERY_DATE_DISPLAY_RECOMPUTED_WITH_CAPTURE_RETAINED",
+    "record_identity": {"fmcsa": "AUTHORITATIVE_ENTITY_IDS", "form5500": "AUTHORITATIVE_ENTITY_IDS", "usaspending": "FULL_GENERATED_CONTRACT_AWARD_ID_FROM_CANONICAL_OFFICIAL_DETAIL_CITATION"},
     "excluded_categories": ["street_address", "person", "contact", "EIN", "raw_upstream", "award_description", "plan_name", "reported_carrier", "adverse", "underwriting"],
     "text_fields": list(TEXT_FIELDS),
     "nested_fields": {"citation": ["label", "url"], "source_record": ["label", "url"], "authoritative_entity_ids": ["system", "value"], "fmcsa": ["power_units", "drivers", "trucks", "buses"], "form5500": ["participants_reported", "benefit_categories"], "usaspending": ["award_id", "amount", "agency", "start_date", "end_date"], "timing": ["label", "next_anniversary", "days_to_anniversary", "basis", "hypothesis_only"]},
@@ -119,6 +120,15 @@ def _link(value: Any, lane: str) -> dict:
     if parsed.scheme != "https" or parsed.hostname not in hosts or parsed.username or parsed.password or parsed.port not in (None, 443):
         raise SnapshotError("invalid official citation URL")
     return dict(value)
+
+
+def _generated_award_id(item: dict) -> str:
+    """PIID and UEI can be shared by awards under different parent IDVs."""
+    url = item["citation"]["url"]
+    match = re.fullmatch(r"https://www\.usaspending\.gov/award/(CONT_AWD_[A-Za-z0-9_.-]{1,211})/latest", url)
+    if not match:
+        raise SnapshotError("canonical USAspending generated award detail citation required")
+    return match.group(1)
 
 
 def project_record(lane: str, row: dict) -> dict:
@@ -207,6 +217,7 @@ def validate_record(lane: str, item: dict, *, hashed: bool = True) -> None:
         if timing["hypothesis_only"] is not True:
             raise SnapshotError("anniversary must remain a hypothesis")
     else:
+        _generated_award_id(item)
         amount = nested["amount"]
         if type(amount) not in (int, float) or not math.isfinite(amount) or not 0 <= amount <= 1e12:
             raise SnapshotError("invalid public award amount")
@@ -330,7 +341,7 @@ def verify_bundle(snapshot: dict, receipt: dict, records_bytes: bytes, *, now: d
         if canonical(item) + b"\n" != line:
             raise SnapshotError("record JSON is not canonical")
         validate_record(lane, item)
-        identity = canonical(item["authoritative_entity_ids"])
+        identity = canonical({"USAspending generated award ID": _generated_award_id(item)}) if lane == "usaspending" else canonical(item["authoritative_entity_ids"])
         if identity in seen:
             raise SnapshotError("duplicate record identity")
         seen.add(identity)
@@ -435,6 +446,11 @@ def load_lane(lane: str, states: list[str] | None = None, limit: int = 18, *, no
         raise SnapshotError("selected state is outside published query coverage; refresh pending")
     selected = [copy.deepcopy(r) for r in result["records"] if r["state"] in requested][:max(1, min(int(limit), 50))]
     for row in selected:
+        if lane == "usaspending":
+            # Preserve the full contract identity, including parent IDV, when
+            # the runtime later mints its independent source receipt.
+            row["source_record_id"] = _generated_award_id(row)
+            row.setdefault("operational_snapshot", {})["dataset_source_record_id"] = row["source_record_id"]
         if lane == "form5500":
             # Keep the verified source projection and its hash identifiable; the
             # runtime's separately minted receipt binds this derived display.

@@ -35,6 +35,7 @@ def fixture_record(lane="fmcsa", state="NY", identity="12345", as_of=None):
         row["timing"] = {"label": "0-90 days", "next_anniversary": (basis + timedelta(days=40)).isoformat(), "days_to_anniversary": 40, "basis": "reported period", "hypothesis_only": True}
     else:
         row["award"] = {"award_id": identity, "amount": 100000.0, "agency": "Test federal agency", "start_date": "2026-08-01", "end_date": "2027-08-01", "description": "MUST_NOT_PERSIST"}
+        row["citation"]["url"] = f"https://www.usaspending.gov/award/CONT_AWD_{identity}_7529_FIXTUREPARENT_7529/latest"
     return row
 
 
@@ -70,6 +71,62 @@ def test_each_capture_mints_new_standalone_receipt():
     assert a["receipt"]["receipt_id"] != b["receipt"]["receipt_id"]
     assert a["receipt"]["session_id"] != b["receipt"]["session_id"]
     assert a["receipt"]["prev_receipt_hash"] == "GENESIS"
+
+
+def _awards_bundle(records):
+    def collector(states, limit):
+        return {"mode": "LIVE", "count": len(records), "records": records,
+                "query_window": {"start": "2026-09-03", "end": "2026-09-24"}}
+    return collect_bundle("usaspending", REVISION, states=["MI"], collector=collector)
+
+
+def test_same_piid_and_uei_with_distinct_parent_awards_are_preserved():
+    first = fixture_record("usaspending", state="MI", identity="75N95021F00011")
+    first["authoritative_entity_ids"].insert(0, {"system": "UEI", "value": "SAMEUEI12345"})
+    second = copy.deepcopy(first)
+    first["citation"]["url"] = "https://www.usaspending.gov/award/CONT_AWD_75N95021F00011_7529_75N95021D00012_7529/latest"
+    second["citation"]["url"] = "https://www.usaspending.gov/award/CONT_AWD_75N95021F00011_7529_75N95021D00015_7529/latest"
+    bundle = _awards_bundle([first, second])
+    assert bundle["snapshot"]["record_count"] == 2
+    verified = snap.verify_bundle(bundle["snapshot"], bundle["receipt"], bundle["records_bytes"])
+    verified["path"] = snap.pointer_for(bundle["snapshot"])["path"]
+    with mock.patch.object(snap, "load_verified", return_value=verified):
+        runtime = snap.load_lane("usaspending", ["MI"])["records"]
+    assert [row["source_record_id"] for row in runtime] == [
+        "CONT_AWD_75N95021F00011_7529_75N95021D00012_7529",
+        "CONT_AWD_75N95021F00011_7529_75N95021D00015_7529",
+    ]
+    assert all(row["operational_snapshot"]["dataset_source_record_id"] == row["source_record_id"] for row in runtime)
+    assert "source_record_id" not in verified["records"][0]
+
+
+def test_same_generated_award_still_rejected_when_reported_identifiers_differ():
+    first = fixture_record("usaspending", state="MI", identity="75N95021F00011")
+    second = copy.deepcopy(first)
+    second["authoritative_entity_ids"] = [{"system": "UEI", "value": "DIFFERENTUEI"}, {"system": "Federal Award ID", "value": "DIFFERENTPIID"}]
+    second["award"]["award_id"] = "DIFFERENTPIID"
+    second["credential"] = "UEI DIFFERENTUEI"
+    with pytest.raises(snap.SnapshotError, match="duplicate record identity"):
+        _awards_bundle([first, second])
+
+
+@pytest.mark.parametrize("url", [
+    "https://www.usaspending.gov/search",
+    "https://www.usaspending.gov/award//latest",
+    "https://www.usaspending.gov/award/12345/latest",
+    "https://www.usaspending.gov/award/CONT_AWD_/latest",
+    "https://api.usaspending.gov/award/CONT_AWD_ID_7529_PARENT_7529/latest",
+    "https://www.usaspending.gov:443/award/CONT_AWD_ID_7529_PARENT_7529/latest",
+    "https://www.usaspending.gov/award/CONT_AWD_ID_7529_PARENT_7529/latest?version=1",
+    "https://www.usaspending.gov/award/CONT_AWD_ID_7529_PARENT_7529/latest#fragment",
+    "https://www.usaspending.gov/award/CONT_AWD_ID_7529_PARENT_7529/latest/",
+    "https://www.usaspending.gov/award/CONT_AWD_ID%5F7529_PARENT_7529/latest",
+])
+def test_missing_or_noncanonical_generated_award_identity_fails_closed(url):
+    row = fixture_record("usaspending", state="MI")
+    row["citation"]["url"] = url
+    with pytest.raises(snap.SnapshotError, match="canonical USAspending"):
+        _awards_bundle([row])
 
 
 @pytest.mark.parametrize("lane", tuple(snap.LANES))
