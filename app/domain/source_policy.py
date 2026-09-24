@@ -2,7 +2,8 @@
 
 This module does not collect, scrape, or enable held sources. IRS/NYC remain
 POLICY_HOLD. Chicago/SAM remain AUTH_REQUIRED. FCC remains NOT_IMPLEMENTED.
-DOL Form 5500 is the first enabled collector. Integrity is unsigned.
+DOL Form 5500 is first among four configured federal snapshot lanes. Enabled
+describes configuration, not current snapshot availability. Integrity is unsigned.
 """
 from __future__ import annotations
 
@@ -31,13 +32,37 @@ SOURCE_CATALOG = (
         "status": "ENABLED",
         "order": 1,
         "enabled": True,
-        "collector": "LIVE_WHEN_SNAPSHOT_PRESENT",
+        "collector": "VERIFIED_SNAPSHOT_REQUIRED",
+    },
+    {
+        "id": "fmcsa-company-census",
+        "label": "FMCSA Company Census",
+        "status": "ENABLED",
+        "order": 2,
+        "enabled": True,
+        "collector": "VERIFIED_SNAPSHOT_REQUIRED",
+    },
+    {
+        "id": "usaspending-contract-activity",
+        "label": "USAspending federal contract activity",
+        "status": "ENABLED",
+        "order": 3,
+        "enabled": True,
+        "collector": "VERIFIED_SNAPSHOT_REQUIRED",
+    },
+    {
+        "id": "epa-echo-monitoring-activity",
+        "label": "EPA ECHO facility inspection activity",
+        "status": "ENABLED",
+        "order": 4,
+        "enabled": True,
+        "collector": "VERIFIED_SNAPSHOT_REQUIRED",
     },
     {
         "id": "irs-form990",
         "label": "IRS Form 990 organization filings",
         "status": "POLICY_HOLD",
-        "order": 2,
+        "order": 5,
         "enabled": False,
         "collector": "NOT_ENABLED",
     },
@@ -45,7 +70,7 @@ SOURCE_CATALOG = (
         "id": "nyc-acris",
         "label": "NYC ACRIS property records",
         "status": "POLICY_HOLD",
-        "order": 3,
+        "order": 6,
         "enabled": False,
         "collector": "NOT_ENABLED",
     },
@@ -53,7 +78,7 @@ SOURCE_CATALOG = (
         "id": "chicago-new-business-licenses",
         "label": "Chicago new active business licenses",
         "status": "AUTH_REQUIRED",
-        "order": 4,
+        "order": 7,
         "enabled": False,
         "collector": "NOT_ENABLED",
     },
@@ -61,7 +86,7 @@ SOURCE_CATALOG = (
         "id": "sam-active-entity-updates",
         "label": "SAM.gov active entity updates",
         "status": "AUTH_REQUIRED",
-        "order": 5,
+        "order": 8,
         "enabled": False,
         "collector": "NOT_ENABLED",
     },
@@ -69,7 +94,7 @@ SOURCE_CATALOG = (
         "id": "fcc-uls-organization-licenses",
         "label": "FCC ULS organization license activity",
         "status": "NOT_IMPLEMENTED",
-        "order": 6,
+        "order": 9,
         "enabled": False,
         "collector": "NOT_ENABLED",
     },
@@ -91,6 +116,7 @@ def source_status(source_id: str) -> dict[str, Any]:
                 "status": item["status"],
                 "order": item["order"],
                 "enabled": item["enabled"],
+                "collector": item["collector"],
             }
     return {
         "id": source_id,
@@ -98,6 +124,7 @@ def source_status(source_id: str) -> dict[str, Any]:
         "status": "UNKNOWN",
         "order": None,
         "enabled": False,
+        "collector": "NOT_ENABLED",
     }
 
 
@@ -131,7 +158,7 @@ def public_capabilities() -> dict[str, Any]:
         "kernel": SCHEMA,
         "sources": [source_status(item["id"]) for item in SOURCE_CATALOG],
         "operations": {
-            "collect": "DOL_FIRST",
+            "collect": "SCHEDULED_FEDERAL_SNAPSHOTS",
             "research": "REVIEW",
             "public_display": "REVIEW",
             "redistribute": "DENY",

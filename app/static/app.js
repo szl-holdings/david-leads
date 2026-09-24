@@ -992,6 +992,11 @@ function openLead(id, opener = null) {
   const resolution = lead.entity_resolution || {};
   const counterEvidence = Array.isArray(constellation.counter_evidence) ? constellation.counter_evidence : [];
   const decisionDimensions = constellation.decision_dimensions || {};
+  const sourceSnapshot = lead.operational_snapshot || {};
+  const snapshotAsOf = sourceSnapshot.dataset_source_as_of || sourceSnapshot.dataset_snapshot_created_at || "";
+  const snapshotDelivery = sourceSnapshot.delivery || "";
+  const snapshotSourcePath = sourceSnapshot.dataset_source_path || "";
+  const snapshotReceiptState = sourceSnapshot.dataset_receipt_state || "";
   const carriers = Array.isArray(lead.operational_snapshot?.reported_carriers)
     ? lead.operational_snapshot.reported_carriers
     : [];
@@ -1019,6 +1024,8 @@ function openLead(id, opener = null) {
         <div class="drawer-fact"><span>Evidence</span><strong>${esc(evidence.label)}</strong></div>
         <div class="drawer-fact"><span>${esc(value.label)}</span><strong>${esc(value.value)}</strong></div>
         <div class="drawer-fact"><span>Source state</span><strong>${esc(lead.truth_label || "LIVE")}</strong></div>
+        ${snapshotAsOf ? `<div class="drawer-fact"><span>Dataset as of</span><strong>${esc(formatDate(snapshotAsOf))}</strong></div>` : ""}
+        ${snapshotDelivery ? `<div class="drawer-fact"><span>Delivery</span><strong>${esc(String(snapshotDelivery).replaceAll("_", " "))}</strong></div>` : ""}
         ${idFacts}
       </div>
     </section>
@@ -1056,6 +1063,7 @@ function openLead(id, opener = null) {
     <section class="drawer-section">
       <span class="drawer-section-label">Proof and sources</span>
       <p>Open the source record first. The receipt confirms the normalized public observation that created this research card.</p>
+      ${snapshotSourcePath ? `<div class="drawer-facts"><div class="drawer-fact"><span>Source path</span><strong>${esc(snapshotSourcePath)}</strong></div><div class="drawer-fact"><span>Snapshot receipt</span><strong>${esc(snapshotReceiptState || "UNAVAILABLE")}</strong></div></div>` : ""}
       ${corroborationList}
       <div class="drawer-links">
         <a class="drawer-link" href="${safeUrl(lead.citation?.url)}" target="_blank" rel="noopener">Open official record</a>

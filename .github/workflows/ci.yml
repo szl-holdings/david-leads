@@ -127,8 +127,10 @@ jobs:
       - name: Install application and test dependencies
         run: python3 -m pip install --requirement requirements-dev.txt
       - name: Compile application and operations modules
-        run: python3 -m compileall -q app ops
+        run: python3 -m compileall -q app ops tools
       - name: Run full safety and application test suite
         run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v
+      - name: Run pytest safety and Federal Refresh regressions
+        run: python3 -m pytest -q
       - name: Run all browser-state and truth-surface regressions
         run: node --test tests/*.test.mjs

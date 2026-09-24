@@ -1,7 +1,8 @@
 # David Leads — Public Data Operating Model
 
-> Reviewed 2026-07-28. Operational guardrail, not legal advice. Public visibility
-> is not permission to scrape, profile, resell, or contact.
+> Data-flow implementation updated 2026-09-24; policy review baseline 2026-07-28.
+> Operational guardrail, not legal advice. Public visibility is not permission
+> to scrape, profile, resell, or contact.
 
 ## Product decision
 
@@ -29,10 +30,11 @@ into a callable person.
 
 ## Best first vertical: commercial trucking
 
-Commercial trucking is the strongest expansion wedge because FMCSA exposes
-machine-readable official entity, fleet, inspection, authority, and insurance
-filing data. A broker can receive an auditable renewal or coverage-event queue
-without LinkedIn scraping.
+Commercial trucking is a focused research vertical because FMCSA exposes
+machine-readable official entity and fleet data. The implemented lane supports
+an auditable queue of recent carrier-entity additions without LinkedIn scraping.
+The broader official datasets below are references, not a claim that authority,
+insurance, renewal, or coverage events are implemented in this release.
 
 High-value official datasets:
 
@@ -44,29 +46,69 @@ High-value official datasets:
 
 ### Implemented now
 
-`Frontier Radar` queries the FMCSA Company Census for recent active entity
-additions and selects only legal/DBA name, USDOT identifier, addition date,
-carrier class, equipment/driver counts, and physical business location. It does
-not request phone, email, named officer, crash, safety-rating, insurance, or
-policy fields. Every row is `PROSPECTING_ONLY`, `not_for_underwriting=true`, and
-requires a current SAFER check before a broker can record contact clearance.
+`Frontier Radar` reads the four core federal lanes from verified snapshots in
+[`SZLHOLDINGS/david-leads-data`](https://huggingface.co/datasets/SZLHOLDINGS/david-leads-data).
+A daily GitHub Actions workflow performs official collection, applies the closed
+field projection, verifies each bundle, and publishes it with its lane pointer
+in one atomic Hugging Face commit. The Space verifies the complete bundle before
+serving records; user requests do not call these four federal providers.
 
-The second implemented lane queries [USAspending](https://api.usaspending.gov/docs/intro-tutorial)
-for recent federal contract activity between $25,000 and $10 million. It retains
-the recipient entity name, UEI, business location, agency, award identifier,
-amount, dates, and description. The interface explicitly warns that the search
-window may reflect a modification to an older award; award amount is never
-presented as revenue, cash flow, insurance need, or a newly signed contract.
+The **FMCSA** collector makes bounded Company Census API queries for recent active
+carrier-entity additions. Published records retain the legal organization name,
+USDOT identifier, addition date, carrier class, equipment/driver counts, city,
+state, and an optional valid postal code. A recognized organization suffix is
+required; explicit individual or sole-proprietor classifications are excluded.
+The collector does not request street, phone, email, named officer, crash,
+safety-rating, insurance, or policy fields. This lane is a scheduled Company
+Census capture, not a national MOTUS product migration. A current SAFER check is
+still required before a broker can record contact clearance.
 
-The third implemented lane uses the documented
-[EPA ECHO web service](https://echo.epa.gov/tools/web-services) for small, on-demand
-facility research. It selects only facility name/address, FRS identifier, NAICS,
-and the last compliance-monitoring date. It deliberately excludes compliance
-status, violations, penalties, demographics, and person fields. The interface
-describes the result as monitoring activity—not a violation, enforcement
-finding, unsafe condition, claim predictor, or underwriting fact. Production-
-scale collection must use EPA's weekly bulk exporter instead of robotic UI
-queries.
+The **USAspending** collector makes bounded official
+[API queries](https://api.usaspending.gov/docs/intro-tutorial) for recent federal
+contract activity between $25,000 and $10 million. The published projection
+retains legal organization name, UEI when available, city/state/optional postal
+code, agency, award identifier, amount, and dates. Street addresses and award
+descriptions returned by the provider are omitted from published snapshots and
+served records. The search window may reflect a modification to an older award;
+award amount is never presented as revenue, cash flow, insurance need, or a newly
+signed contract.
+
+The **DOL Form 5500** collector reads official published bulk disclosures, then
+selects organization-level life-benefit plan observations. Its published
+projection retains sponsor organization, filing acknowledgement identifier,
+city/state/optional postal code, filing dates, participant count, benefit
+categories, and a reported-period anniversary hypothesis. It omits EINs, people,
+contacts, plan names, and reported carrier names. Anniversary timing does not
+establish a current renewal, buying intent, or permission to contact.
+
+The **EPA ECHO** collector streams the official
+[weekly Exporter ZIP](https://echo.epa.gov/tools/data-downloads) in GitHub Actions.
+It publishes recent active non-federal facilities in the declared territory,
+retaining facility name, FRS identifier, city/state/postal code/county/region,
+NAICS, program flags, inspection date/count, and the source-reported inspection
+age. Actual date-based eligibility is checked independently. The projection
+excludes street addresses, coordinates, contacts, compliance/violation findings,
+penalties, demographics, emissions, and risk fields. Monitoring activity is not
+a violation, enforcement finding, unsafe condition, claim predictor, or
+underwriting fact.
+
+The ECHO source archive's calendar date governs its eight-day freshness window;
+processing time is separately recorded. The other lanes disclose their bounded
+state queries, limits, exclusions, and capture dates and expire eight days after
+capture. They are not complete national registries. Missing, stale, malformed,
+or tampered bundles remain unavailable, with stale data reported as
+`data as of <date>, refresh pending`; no sample substitution occurs. Every served
+record remains `PUBLIC_RESEARCH_ONLY`, `PROSPECTING_ONLY`, and
+`not_for_underwriting=true`.
+
+Snapshot manifests bind the exact parser Git revision, projection policy,
+cardinality, ordered record hashes, and JSONL bytes. Standalone PurIQ v1 receipts
+remain explicitly `UNSIGNED`; reference-tested payload integrity is not signer
+authentication or a cross-refresh chain. Separate GitHub OIDC attestations and
+pinned publication readbacks provide release evidence. See the
+[Federal Refresh publication contract](docs/FEDERAL_PUBLICATION_CONTRACT.md).
+Implementation, published data, deployed source, and live proof remain separate
+states; this document does not certify that a particular release is running.
 
 Three additional frontiers now have fail-closed adapters:
 
@@ -99,13 +141,14 @@ Guardrails:
 
 | Tier | Official source | Opportunity signal | Boundary |
 |---|---|---|---|
-| 1 | FMCSA | fleet growth, authority and filing events, operating status | Business entity only; suppress full policy numbers |
+| 1 | FMCSA Company Census | recent active carrier-entity additions and reported fleet counts | Scheduled bounded organization snapshot; authority, insurance, and renewal-event products are not implemented |
 | 1 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active public registration updates | Key-gated; public sensitivity and entity/core allowlist only; exclude POC, CUI, D&B and pre-2022 records |
-| 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | award activity and award periods | Activity may be a modification; not financial-health truth |
+| 1 | [USAspending API](https://api.usaspending.gov/docs/endpoints) | award activity and award periods | Scheduled bounded organization snapshot; activity may be a modification, not financial-health truth |
 | 1 | [Chicago Business Licenses](https://data.cityofchicago.org/Community-Economic-Development/Business-Licenses/r5kz-chrr) | newly issued active organization licenses | Illinois only; reuse-approval and app-token gated; never join Business Owners |
 | 1 | state Secretary of State open data | formations, status changes, mergers | Registered-agent/service address may not be an operating contact |
 | 1 | [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces) | 8-K events, financing, acquisitions, disclosed changes | Follow SEC fair-access guidance and declared User-Agent |
-| 1 | [EPA ECHO](https://echo.epa.gov/tools/web-services) | recent facility compliance-monitoring activity | Live, minimized facility fields; not a violation, risk judgment, or underwriting fact |
+| 1 | [EPA ECHO Exporter](https://echo.epa.gov/tools/data-downloads) | recent facility compliance-monitoring activity | Verified minimized bulk snapshot; not a violation, risk judgment, or underwriting fact |
+| 1 | [DOL Form 5500](https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/public-disclosure/foia/form-5500-datasets) | reported life-benefit plan anniversary hypothesis | Scheduled bulk projection; no EIN, people, contacts, plan names, or renewal claim |
 | 2 | [OSHA data](https://www.osha.gov/foia/) | inspection and enforcement events | Reported event, not a conclusive risk judgment |
 | 2 | [OpenFEMA](https://www.fema.gov/about/reports-and-data/openfema), [NOAA Storm Events](https://www.ncei.noaa.gov/stormevents/ftp.jsp), [USGS](https://earthquake.usgs.gov/ws/) | facility/geographic hazard context | Aggregate/facility context; no household reconstruction |
 | 2 | [CMS provider enrollment](https://data.cms.gov/provider-characteristics/medicare-provider-supplier-enrollment) | facility openings, ownership and enrollment changes | Facility only; no PHI or beneficiary data |
@@ -119,7 +162,6 @@ Guardrails:
 |---|---|---|
 | [SAM.gov Entity API](https://open.gsa.gov/api/entity-api/) | active registration and public entity updates | `ADAPTER_READY_KEY_REQUIRED`; approved key/system-account operations still required |
 | [Chicago Business Licenses](https://data.cityofchicago.org/Community-Economic-Development/Business-Licenses/r5kz-chrr) | initial active organization licenses | `ADAPTER_READY_REUSE_APPROVAL_AND_APP_TOKEN_REQUIRED`; Illinois must be explicitly selected |
-| [EPA ECHO weekly exporter](https://echo.epa.gov/tools/data-downloads) | restart-safe bulk facility refresh | On-demand adapter is live; bulk automation needs a durable incremental parser |
 | [FCC ULS public data](https://opendata.fcc.gov/Wireless/FCC-Universal-Licensing-System-ULS-/x28i-i4z4/data) | new entity radio licenses and infrastructure operations | `FCC_DURABLE_INGEST_NOT_CONFIGURED`; never download large mixed-person archives on the request path |
 | [FAA releasable aircraft database](https://www.faa.gov/licenses_certificates/aircraft_certification/aircraft_registry/releasable_aircraft_download) | corporate aircraft registration/transfer | `PRIVACY_REVIEW_REQUIRED`; the bulk file mixes company and individual owners and supports owner-information withholding |
 | Company RSS/newsroom/job feeds | expansion, executive, location and hiring events | `ALLOWLIST_REVIEW_REQUIRED`; terms/robots check, low-rate retrieval, normalized fact only |

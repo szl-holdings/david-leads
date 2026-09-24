@@ -26,8 +26,25 @@ class PublicCapabilitiesTests(unittest.TestCase):
         self.assertEqual(body["ready_patch"], "DENIED")
         self.assertEqual(body["contact_permission"], "NOT_EVALUATED")
         sources = {item["id"]: item for item in body["sources"]}
-        self.assertEqual(sources["dol-form5500-benefit-timing"]["status"], "ENABLED")
         self.assertEqual(sources["dol-form5500-benefit-timing"]["order"], 1)
+        configured = [item for item in body["sources"] if item["enabled"]]
+        self.assertEqual(
+            [item["id"] for item in configured],
+            [
+                "dol-form5500-benefit-timing",
+                "fmcsa-company-census",
+                "usaspending-contract-activity",
+                "epa-echo-monitoring-activity",
+            ],
+        )
+        for source in configured:
+            self.assertEqual(source["status"], "ENABLED")
+            self.assertEqual(source["collector"], "VERIFIED_SNAPSHOT_REQUIRED")
+        self.assertEqual(body["operations"]["collect"], "SCHEDULED_FEDERAL_SNAPSHOTS")
+        self.assertEqual(
+            [item["order"] for item in body["sources"]],
+            list(range(1, len(body["sources"]) + 1)),
+        )
         self.assertEqual(sources["irs-form990"]["status"], "POLICY_HOLD")
         self.assertEqual(sources["nyc-acris"]["status"], "POLICY_HOLD")
         self.assertEqual(sources["chicago-new-business-licenses"]["status"], "AUTH_REQUIRED")
@@ -47,8 +64,17 @@ class PublicCapabilitiesTests(unittest.TestCase):
         self.assertEqual(list(body), list(public_capabilities()))
 
     def test_catalog_does_not_enable_held_sources(self):
-        enabled = [item["id"] for item in SOURCE_CATALOG if item["enabled"]]
-        self.assertEqual(enabled, ["dol-form5500-benefit-timing"])
+        held = {item["id"]: item for item in SOURCE_CATALOG if not item["enabled"]}
+        expected = {
+            "irs-form990": "POLICY_HOLD",
+            "nyc-acris": "POLICY_HOLD",
+            "chicago-new-business-licenses": "AUTH_REQUIRED",
+            "sam-active-entity-updates": "AUTH_REQUIRED",
+            "fcc-uls-organization-licenses": "NOT_IMPLEMENTED",
+        }
+        self.assertEqual({key: item["status"] for key, item in held.items()}, expected)
+        for item in held.values():
+            self.assertEqual(item["collector"], "NOT_ENABLED")
 
 
 class ReadyGateTests(unittest.TestCase):

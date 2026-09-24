@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - "app/frontier_sources.py"
+      - "app/echo_snapshot.py"
+      - "app/federal_snapshot.py"
       - "app/benefit_frontier.py"
       - "app/server.py"
       - "ops/frontier_live_canary.py"
@@ -36,7 +38,6 @@ jobs:
     if: >-
       github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -63,6 +64,9 @@ jobs:
         run: python3 -m unittest tests.test_frontier_live_canary -v
 
       - name: Probe exact public runtime and four federal lanes
+        # A pull request proves its contract locally; deployment completion proves
+        # that exact contract against the newly published production revision.
+        if: github.event_name != 'pull_request' && github.event_name != 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -73,7 +77,7 @@ jobs:
           python3 ops/frontier_live_canary.py "${args[@]}"
 
       - name: Upload immutable aggregate canary evidence
-        if: always()
+        if: always() && github.event_name != 'pull_request' && github.event_name != 'push'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: david-frontier-live-canary-${{ github.run_id }}-${{ github.run_attempt }}

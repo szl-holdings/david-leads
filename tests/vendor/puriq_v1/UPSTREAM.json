@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/szl-holdings/a11oy",
+  "commit": "a0276036e42005911c7f6257141bc49698a82639",
+  "license": "Apache-2.0",
+  "scope": "Test-only PurIQ v1 reference; no runtime dependency or signature authority",
+  "files": {
+    "puriq_receipt_v1.js": "static/shared/puriq_receipt_v1.js",
+    "schema.json": "schemas/puriq-receipt-v1.json",
+    "vectors.json": "tests/fixtures/puriq-receipt-v1-vectors.json"
+  }
+}

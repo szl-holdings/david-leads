@@ -16,12 +16,12 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 CANONICAL_SPACE = "https://szlholdings-david-leads.hf.space"
-STATES = "NY,NJ,PA,MD,DE,CT,VA"
+STATES = "AL,CT,DC,DE,FL,GA,IL,IN,KY,ME,MD,MA,MI,MS,NH,NJ,NY,NC,OH,PA,RI,SC,TN,VT,VA,WV,WI"
 REQUIRED_LANES = (
     "dol-form5500-benefit-timing",
     "fmcsa-company-census",
@@ -30,6 +30,19 @@ REQUIRED_LANES = (
 )
 NON_PRODUCTION = {"SAMPLE", "EXAMPLE", "MOCK", "FIXTURE"}
 USER_AGENT = "SZL-David-Leads-Live-Canary/1.0 research@szlholdings.com"
+SNAPSHOT_FRESHNESS_DAYS = 8
+ECHO_SOURCE_ID = "epa-echo-monitoring-activity"
+SCHEDULED_LANES = {
+    "dol-form5500-benefit-timing": (
+        "form5500", ["dol-form5500", "scheduled-official-bulk-projection"],
+    ),
+    "fmcsa-company-census": (
+        "fmcsa", ["fmcsa-company-census", "scheduled-public-api-capture"],
+    ),
+    "usaspending-contract-activity": (
+        "usaspending", ["usaspending-contract-activity", "scheduled-public-api-capture"],
+    ),
+}
 
 
 def _get_json(path: str, timeout: int = 300) -> dict[str, Any]:
@@ -62,6 +75,118 @@ def _as_count(value: Any) -> int:
     except (TypeError, ValueError):
         return -1
     return count if count >= 0 else -1
+
+
+def _snapshot_time(value: Any, *, date_only: bool = False) -> datetime | None:
+    pattern = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
+    if not date_only:
+        pattern += r"T[0-9]{2}:[0-9]{2}:[0-9]{2}Z"
+    if not isinstance(value, str) or not re.fullmatch(pattern, value):
+        return None
+    try:
+        return datetime.strptime(
+            value, "%Y-%m-%d" if date_only else "%Y-%m-%dT%H:%M:%SZ",
+        ).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _snapshot_contract(
+    item: dict[str, Any], source_id: str, now: datetime,
+) -> dict[str, Any]:
+    """Validate exposed snapshot bindings without claiming signature verification."""
+    errors: list[str] = []
+    snapshot = item.get("snapshot")
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+        errors.append("SNAPSHOT_METADATA_MISSING")
+    echo = source_id == ECHO_SOURCE_ID
+    expected_delivery = "VERIFIED_BULK_SNAPSHOT" if echo else "VERIFIED_SCHEDULED_SNAPSHOT"
+    delivery = item.get("delivery")
+    if delivery != expected_delivery:
+        errors.append("SNAPSHOT_DELIVERY_MISMATCH")
+
+    if echo:
+        dataset = item.get("dataset")
+        receipt = item.get("snapshot_receipt")
+        source = snapshot.get("source")
+        dataset = dataset if isinstance(dataset, dict) else {}
+        receipt = receipt if isinstance(receipt, dict) else {}
+        source = source if isinstance(source, dict) else {}
+        snapshot_id = snapshot.get("snapshot_id")
+        snapshot_digest = snapshot.get("snapshot_digest")
+        path = dataset.get("immutable_path")
+        created_value = snapshot.get("created_at")
+        as_of_value = source.get("source_as_of")
+        receipt_state = receipt.get("state")
+        source_path = [source.get("name")]
+        expected_source_path = ["echo-exporter"]
+        path_prefix = "snapshots"
+    else:
+        lane, expected_source_path = SCHEDULED_LANES[source_id]
+        snapshot_id = snapshot.get("id")
+        snapshot_digest = snapshot_id[7:] if isinstance(snapshot_id, str) else None
+        path = snapshot.get("path")
+        created_value = as_of_value = snapshot.get("as_of")
+        receipt_state = snapshot.get("receipt_state")
+        source_path = item.get("source_path")
+        path_prefix = f"snapshots/{lane}"
+
+    valid_digest = isinstance(snapshot_digest, str) and bool(re.fullmatch(r"[0-9a-f]{64}", snapshot_digest))
+    valid_id = valid_digest and snapshot_id == f"sha256:{snapshot_digest}"
+    if not valid_id:
+        errors.append("SNAPSHOT_ID_INVALID")
+    created = _snapshot_time(created_value)
+    as_of = _snapshot_time(as_of_value, date_only=echo)
+    if created is None:
+        errors.append("SNAPSHOT_CREATED_AT_INVALID")
+    elif created > now:
+        errors.append("SNAPSHOT_CREATED_AT_FUTURE")
+    if as_of is None:
+        errors.append("SNAPSHOT_AS_OF_INVALID")
+    elif as_of > now:
+        errors.append("SNAPSHOT_AS_OF_FUTURE")
+    elif now - as_of > timedelta(days=SNAPSHOT_FRESHNESS_DAYS):
+        errors.append("SNAPSHOT_STALE")
+    if as_of is not None and created is not None and as_of > created:
+        errors.append("SNAPSHOT_AS_OF_AFTER_CREATION")
+
+    expected_path = (
+        f"{path_prefix}/{created.date().isoformat()}/{snapshot_digest}"
+        if created is not None and valid_id else None
+    )
+    valid_path = expected_path is not None and path == expected_path
+    if not valid_path:
+        errors.append("SNAPSHOT_PATH_MISMATCH")
+    if receipt_state != "PAYLOAD_VERIFIED_UNSIGNED":
+        errors.append("SNAPSHOT_RECEIPT_STATE_INVALID")
+    if source_path != expected_source_path:
+        errors.append("SNAPSHOT_SOURCE_PATH_MISMATCH")
+    record_count = snapshot.get("record_count")
+    valid_count = type(record_count) is int and record_count > 0
+    if not valid_count or record_count < _as_count(item.get("count")):
+        errors.append("SNAPSHOT_RECORD_COUNT_INVALID")
+
+    # Only format-checked aggregate fields enter the artifact, never arbitrary
+    # source metadata, organization names, or dataset records.
+    return {
+        "delivery": delivery if delivery == expected_delivery else None,
+        "snapshot_id": snapshot_id if valid_id else None,
+        "snapshot_digest": snapshot_digest if valid_id else None,
+        "immutable_path": path if valid_path else None,
+        "created_at": created_value if created is not None else None,
+        "source_as_of": as_of_value if as_of is not None else None,
+        "freshness_basis": "SOURCE_EXPORT_DATE" if echo else "SCHEDULED_CAPTURE_TIMESTAMP",
+        "freshness_max_days": SNAPSHOT_FRESHNESS_DAYS,
+        "age_seconds": int((now - as_of).total_seconds()) if as_of is not None else None,
+        "record_count": record_count if valid_count else None,
+        "source_path": source_path if source_path == expected_source_path else [],
+        "receipt_state": receipt_state if receipt_state == "PAYLOAD_VERIFIED_UNSIGNED" else None,
+        "signature_verified": False,
+        "records_exported": False,
+        "errors": errors,
+        "complete": not errors,
+    }
 
 
 def _record_contract(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -133,6 +258,7 @@ def evaluate(
     *,
     expected_revision: str = "",
 ) -> dict[str, Any]:
+    checked_at = datetime.now(timezone.utc)
     raw_sources = board.get("sources") or []
     sources = [item for item in raw_sources if isinstance(item, dict)]
     by_id = {str(item.get("source_id") or ""): item for item in sources}
@@ -147,6 +273,7 @@ def evaluate(
                     "mode": "UNAVAILABLE",
                     "count": -1,
                     "reason": "SOURCE_NOT_RETURNED",
+                    "snapshot": _snapshot_contract({}, source_id, checked_at),
                     "operational": False,
                 }
             )
@@ -154,13 +281,15 @@ def evaluate(
         mode = str(item.get("mode") or "UNAVAILABLE").strip().upper()
         count = _as_count(item.get("count"))
         reason = str(item.get("reason") or "").strip()[:240]
+        snapshot_contract = _snapshot_contract(item, source_id, checked_at)
         lanes.append(
             {
                 "source_id": source_id,
                 "mode": mode,
                 "count": count,
                 "reason": reason or None,
-                "operational": mode == "LIVE" and count > 0,
+                "snapshot": snapshot_contract,
+                "operational": mode == "LIVE" and count > 0 and snapshot_contract["complete"],
             }
         )
 
@@ -191,12 +320,18 @@ def evaluate(
     )
     return {
         "schema": "szl.david-frontier-live-canary/v1",
-        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "checked_at": checked_at.isoformat(),
         "endpoint": "/api/frontier-desk",
         "states": STATES.split(","),
         "sample_substitution": False,
         "records_exported": False,
         "required_lanes": lanes,
+        "snapshot_contract": {
+            "verified_lanes": sum(lane["snapshot"]["complete"] for lane in lanes),
+            "required_lanes": len(REQUIRED_LANES),
+            "freshness_max_days": SNAPSHOT_FRESHNESS_DAYS,
+            "complete": all(lane["snapshot"]["complete"] for lane in lanes),
+        },
         "record_contract": record_contract,
         "deployment": {
             "source_revision": revision or None,

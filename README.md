@@ -47,20 +47,32 @@ underwriting decision, consumer report, or permission to contact.
 
 ## Operator workflow
 
-- **Find Leads** gathers current public records. If an upstream source is unavailable, the live
-  queue stays unavailable; it never substitutes an example record for a prospect.
+- **Find Leads** gathers current approved public records. If an upstream source or its verified
+  scheduled snapshot is unavailable, the queue stays unavailable; it never substitutes an
+  example record for a prospect.
 - **Opportunity Desk** turns official business and license records into a research queue with
   explicit stages, next actions, source links, and a fail-closed contact gate. Public visibility
   is never treated as permission to contact.
 - **Frontier Radar** adds Department of Labor Form 5500 employer life-plan timing, recent FMCSA
   carrier-entity additions, USAspending contract activity, and EPA ECHO facility monitoring
-  activity. The Form 5500 lane reads official monthly bulk disclosures, keeps only organization,
+  activity. ECHO is refreshed from the official weekly bulk exporter by GitHub Actions, reduced
+  to an explicit non-adverse facility schema, published atomically to the
+  [`SZLHOLDINGS/david-leads-data`](https://huggingface.co/datasets/SZLHOLDINGS/david-leads-data)
+  Dataset, and verified again by the Space before use. All four federal lanes are served from
+  verified scheduled snapshots; user requests do not call the federal providers. ECHO freshness
+  uses the source archive's calendar date, separately from processing time. The other lanes
+  disclose their bounded territory queries and capture dates. The scheduled Form 5500 collector
+  reads official monthly bulk disclosures, keeps only organization,
   plan-period, participant-count, and benefit-category fields, and treats the next reported
   anniversary as a research hypothesis rather than a renewal claim. A Chicago organization-license lane is implemented
   but remains gated on documented reuse approval and a Socrata app token; SAM.gov remains
   key-gated; FCC ULS remains unavailable until a durable bulk-ingestion lane exists. Every source
   reports its true state, requests only minimized entity/facility fields, never substitutes
   samples, and keeps every signal out of underwriting.
+- **Scheduled Federal Refresh** captures FMCSA and USAspending through their official APIs and
+  DOL through its published bulk files, then publishes minimized records with declared coverage.
+  These are bounded research extracts, not complete national registries. The legacy raw-row
+  ingestion entrypoints are retired; no raw archive columns enter a published snapshot.
 - **Evidence Constellation** resolves organizations by shared UEI, CIK, USDOT, EPA FRS ID, or a
   review-required exact legal-name/state/ZIP candidate. It keeps authority, freshness,
   corroboration, source-receipt integrity, and identity separate; publishes a documented
@@ -89,6 +101,15 @@ underwriting decision, consumer report, or permission to contact.
 - Frontier adapters do not request phone, email, named officer, crash/safety, compliance status,
   penalties, community demographics, insurance, or policy fields. Every resulting packet is
   `PROSPECTING_ONLY` and `not_for_underwriting=true`.
+- The ECHO bulk lane persists no street address, coordinates, people, contacts, demographics,
+  compliance/violation conclusions, enforcement, penalties, emissions, or risk scores. Its
+  content-addressed snapshot binds the official ZIP hash, parser Git revision, projection-policy
+  hash, exact JSONL byte hash, ordered record root, cardinality, and an honestly unsigned
+  standalone integrity receipt. An unsigned receipt is never presented as a signature or a
+  cross-refresh chain.
+- PurIQ v1 interoperability is tested against the immutable upstream reference recorded in
+  `tests/vendor/puriq_v1/UPSTREAM.json`. Snapshot manifests receive separate GitHub OIDC
+  provenance in the refresh workflow; payload-hash verification alone is not authentication.
 - The FMCSA lane admits only records with a recognized legal organization suffix and rejects any
   explicit individual or sole-proprietor classification. It does not request or publish physical
   street addresses; rows that cannot clear the organization gate fail closed.
@@ -135,6 +156,8 @@ repository script reads credentials into terminal output, logs, chat, screenshot
 - GitHub source of record: public Apache-2.0 repository
   [`szl-holdings/david-leads`](https://github.com/szl-holdings/david-leads)
 - Hugging Face runtime: [SZLHOLDINGS/david-leads](https://huggingface.co/spaces/SZLHOLDINGS/david-leads)
+- Hugging Face ECHO snapshot dataset:
+  [`SZLHOLDINGS/david-leads-data`](https://huggingface.co/datasets/SZLHOLDINGS/david-leads-data)
 - Estate command center: [a-11-oy.com](https://a-11-oy.com)
 - Hugging Face organization: [SZLHOLDINGS](https://huggingface.co/SZLHOLDINGS)
 - GitHub organization: [szl-holdings](https://github.com/szl-holdings)
