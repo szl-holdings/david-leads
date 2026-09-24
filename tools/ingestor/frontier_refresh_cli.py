@@ -2,7 +2,7 @@
 """Scheduled official collection; the Space only reads the resulting dataset.
 
 Every requested state must finish. Empty or invalid captures cannot publish.
-The seven-state default is bounded discovery, never exhaustive registry coverage.
+The 27-state Eastern default is bounded discovery, never exhaustive registry coverage.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from collections.abc import Callable
 
 from app import federal_snapshot as snapshots
 
-DEFAULT_STATES = ("NY", "NJ", "PA", "MD", "DE", "CT", "VA")
+DEFAULT_STATES = snapshots.TARGET_STATES
 
 
 def _collect_with_retry(collector, state):

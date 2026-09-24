@@ -160,7 +160,7 @@ jobs:
           import json
           from app import echo_snapshot, federal_snapshot
 
-          states = ["NY", "NJ", "PA", "MD", "DE", "CT", "VA"]
+          states = list(federal_snapshot.TARGET_STATES)
           epa = echo_snapshot.load_verified_records(states, 1)
           if not epa["records"]:
               raise SystemExit("EPA snapshot has no currently eligible demo records")

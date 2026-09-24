@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 CANONICAL_SPACE = "https://szlholdings-david-leads.hf.space"
-STATES = "NY,NJ,PA,MD,DE,CT,VA"
+STATES = "AL,CT,DC,DE,FL,GA,IL,IN,KY,ME,MD,MA,MI,MS,NH,NJ,NY,NC,OH,PA,RI,SC,TN,VT,VA,WV,WI"
 REQUIRED_LANES = (
     "dol-form5500-benefit-timing",
     "fmcsa-company-census",

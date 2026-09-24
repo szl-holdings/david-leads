@@ -2,14 +2,16 @@
 """Synthetic fixtures exercise the published contract; never runtime fallback."""
 import copy
 import json
+import re
 import urllib.error
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest import mock
 
 import pytest
 
 from app import federal_snapshot as snap
-from tools.ingestor.frontier_refresh_cli import collect_bundle, main, _collect_with_retry
+from tools.ingestor.frontier_refresh_cli import DEFAULT_STATES, collect_bundle, main, _collect_with_retry
 
 REVISION = "1234567890abcdef1234567890abcdef12345678"
 
@@ -194,9 +196,28 @@ def test_default_capture_queries_every_declared_state():
         calls.extend(states)
         return fixture_collector()(states, limit)
     bundle = collect_bundle("fmcsa", REVISION, collector=collector)
-    assert calls == ["NY", "NJ", "PA", "MD", "DE", "CT", "VA"]
+    assert calls == list(snap.TARGET_STATES)
+    assert len(calls) == 27
+    assert bundle["snapshot"]["coverage"]["requested_states"] == calls
     assert bundle["snapshot"]["coverage"]["completed_states"] == calls
-    assert bundle["snapshot"]["record_count"] == 7
+    assert bundle["snapshot"]["record_count"] == 27
+
+
+def test_default_snapshot_supports_every_selectable_browser_state():
+    script = (Path(__file__).resolve().parents[1] / "app" / "static" / "app.js").read_text(encoding="utf-8")
+    declaration = re.search(r"const EASTERN_REGIONS = \{(.*?)\n\};", script, re.DOTALL)
+    assert declaration, "The browser region declaration must be checked against refresh coverage"
+    regions = {name: json.loads(values) for name, values in re.findall(r'"([^\"]+)":\s*(\[[^\]]+\])', declaration.group(1))}
+    all_selectable = set().union(*(set(states) for states in regions.values()))
+    assert set(DEFAULT_STATES) == set(regions["All East"]) == all_selectable
+    bundle = collect_bundle("fmcsa", REVISION, collector=fixture_collector())
+    verified = snap.verify_bundle(bundle["snapshot"], bundle["receipt"], bundle["records_bytes"])
+    verified["path"] = snap.pointer_for(bundle["snapshot"])["path"]
+    with mock.patch.object(snap, "load_verified", return_value=verified):
+        result = snap.load_lane("fmcsa", regions["All East"], limit=50)
+    assert result["mode"] == "LIVE"
+    assert result["count"] == 27
+    assert {row["state"] for row in result["records"]} == all_selectable
 
 
 def test_partial_provider_failure_prevents_capture():

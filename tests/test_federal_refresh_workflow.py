@@ -39,6 +39,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         admission = workflow.split("  dataset-admission:", 1)[1].split("  deploy:", 1)[0]
         self.assertIn("echo_snapshot.load_verified_records(states, 1)", admission)
         self.assertIn("federal_snapshot.load_lane(lane, states, 1)", admission)
+        self.assertIn("states = list(federal_snapshot.TARGET_STATES)", admission)
         self.assertNotIn("HF_TOKEN", admission)
         self.assertIn("needs: [classify, dataset-admission]", workflow)
 

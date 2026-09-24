@@ -29,7 +29,7 @@ MAX_RECORDS = 2000
 MAX_RECORD_BYTES = 16384
 MAX_BUNDLE_BYTES = 32 * 1024 * 1024
 STATES = frozenset("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY".split())
-TARGET_STATES = tuple("AL CT DC DE FL GA IA IL IN KY MA MD ME MI MN NC NH NJ NY OH PA RI SC TN VA VT WI".split())
+TARGET_STATES = tuple("AL CT DC DE FL GA IL IN KY ME MD MA MI MS NH NJ NY NC OH PA RI SC TN VT VA WV WI".split())
 LANES = {
     "fmcsa": {"source": "FMCSA Company Census", "source_id": "fmcsa-company-census", "source_path": ["fmcsa-company-census", "scheduled-public-api-capture"], "frontier": "FMCSA", "type": "carrier", "url": "https://data.transportation.gov/Trucking-and-Motorcoaches/Company-Census-File/az4n-8mr2/about_data"},
     "form5500": {"source": "DOL Form 5500 benefit-plan filings", "source_id": "dol-form5500-benefit-timing", "source_path": ["dol-form5500", "scheduled-official-bulk-projection"], "frontier": "BENEFIT_PLAN_TIMING", "type": "benefit_plan", "url": "https://www.dol.gov/agencies/ebsa/about-ebsa/our-activities/public-disclosure/foia/form-5500-datasets"},
