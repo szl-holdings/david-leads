@@ -75,7 +75,9 @@ def _expected_source_receipt(
     )
 
 
-def _validate_record(record: dict[str, object], line_number: int) -> str | None:
+def _validate_record(
+    record: dict[str, object], line_number: int, created_at: datetime
+) -> str | None:
     expected_keys = set(RECORD_PAYLOAD_FIELDS + RECORD_METADATA_FIELDS)
     if set(record) != expected_keys:
         return f"record {line_number}: schema mismatch"
@@ -98,12 +100,15 @@ def _validate_record(record: dict[str, object], line_number: int) -> str | None:
     if not isinstance(region, str) or (region and not re.fullmatch(r"(?:0[1-9]|10)", region)):
         return f"record {line_number}: invalid epa_region"
     try:
-        datetime.strptime(str(record["last_inspection_date"]), "%Y-%m-%d")
+        inspection_date = datetime.strptime(str(record["last_inspection_date"]), "%Y-%m-%d")
     except ValueError:
         return f"record {line_number}: invalid last_inspection_date"
     age = record.get("days_since_last_inspection")
     if not isinstance(age, int) or isinstance(age, bool) or not (0 <= age <= MAX_INSPECTION_AGE_DAYS):
         return f"record {line_number}: invalid days_since_last_inspection"
+    actual_age = (created_at.date() - inspection_date.date()).days
+    if not 0 <= actual_age <= MAX_INSPECTION_AGE_DAYS:
+        return f"record {line_number}: inspection date outside monitoring window at admission"
     count = record.get("inspection_count")
     if count is not None and (
         not isinstance(count, int) or isinstance(count, bool) or count < 0
@@ -186,11 +191,20 @@ def verify(
 
         source = snapshot.get("source")
         if not isinstance(source, dict) or set(source) != {
-            "name", "url", "upstream_bytes_sha256", "upstream_size_bytes", "member"
+            "name", "url", "upstream_bytes_sha256", "upstream_size_bytes", "source_as_of", "member"
         }:
             return _fail("source schema mismatch")
         if source.get("name") != "echo-exporter" or source.get("url") != ECHO_EXPORTER_URL:
             return _fail("source identity mismatch")
+        source_as_of = datetime.strptime(str(source.get("source_as_of")), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        if source_as_of.date().isoformat() != source.get("source_as_of"):
+            return _fail("source_as_of must be a canonical calendar date")
+        now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            return _fail("verification clock must be timezone-aware")
+        created = datetime.strptime(str(snapshot["created_at"]), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        if source_as_of > now or source_as_of > created:
+            return _fail("upstream source date is in the future")
         upstream_hash = source.get("upstream_bytes_sha256")
         if not isinstance(upstream_hash, str) or not _SHA256_RE.fullmatch(upstream_hash):
             return _fail("invalid upstream bytes hash")
@@ -271,7 +285,7 @@ def verify(
                 if raw_line != canonical_json(record) + b"\n":
                     return _fail(f"record {count}: non-canonical JSON encoding")
                 records_file_hash.update(raw_line)
-                error = _validate_record(record, count)
+                error = _validate_record(record, count, created)
                 if error:
                     return _fail(error)
                 source_id = str(record["source_record_id"])
@@ -332,7 +346,7 @@ def verify(
         if not isinstance(ranking, dict) or ranking.get("source_path") != ["echo-exporter"]:
             return _fail("receipt source path mismatch")
         confidence = ranking.get("confidence")
-        if confidence != {"low": 1.0, "high": 1.0}:
+        if confidence != {"low": 1, "high": 1}:
             return _fail("receipt confidence contract mismatch")
         reasons = ranking.get("reasons")
         caveats = ranking.get("caveats")
@@ -372,14 +386,12 @@ def verify(
             if not isinstance(signature_value, str) or not hmac.compare_digest(signature_value, expected_signature):
                 return _fail("receipt signature mismatch")
 
-        now = now or datetime.now(timezone.utc)
-        created = datetime.strptime(str(snapshot["created_at"]), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
         age_seconds = (now - created).total_seconds()
         if age_seconds < -300:
             return _fail("snapshot created_at is in the future")
-        age_days = max(0.0, age_seconds / 86_400)
+        age_days = max(0.0, (now - source_as_of).total_seconds() / 86_400)
         if require_fresh and age_days > FRESHNESS_DAYS:
-            return _fail(f"snapshot stale: {age_days:.1f}d old, freshness window {FRESHNESS_DAYS}d")
+            return _fail(f"data as of {source_as_of.date().isoformat()}, refresh pending")
 
         freshness_state = "FRESH" if age_days <= FRESHNESS_DAYS else "STALE"
         print(

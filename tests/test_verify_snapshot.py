@@ -40,7 +40,7 @@ def _fixture_zip() -> bytes:
             "FAC_FEDERAL_FLG": "N",
             "FAC_ACTIVE_FLAG": "Y",
             "FAC_INSPECTION_COUNT": "2",
-            "FAC_DATE_LAST_INSPECTION": "09/01/2026",
+            "FAC_DATE_LAST_INSPECTION": (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": "3",
             "FAC_NAICS_CODES": "332710",
             "AIR_FLAG": "Y",
@@ -53,7 +53,9 @@ def _fixture_zip() -> bytes:
         writer = csv.DictWriter(output, fieldnames=list(ECHO_REQUIRED_HEADERS))
         writer.writeheader()
         writer.writerow(row)
-        archive.writestr(ECHO_MEMBER_NAME, output.getvalue())
+        member = zipfile.ZipInfo(ECHO_MEMBER_NAME, datetime.now(timezone.utc).timetuple()[:6])
+        member.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(member, output.getvalue())
     return buffer.getvalue()
 
 
@@ -287,11 +289,18 @@ def test_future_timestamp_fails_after_all_hashes_are_rebound(tmp_path: Path):
 
 def test_historical_integrity_can_be_audited_but_publish_freshness_fails(tmp_path: Path):
     bundle = _bundle(tmp_path)
+    future_clock = datetime.now(timezone.utc) + timedelta(days=30)
+    assert verify(bundle, now=future_clock, require_fresh=True) != 0
+    assert verify(bundle, now=future_clock, require_fresh=False) == 0
+
+
+def test_fresh_created_at_cannot_launder_stale_source_date(tmp_path: Path):
+    bundle = _bundle(tmp_path)
     snapshot_path = bundle / "snapshot.json"
     snapshot = _read(snapshot_path)
-    snapshot["created_at"] = (
+    snapshot["source"]["source_as_of"] = (
         datetime.now(timezone.utc) - timedelta(days=30)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    ).date().isoformat()
     _write(snapshot_path, snapshot)
     _rebind_snapshot_and_receipt(bundle)
     assert verify(bundle, require_fresh=True) != 0

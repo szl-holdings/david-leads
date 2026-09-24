@@ -134,9 +134,48 @@ jobs:
           echo "Admission: $admission"
           echo "Deploy allowed: $deploy_allowed"
 
+  dataset-admission:
+    name: Verify four published datasets before replacing runtime
+    needs: classify
+    if: needs.classify.outputs.deploy_allowed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        with:
+          egress-policy: audit
+      - name: Check out exact admitted verifier
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.classify.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Verify complete fresh bundles using the runtime contract
+        run: |
+          python3 - <<'PY'
+          import json
+          from app import echo_snapshot, federal_snapshot
+
+          states = ["NY", "NJ", "PA", "MD", "DE", "CT", "VA"]
+          epa = echo_snapshot.load_verified_records(states, 1)
+          if not epa["records"]:
+              raise SystemExit("EPA snapshot has no currently eligible demo records")
+          admitted = {"echo": epa["snapshot"]["snapshot_id"]}
+          for lane in federal_snapshot.LANES:
+              result = federal_snapshot.load_lane(lane, states, 1)
+              if not result["records"]:
+                  raise SystemExit(f"{lane}: published snapshot has no demo records")
+              admitted[lane] = result["snapshot"]["id"]
+          print(json.dumps({"state": "VERIFIED_DATASET_ADMISSION", "snapshots": admitted}, sort_keys=True))
+          PY
+
   deploy:
     name: Publish exact admitted source to Hugging Face
-    needs: classify
+    needs: [classify, dataset-admission]
     if: needs.classify.outputs.deploy_allowed == 'true'
     uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
     secrets:

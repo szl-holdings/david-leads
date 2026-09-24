@@ -7,7 +7,7 @@ import json
 import sys
 import unittest
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -25,7 +25,7 @@ from tools.ingestor.echo_ingestor import (  # noqa: E402
 )
 
 
-NOW = datetime(2026, 9, 4, 13, 0, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc).replace(microsecond=0)
 BASE_URL = "https://dataset.test/resolve/main"
 
 
@@ -42,7 +42,7 @@ class _Response(io.BytesIO):
         return False
 
 
-def _archive() -> bytes:
+def _archive(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> bytes:
     values = [
         {
             "REGISTRY_ID": "110000000001",
@@ -55,8 +55,8 @@ def _archive() -> bytes:
             "FAC_FEDERAL_FLG": "N",
             "FAC_ACTIVE_FLAG": "Y",
             "FAC_INSPECTION_COUNT": "4",
-            "FAC_DATE_LAST_INSPECTION": "09/01/2026",
-            "FAC_DAYS_LAST_INSPECTION": "3",
+            "FAC_DATE_LAST_INSPECTION": (NOW - timedelta(days=first_inspection_age)).strftime("%m/%d/%Y"),
+            "FAC_DAYS_LAST_INSPECTION": str(first_inspection_age),
             "FAC_NAICS_CODES": "332710",
             "AIR_FLAG": "Y",
             "NPDES_FLAG": "N",
@@ -76,7 +76,7 @@ def _archive() -> bytes:
             "FAC_FEDERAL_FLG": "N",
             "FAC_ACTIVE_FLAG": "Y",
             "FAC_INSPECTION_COUNT": "2",
-            "FAC_DATE_LAST_INSPECTION": "09/03/2026",
+            "FAC_DATE_LAST_INSPECTION": (NOW - timedelta(days=1)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": "1",
             "FAC_NAICS_CODES": "336390",
             "AIR_FLAG": "Y",
@@ -97,7 +97,7 @@ def _archive() -> bytes:
             "FAC_FEDERAL_FLG": "N",
             "FAC_ACTIVE_FLAG": "Y",
             "FAC_INSPECTION_COUNT": "7",
-            "FAC_DATE_LAST_INSPECTION": "09/03/2026",
+            "FAC_DATE_LAST_INSPECTION": (NOW - timedelta(days=1)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": "1",
             "FAC_NAICS_CODES": "332312",
             "AIR_FLAG": "N",
@@ -114,16 +114,18 @@ def _archive() -> bytes:
     writer.writerows(values)
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("ECHO_EXPORTER.csv", buffer.getvalue().encode("utf-8"))
+        member = zipfile.ZipInfo("ECHO_EXPORTER.csv", source_date.timetuple()[:6])
+        member.compress_type = zipfile.ZIP_DEFLATED
+        zf.writestr(member, buffer.getvalue().encode("utf-8"))
     return archive.getvalue()
 
 
-def _bundle() -> dict[str, bytes]:
+def _bundle(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> dict[str, bytes]:
     result = run(
-        _archive(),
+        _archive(source_date=source_date, first_inspection_age=first_inspection_age),
         session_id="123e4567-e89b-42d3-a456-426614174000",
         source_revision="a" * 40,
-        created_at="2026-09-04T12:00:00Z",
+        created_at=NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
     snapshot = result["snapshot"]
     records = b"".join(
@@ -138,7 +140,7 @@ def _bundle() -> dict[str, bytes]:
         "record_count": snapshot["record_count"],
         "records_root_sha256": snapshot["records_root_sha256"],
         "records_file_sha256": snapshot["records_file_sha256"],
-        "path": f"snapshots/2026-09-04/{snapshot['snapshot_digest']}",
+        "path": f"snapshots/{NOW.date().isoformat()}/{snapshot['snapshot_digest']}",
     }
     prefix = f"{BASE_URL}/{latest['path']}"
     return {
@@ -238,13 +240,13 @@ class EchoSnapshotVerification(unittest.TestCase):
 
     def test_stale_snapshot_fails_closed(self):
         files = _bundle()
-        stale_clock = datetime(2026, 9, 13, 12, 0, 1, tzinfo=timezone.utc)
+        stale_clock = NOW + timedelta(days=9)
         with mock.patch.object(
             echo_snapshot, "_open_url", side_effect=_opener(files)
         ):
             with self.assertRaisesRegex(
                 echo_snapshot.EchoSnapshotUnavailable,
-                "data as of 2026-09-04, refresh pending",
+                f"data as of {NOW.date().isoformat()}, refresh pending",
             ):
                 echo_snapshot.load_verified_records(
                     ["NY"], 2, now=stale_clock, base_url=BASE_URL
@@ -265,6 +267,38 @@ class EchoSnapshotVerification(unittest.TestCase):
                 echo_snapshot.load_verified_records(
                     ["NY"], 2, now=NOW, base_url=BASE_URL
                 )
+
+    def test_new_snapshot_creation_does_not_hide_stale_upstream_date(self):
+        source_date = NOW - timedelta(days=30)
+        files = _bundle(source_date=source_date)
+        with mock.patch.object(echo_snapshot, "_open_url", side_effect=_opener(files)):
+            with self.assertRaisesRegex(
+                echo_snapshot.EchoSnapshotUnavailable,
+                f"data as of {source_date.date().isoformat()}, refresh pending",
+            ):
+                echo_snapshot.load_verified_records(["NY"], 2, now=NOW, base_url=BASE_URL)
+
+    def test_records_that_age_out_are_excluded_without_invalidating_bundle(self):
+        files = _bundle(first_inspection_age=365)
+        with mock.patch.object(echo_snapshot, "_open_url", side_effect=_opener(files)):
+            at_admission = echo_snapshot.load_verified_records(["NY"], 2, now=NOW, base_url=BASE_URL)
+        self.assertEqual(len(at_admission["records"]), 2)
+        with mock.patch.object(echo_snapshot, "_open_url", side_effect=_opener(files)):
+            next_day = echo_snapshot.load_verified_records(["NY"], 2, now=NOW + timedelta(days=1), base_url=BASE_URL)
+        self.assertEqual([row["source_record_id"] for row in next_day["records"]], ["echo:110000000003"])
+        self.assertEqual(next_day["snapshot"]["record_count"], 3)
+
+    def test_reported_age_cannot_admit_an_old_inspection(self):
+        files = _bundle(first_inspection_age=366)
+        records_url = next(url for url in files if url.endswith("/records.jsonl"))
+        records = files[records_url].splitlines()
+        first = json.loads(records[0])
+        first["days_since_last_inspection"] = 1
+        records[0] = canonical_json(first)
+        files[records_url] = b"\n".join(records) + b"\n"
+        with mock.patch.object(echo_snapshot, "_open_url", side_effect=_opener(files)):
+            with self.assertRaisesRegex(echo_snapshot.EchoSnapshotUnavailable, "inspection date outside monitoring window"):
+                echo_snapshot.load_verified_records(["NY"], 2, now=NOW, base_url=BASE_URL)
 
     def test_transport_failure_never_falls_back_to_sample_records(self):
         with mock.patch.object(

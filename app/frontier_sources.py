@@ -431,7 +431,8 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
         signal = (
             f"The EPA ECHO Exporter records an inspection date of {observed} for "
             f"facility registry {registry_id}; the source reports {days} days since "
-            "that inspection at the upstream export date."
+            "that inspection in its age field. That field's baseline can differ "
+            "from the export date; admission uses the inspection date itself."
         )
         record = {
             "name": _clean(row["org_name"], 200),
@@ -546,7 +547,9 @@ def collect_usaspending_live(states: list[str] | None = None, limit: int = 18) -
         "subawards": False,
     }
     response = _request_json(USASPENDING["api"], payload)
-    rows = response.get("results", []) if isinstance(response, dict) else []
+    if not isinstance(response, dict) or "results" not in response:
+        raise ValueError("USAspending response missing results")
+    rows = response["results"]
     if not isinstance(rows, list):
         raise ValueError("USAspending results were not an array")
 

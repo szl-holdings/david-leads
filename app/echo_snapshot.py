@@ -246,11 +246,18 @@ def _validate_snapshot(
         "url",
         "upstream_bytes_sha256",
         "upstream_size_bytes",
+        "source_as_of",
         "member",
     }:
         raise EchoSnapshotUnavailable("snapshot source schema mismatch")
     if source.get("name") != "echo-exporter" or source.get("url") != ECHO_EXPORTER_URL:
         raise EchoSnapshotUnavailable("snapshot source identity mismatch")
+    try:
+        source_as_of = datetime.strptime(str(source.get("source_as_of")), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise EchoSnapshotUnavailable("source_as_of is invalid") from exc
+    if source_as_of.date().isoformat() != source.get("source_as_of"):
+        raise EchoSnapshotUnavailable("source_as_of must be a canonical calendar date")
     upstream_hash = source.get("upstream_bytes_sha256")
     if not isinstance(upstream_hash, str) or not _SHA256_RE.fullmatch(upstream_hash):
         raise EchoSnapshotUnavailable("invalid upstream bytes hash")
@@ -338,14 +345,16 @@ def _validate_snapshot(
         raise EchoSnapshotUnavailable("snapshot ingestion accounting mismatch")
 
     created = _timestamp(snapshot.get("created_at"), "snapshot created_at")
+    if source_as_of > now or source_as_of > created:
+        raise EchoSnapshotUnavailable("upstream source date is in the future")
     age_seconds = (now - created).total_seconds()
     if age_seconds < -300:
         raise EchoSnapshotUnavailable("snapshot created_at is in the future")
-    if age_seconds > FRESHNESS_DAYS * 86_400:
+    if (now - source_as_of).total_seconds() > FRESHNESS_DAYS * 86_400:
         raise EchoSnapshotUnavailable(
-            f"data as of {created.date().isoformat()}, refresh pending"
+            f"data as of {source_as_of.date().isoformat()}, refresh pending"
         )
-    return {"record_count": count, "upstream_hash": upstream_hash, "created": created}
+    return {"record_count": count, "upstream_hash": upstream_hash, "created": created, "source_as_of": source_as_of}
 
 
 def _receipt_subject(snapshot: dict[str, Any]) -> dict[str, object]:
@@ -398,7 +407,7 @@ def _validate_receipt(
         raise EchoSnapshotUnavailable("receipt ranking schema mismatch")
     if ranking.get("source_path") != ["echo-exporter"]:
         raise EchoSnapshotUnavailable("receipt source path mismatch")
-    if ranking.get("confidence") != {"low": 1.0, "high": 1.0}:
+    if ranking.get("confidence") != {"low": 1, "high": 1}:
         raise EchoSnapshotUnavailable("receipt confidence contract mismatch")
     reasons = ranking.get("reasons")
     if not isinstance(reasons, list) or not reasons:
@@ -459,7 +468,7 @@ def _record_payload(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _validate_record(
-    record: dict[str, Any], line_number: int, upstream_hash: str
+    record: dict[str, Any], line_number: int, upstream_hash: str, created_at: datetime
 ) -> None:
     label = f"record {line_number}"
     if set(record) != set(SERIALIZED_RECORD_FIELDS):
@@ -488,7 +497,7 @@ def _validate_record(
     ):
         raise EchoSnapshotUnavailable(f"{label} EPA region invalid")
     try:
-        datetime.strptime(str(record.get("last_inspection_date")), "%Y-%m-%d")
+        inspection_date = datetime.strptime(str(record.get("last_inspection_date")), "%Y-%m-%d")
     except ValueError as exc:
         raise EchoSnapshotUnavailable(f"{label} inspection date invalid") from exc
     age = record.get("days_since_last_inspection")
@@ -498,6 +507,9 @@ def _validate_record(
         or not 0 <= age <= MAX_INSPECTION_AGE_DAYS
     ):
         raise EchoSnapshotUnavailable(f"{label} inspection age invalid")
+    actual_age = (created_at.date() - inspection_date.date()).days
+    if not 0 <= actual_age <= MAX_INSPECTION_AGE_DAYS:
+        raise EchoSnapshotUnavailable(f"{label} inspection date outside monitoring window at admission")
     inspection_count = record.get("inspection_count")
     if inspection_count is not None and (
         not isinstance(inspection_count, int)
@@ -560,6 +572,7 @@ def _stream_and_verify_records(
     requested_states: frozenset[str],
     limit: int,
     upstream_hash: str,
+    now: datetime,
 ) -> list[dict[str, Any]]:
     file_hash = hashlib.sha256()
     root_hash = hashlib.sha256()
@@ -568,6 +581,7 @@ def _stream_and_verify_records(
     selected: list[dict[str, Any]] = []
     count = 0
     total_bytes = 0
+    created_at = _timestamp(snapshot["created_at"], "snapshot created_at")
     with _open_url(url) as response:
         headers = getattr(response, "headers", None)
         content_length = headers.get("Content-Length") if headers is not None else None
@@ -596,7 +610,7 @@ def _stream_and_verify_records(
                 raise EchoSnapshotUnavailable(f"record {count} is invalid JSON") from exc
             if not isinstance(record, dict) or raw_line != canonical_json(record) + b"\n":
                 raise EchoSnapshotUnavailable(f"record {count} is not canonical JSONL")
-            _validate_record(record, count, upstream_hash)
+            _validate_record(record, count, upstream_hash, created_at)
             source_id = record["source_record_id"]
             if source_id in seen_ids:
                 raise EchoSnapshotUnavailable(f"record {count} duplicates a source id")
@@ -605,7 +619,9 @@ def _stream_and_verify_records(
             if count > 1:
                 root_hash.update(b",")
             root_hash.update(canonical_json(record["normalized_record_hash"]))
-            if record["state"] in requested_states:
+            inspection_date = datetime.strptime(record["last_inspection_date"], "%Y-%m-%d").date()
+            current_inspection_age = (now.date() - inspection_date).days
+            if record["state"] in requested_states and 0 <= current_inspection_age <= MAX_INSPECTION_AGE_DAYS:
                 selected.append(record)
                 selected.sort(key=_selection_key)
                 if len(selected) > limit:
@@ -655,6 +671,7 @@ def load_verified_records(
             requested_states,
             limit,
             validated["upstream_hash"],
+            clock,
         )
     except EchoSnapshotUnavailable:
         raise
@@ -677,6 +694,7 @@ def load_verified_records(
             "records_root_sha256": snapshot["records_root_sha256"],
             "records_file_sha256": snapshot["records_file_sha256"],
             "parser_version": snapshot["parser"]["version"],
+            "source": dict(snapshot["source"]),
             "freshness_state": "FRESH",
             "freshness_days": FRESHNESS_DAYS,
         },

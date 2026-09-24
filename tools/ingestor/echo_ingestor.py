@@ -19,7 +19,7 @@ import re
 import uuid
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -251,6 +251,7 @@ class IngestionStats:
     archive_member_compressed_bytes: int = 0
     archive_member_uncompressed_bytes: int = 0
     archive_header_sha256: str = ""
+    source_as_of: str = ""
 
     def reject(self, reason: str) -> None:
         self.rejected[reason] = self.rejected.get(reason, 0) + 1
@@ -340,6 +341,9 @@ def _facility_reader(
         stats.archive_member_crc32 = f"{info.CRC:08x}"
         stats.archive_member_compressed_bytes = info.compress_size
         stats.archive_member_uncompressed_bytes = info.file_size
+        # ZIP timestamps carry no timezone. Preserve only the source calendar
+        # date; freshness is conservatively measured from midnight UTC.
+        stats.source_as_of = date(*info.date_time[:3]).isoformat()
         yield reader
     finally:
         text_handle.close()
@@ -376,6 +380,7 @@ def iter_operational_echo_records(
     stats: IngestionStats,
     target_states: frozenset[str] = DEFAULT_TARGET_STATES,
     max_inspection_age_days: int = MAX_INSPECTION_AGE_DAYS,
+    now: datetime | None = None,
 ) -> Iterator[SourceRecord]:
     """Stream the official archive and yield only allowed recent facilities."""
 
@@ -386,6 +391,18 @@ def iter_operational_echo_records(
     seen: set[str] = set()
     with zipfile.ZipFile(zip_path) as zf:
         info = _validated_member(zf)
+        clock = now or datetime.now(timezone.utc)
+        if clock.tzinfo is None:
+            raise ValueError("fail-closed: ingestion clock must be timezone-aware")
+        source_date = date(*info.date_time[:3])
+        source_midnight = datetime.combine(source_date, datetime.min.time(), timezone.utc)
+        source_age_seconds = (clock.astimezone(timezone.utc) - source_midnight).total_seconds()
+        if source_age_seconds < 0:
+            raise ValueError("fail-closed: upstream source date is in the future")
+        if source_age_seconds > FRESHNESS_DAYS * 86_400:
+            raise ValueError(
+                f"fail-closed: data as of {source_date.isoformat()}, refresh pending"
+            )
         for reader in _facility_reader(zf, info, stats):
             for row in reader:
                 stats.rows_seen += 1
@@ -412,6 +429,16 @@ def iter_operational_echo_records(
                 record = _record_from_row(row, upstream_hash)
                 if record is None:
                     stats.reject("MISSING_AUTHORITY_IDENTITY")
+                    continue
+                # EPA's reported age baseline can differ from the ZIP calendar
+                # date. Keep the reported value, but admit against the actual
+                # inspection date and the current UTC processing date.
+                actual_age = (
+                    clock.astimezone(timezone.utc).date()
+                    - date.fromisoformat(record.last_inspection_date)
+                ).days
+                if not 0 <= actual_age <= max_inspection_age_days:
+                    stats.reject("INSPECTION_DATE_OUTSIDE_MONITORING_WINDOW")
                     continue
                 if record.source_record_id in seen:
                     raise ValueError("fail-closed: duplicate ECHO registry identity")
@@ -475,6 +502,7 @@ def build_snapshot_from_metrics(
             "url": source_url,
             "upstream_bytes_sha256": upstream_hash,
             "upstream_size_bytes": upstream_size_bytes,
+            "source_as_of": stats.source_as_of,
             "member": {
                 "name": ECHO_MEMBER_NAME,
                 "crc32": stats.archive_member_crc32,
@@ -590,14 +618,14 @@ def puriq_receipt(
                 {
                     "code": "RECENT_OFFICIAL_MONITORING_ACTIVITY",
                     "direction": "up",
-                    "weight": 1.0,
+                    "weight": 1,
                     "detail": "Active facilities with a factual inspection date inside the declared window were admitted.",
                 }
             ],
-            "confidence": {"low": 1.0, "high": 1.0},
+            "confidence": {"low": 1, "high": 1},
             "caveats": [
                 "Monitoring activity is not a violation, risk score, underwriting fact, or contact permission.",
-                "PurIQ reference interoperability remains unverified until an immutable upstream vector exists.",
+                "Conformance tested against PurIQ reference; unsigned is not signer authentication.",
             ],
         },
         "gate": {"name": "yuyay-13", "result": "pass", "failures": []},

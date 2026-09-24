@@ -89,6 +89,8 @@ class FakeApi:
         self.events.append("hf_hub_download")
         self.download_calls.append(kwargs)
         filename = str(kwargs["filename"])
+        if kwargs["revision"] == PARENT_COMMIT:
+            raise FakeRemoteEntryNotFoundError()
         target = Path(str(kwargs["local_dir"])) / filename
         target.parent.mkdir(parents=True, exist_ok=True)
         content = self.remote[filename]
@@ -113,6 +115,7 @@ class PublishSnapshotTests(unittest.TestCase):
             "records_root_sha256": "b" * 64,
             "records_file_sha256": "c" * 64,
             "parser": {"source_revision": "d" * 40},
+            "source": {"source_as_of": "2026-08-30"},
         }
         (self.snapshot_dir / "snapshot.json").write_text(
             json.dumps(self.snapshot), encoding="utf-8"
@@ -130,7 +133,9 @@ class PublishSnapshotTests(unittest.TestCase):
         **overrides: object,
     ) -> dict[str, object]:
         def verifier(path: Path) -> int:
-            self.assertEqual(path, self.snapshot_dir.resolve())
+            self.assertNotEqual(path, self.snapshot_dir.resolve())
+            self.assertEqual((path / "records.jsonl").read_bytes(),
+                             (self.snapshot_dir / "records.jsonl").read_bytes())
             events.append("verify")
             return int(overrides.get("verify_result", 0))
 
@@ -200,7 +205,7 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertEqual(commit["revision"], "main")
         self.assertEqual(commit["parent_commit"], PARENT_COMMIT)
         operations = commit["operations"]
-        self.assertEqual(len(operations), 5)  # type: ignore[arg-type]
+        self.assertEqual(len(operations), 6)  # type: ignore[arg-type]
         self.assertEqual(
             {operation.path_in_repo for operation in operations},  # type: ignore[union-attr]
             {
@@ -208,11 +213,12 @@ class PublishSnapshotTests(unittest.TestCase):
                 f"{expected_prefix}/receipt.json",
                 f"{expected_prefix}/records.jsonl",
                 "latest.json",
+                "latest/echo-exporter.json",
                 "README.md",
             },
         )
         card = api.remote["README.md"].decode("utf-8")
-        self.assertIn("David Leads — verified EPA ECHO Federal Refresh", card)
+        self.assertIn("David Leads — verified Federal Refresh", card)
         self.assertIn("UNSIGNED", card)
         self.assertIn(DIGEST, card)
         latest = json.loads(api.remote["latest.json"])
@@ -220,8 +226,9 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertEqual(latest["snapshot_digest"], DIGEST)
         self.assertEqual(latest["record_count"], 7)
 
-        self.assertEqual(len(api.download_calls), 5)
-        for call in api.download_calls:
+        self.assertEqual(len(api.download_calls), 7)
+        self.assertEqual(api.download_calls[0]["revision"], PARENT_COMMIT)
+        for call in api.download_calls[1:]:
             self.assertEqual(call["revision"], PUBLISHED_COMMIT)
             self.assertTrue(call["force_download"])
         self.assertEqual(result["status"], "VERIFIED_PUBLISHED")

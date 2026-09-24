@@ -2,7 +2,7 @@ name: federal-refresh
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -17,6 +17,7 @@ permissions:
 jobs:
   echo-refresh:
     name: Verified federal refresh (${{ matrix.lane }})
+    if: github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -142,16 +143,22 @@ jobs:
       - name: Publish one atomic verified dataset commit
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: >-
-          python -m tools.ingestor.publish_snapshot
-          --dataset SZLHOLDINGS/david-leads-data
-          --snapshot snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          python -m tools.ingestor.publish_snapshot \
+          --dataset SZLHOLDINGS/david-leads-data \
+          --snapshot snapshot \
           --receipt-out publication.json
 
       - name: Record bounded run status
         if: ${{ always() }}
         env:
           JOB_STATUS: ${{ job.status }}
+          LANE: ${{ matrix.lane }}
           SNAPSHOT_DIGEST: ${{ steps.verify_snapshot.outputs.digest }}
           ATTESTATION_ID: ${{ steps.attest_snapshot.outputs.attestation-id }}
         run: |

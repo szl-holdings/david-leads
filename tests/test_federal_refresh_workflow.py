@@ -17,6 +17,31 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         self.assertIn("group: federal-refresh", self.workflow)
         self.assertIn("cancel-in-progress: false", self.workflow)
 
+    def test_daily_refresh_covers_all_four_lanes_serially(self) -> None:
+        self.assertIn('cron: "0 6 * * *"', self.workflow)
+        self.assertIn("lane: [echo, fmcsa, form5500, usaspending]", self.workflow)
+        self.assertIn("max-parallel: 1", self.workflow)
+        self.assertIn("fail-fast: false", self.workflow)
+        self.assertIn("if: github.ref == 'refs/heads/main'", self.workflow)
+        self.assertIn('test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"', self.workflow)
+
+    def test_pr_proves_canary_contract_without_probing_old_production(self) -> None:
+        workflow = WORKFLOW.with_name("frontier-live-canary.yml").read_text(encoding="utf-8")
+        self.assertIn("python3 -m unittest tests.test_frontier_live_canary -v", workflow)
+        probe = workflow.split("- name: Probe exact public runtime and four federal lanes", 1)[1]
+        self.assertIn("if: github.event_name != 'pull_request' && github.event_name != 'push'", probe)
+        self.assertIn("if: always() && github.event_name != 'pull_request' && github.event_name != 'push'", probe)
+        self.assertIn("github.event.workflow_run.head_sha", workflow)
+        self.assertNotIn("github.event.workflow_run.event == 'push'", workflow)
+
+    def test_dataset_admission_precedes_space_provider_mutation(self) -> None:
+        workflow = WORKFLOW.with_name("hf-deploy.yml").read_text(encoding="utf-8")
+        admission = workflow.split("  dataset-admission:", 1)[1].split("  deploy:", 1)[0]
+        self.assertIn("echo_snapshot.load_verified_records(states, 1)", admission)
+        self.assertIn("federal_snapshot.load_lane(lane, states, 1)", admission)
+        self.assertNotIn("HF_TOKEN", admission)
+        self.assertIn("needs: [classify, dataset-admission]", workflow)
+
     def test_all_actions_are_immutable_pins(self) -> None:
         uses = re.findall(r"uses:\s+([^\s#]+)", self.workflow)
         self.assertEqual(len(uses), 5)

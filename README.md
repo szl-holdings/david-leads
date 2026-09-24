@@ -58,14 +58,21 @@ underwriting decision, consumer report, or permission to contact.
   activity. ECHO is refreshed from the official weekly bulk exporter by GitHub Actions, reduced
   to an explicit non-adverse facility schema, published atomically to the
   [`SZLHOLDINGS/david-leads-data`](https://huggingface.co/datasets/SZLHOLDINGS/david-leads-data)
-  Dataset, and verified again by the Space before use. The Space never falls back to ECHO's live
-  web-search API. The Form 5500 lane reads official monthly bulk disclosures, keeps only organization,
+  Dataset, and verified again by the Space before use. All four federal lanes are served from
+  verified scheduled snapshots; user requests do not call the federal providers. ECHO freshness
+  uses the source archive's calendar date, separately from processing time. The other lanes
+  disclose their bounded territory queries and capture dates. The scheduled Form 5500 collector
+  reads official monthly bulk disclosures, keeps only organization,
   plan-period, participant-count, and benefit-category fields, and treats the next reported
   anniversary as a research hypothesis rather than a renewal claim. A Chicago organization-license lane is implemented
   but remains gated on documented reuse approval and a Socrata app token; SAM.gov remains
   key-gated; FCC ULS remains unavailable until a durable bulk-ingestion lane exists. Every source
   reports its true state, requests only minimized entity/facility fields, never substitutes
   samples, and keeps every signal out of underwriting.
+- **Scheduled Federal Refresh** captures FMCSA and USAspending through their official APIs and
+  DOL through its published bulk files, then publishes minimized records with declared coverage.
+  These are bounded research extracts, not complete national registries. The legacy raw-row
+  ingestion entrypoints are retired; no raw archive columns enter a published snapshot.
 - **Evidence Constellation** resolves organizations by shared UEI, CIK, USDOT, EPA FRS ID, or a
   review-required exact legal-name/state/ZIP candidate. It keeps authority, freshness,
   corroboration, source-receipt integrity, and identity separate; publishes a documented
@@ -100,6 +107,9 @@ underwriting decision, consumer report, or permission to contact.
   hash, exact JSONL byte hash, ordered record root, cardinality, and an honestly unsigned
   standalone integrity receipt. An unsigned receipt is never presented as a signature or a
   cross-refresh chain.
+- PurIQ v1 interoperability is tested against the immutable upstream reference recorded in
+  `tests/vendor/puriq_v1/UPSTREAM.json`. Snapshot manifests receive separate GitHub OIDC
+  provenance in the refresh workflow; payload-hash verification alone is not authentication.
 - The FMCSA lane admits only records with a recognized legal organization suffix and rejects any
   explicit individual or sole-proprietor classification. It does not request or publish physical
   street addresses; rows that cannot clear the organization gate fail closed.

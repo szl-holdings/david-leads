@@ -7,7 +7,7 @@ import io
 import json
 import uuid
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -42,7 +42,7 @@ def _base_row(**overrides: str) -> dict[str, str]:
             "FAC_FEDERAL_FLG": "N",
             "FAC_ACTIVE_FLAG": "Y",
             "FAC_INSPECTION_COUNT": "4",
-            "FAC_DATE_LAST_INSPECTION": "09/01/2026",
+            "FAC_DATE_LAST_INSPECTION": (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": "3",
             "FAC_NAICS_CODES": "332710 541330",
             "AIR_FLAG": "Y",
@@ -62,6 +62,7 @@ def _fixture_zip(
     *,
     extra_fields: tuple[str, ...] = (),
     missing_field: str | None = None,
+    source_date: datetime | None = None,
 ) -> bytes:
     fields = [field for field in ECHO_REQUIRED_HEADERS if field != missing_field]
     fields.extend(extra_fields)
@@ -71,7 +72,9 @@ def _fixture_zip(
         writer = csv.DictWriter(output, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
-        archive.writestr(ECHO_MEMBER_NAME, output.getvalue())
+        member = zipfile.ZipInfo(ECHO_MEMBER_NAME, (source_date or datetime.now(timezone.utc)).timetuple()[:6])
+        member.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(member, output.getvalue())
     return buffer.getvalue()
 
 
@@ -300,6 +303,31 @@ def test_receipt_is_explicitly_unsigned_and_standalone():
     }
     assert result["receipt"]["sequence"] == 0
     assert result["receipt"]["prev_receipt_hash"] == "GENESIS"
-    assert "interoperability remains unverified" in " ".join(
+    assert "unsigned is not signer authentication" in " ".join(
         result["receipt"]["ranking_inputs"]["caveats"]
     )
+    assert type(result["receipt"]["ranking_inputs"]["reasons"][0]["weight"]) is int
+    assert all(type(value) is int for value in result["receipt"]["ranking_inputs"]["confidence"].values())
+
+
+def test_stale_upstream_cannot_be_refreshed_by_new_created_at(tmp_path: Path):
+    upstream_date = datetime.now(timezone.utc) - timedelta(days=30)
+    zip_path = _write_zip(tmp_path / "echo.zip", [_base_row()], source_date=upstream_date)
+    with pytest.raises(ValueError, match=f"data as of {upstream_date.date().isoformat()}, refresh pending"):
+        ingest_zip(zip_path, tmp_path / "snapshot", source_revision=SOURCE_REVISION, created_at=_created_now())
+    assert not (tmp_path / "snapshot").exists()
+    assert not list(tmp_path.glob(".snapshot-*"))
+
+
+def test_admission_recomputes_inspection_age_without_rewriting_reported_age(tmp_path: Path):
+    rows = [
+        _base_row(FAC_DAYS_LAST_INSPECTION="4"),  # EPA age baseline may differ from ZIP date.
+        _base_row(REGISTRY_ID="110000000002", FAC_DATE_LAST_INSPECTION=(datetime.now(timezone.utc) - timedelta(days=366)).strftime("%m/%d/%Y"), FAC_DAYS_LAST_INSPECTION="360"),
+        _base_row(REGISTRY_ID="110000000003", FAC_DATE_LAST_INSPECTION=(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%m/%d/%Y"), FAC_DAYS_LAST_INSPECTION="0"),
+    ]
+    zip_path = _write_zip(tmp_path / "echo.zip", rows)
+    out = tmp_path / "snapshot"
+    result = ingest_zip(zip_path, out, source_revision=SOURCE_REVISION)
+    assert result["snapshot"]["record_count"] == 1
+    assert result["snapshot"]["ingestion"]["rejected"]["INSPECTION_DATE_OUTSIDE_MONITORING_WINDOW"] == 2
+    assert json.loads((out / "records.jsonl").read_text(encoding="utf-8"))["days_since_last_inspection"] == 4

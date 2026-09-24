@@ -26,10 +26,25 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from tools.ingestor.verify_snapshot import verify
+from tools.ingestor.verify_snapshot import verify as verify_echo
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 _GIT_OID_RE = re.compile(r"^[0-9a-f]{40}$")
+DATASET_ID = "SZLHOLDINGS/david-leads-data"
+FILES = ("snapshot.json", "receipt.json", "records.jsonl")
+MAX_BUNDLE_BYTES = 512 * 1024 * 1024
+MAX_PRIOR_MANIFEST_BYTES = 128 * 1024
+
+
+def verify(snapshot_dir: Path) -> int:
+    snapshot = _load_snapshot(snapshot_dir)
+    if snapshot.get("record_schema") == "federal-frontier-record-v1":
+        from app.federal_snapshot import verify_bundle
+
+        verify_bundle(snapshot, json.loads((snapshot_dir / "receipt.json").read_bytes()),
+                      (snapshot_dir / "records.jsonl").read_bytes())
+        return 0
+    return verify_echo(snapshot_dir)
 
 
 class PublicationError(RuntimeError):
@@ -83,10 +98,21 @@ def _publication_prefix(snapshot: dict[str, object]) -> tuple[str, str]:
         )
     except ValueError as exc:
         raise PublicationError("created_at is not canonical UTC") from exc
+    lane = snapshot.get("lane")
+    if lane is not None:
+        from app.federal_snapshot import LANES
+
+        if lane not in LANES:
+            raise PublicationError("unknown federal lane")
+        return f"snapshots/{lane}/{created:%Y-%m-%d}/{digest}", digest
     return f"snapshots/{created:%Y-%m-%d}/{digest}", digest
 
 
 def _pointer(snapshot: dict[str, object], prefix: str) -> dict[str, object]:
+    if snapshot.get("record_schema") == "federal-frontier-record-v1":
+        from app.federal_snapshot import pointer_for
+
+        return pointer_for(snapshot)
     required = (
         "snapshot_id",
         "snapshot_digest",
@@ -109,30 +135,101 @@ def _pointer(snapshot: dict[str, object], prefix: str) -> dict[str, object]:
     }
 
 
+def _require_echo_source_progression(
+    api: Any,
+    dataset_id: str,
+    parent_commit: str,
+    current_pointer: dict[str, object],
+    snapshot: dict[str, object],
+    token: str,
+) -> None:
+    """Reject older EPA exports using the manifest served by the pinned parent."""
+    pointer_keys = {
+        "pointer_version", "snapshot_id", "snapshot_digest", "created_at",
+        "record_count", "records_root_sha256", "records_file_sha256", "path",
+    }
+    if set(current_pointer) != pointer_keys or type(current_pointer["pointer_version"]) is not int or current_pointer["pointer_version"] != 1:
+        raise PublicationError("existing ECHO pointer schema is invalid")
+    prefix, _ = _publication_prefix(current_pointer)
+    if current_pointer["path"] != prefix:
+        raise PublicationError("existing ECHO pointer path binding is invalid")
+    filename = f"{prefix}/snapshot.json"
+    entries = api.get_paths_info(
+        repo_id=dataset_id, repo_type="dataset", paths=[filename],
+        revision=parent_commit,
+    )
+    if len(entries) != 1 or getattr(entries[0], "path", None) != filename:
+        raise PublicationError("existing ECHO manifest is missing")
+    remote_size = getattr(entries[0], "size", None)
+    if type(remote_size) is not int or not 0 < remote_size <= MAX_PRIOR_MANIFEST_BYTES:
+        raise PublicationError("existing ECHO manifest exceeds metadata budget")
+    downloaded = api.hf_hub_download(
+        repo_id=dataset_id, repo_type="dataset", filename=filename,
+        revision=parent_commit, token=token,
+    )
+    with Path(downloaded).open("rb") as handle:
+        encoded = handle.read(MAX_PRIOR_MANIFEST_BYTES + 1)
+    if len(encoded) != remote_size or len(encoded) > MAX_PRIOR_MANIFEST_BYTES:
+        raise PublicationError("existing ECHO manifest size binding is invalid")
+    try:
+        previous = json.loads(encoded)
+        if not isinstance(previous, dict):
+            raise ValueError("non-object manifest")
+        previous_prefix, previous_digest = _publication_prefix(previous)
+        core = {key: value for key, value in previous.items() if key not in {"snapshot_id", "snapshot_digest"}}
+        actual_digest = hashlib.sha256(json.dumps(
+            core, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+        if previous_prefix != prefix or previous_digest != actual_digest or _pointer(previous, prefix) != current_pointer:
+            raise ValueError("manifest pointer or content binding mismatch")
+        previous_source = previous["source"]
+        next_source = snapshot["source"]
+        if previous_source["name"] != "echo-exporter" or next_source["name"] != "echo-exporter":
+            raise ValueError("source identity mismatch")
+        previous_as_of = datetime.strptime(previous_source["source_as_of"], "%Y-%m-%d").date()
+        next_as_of = datetime.strptime(next_source["source_as_of"], "%Y-%m-%d").date()
+        if previous_as_of.isoformat() != previous_source["source_as_of"] or next_as_of.isoformat() != next_source["source_as_of"]:
+            raise ValueError("noncanonical source date")
+        previous_created = datetime.strptime(previous["created_at"], "%Y-%m-%dT%H:%M:%SZ").date()
+        if previous_as_of > previous_created:
+            raise ValueError("source date follows manifest creation")
+    except (KeyError, TypeError, ValueError, UnicodeError) as exc:
+        raise PublicationError("existing ECHO manifest integrity or source date is invalid") from exc
+    if next_as_of < previous_as_of:
+        raise PublicationError("refusing to regress the ECHO source export date")
+
+
 def _dataset_card(snapshot: dict[str, object], prefix: str) -> bytes:
     """Render the investor-readable Hub card without asserting a data license."""
 
     return (
         "---\n"
-        "pretty_name: David Leads EPA ECHO Federal Refresh\n"
+        "pretty_name: David Leads Verified Federal Refresh\n"
         "tags:\n"
         "- public-data\n"
         "- insurance\n"
         "- provenance\n"
         "- data-governance\n"
         "---\n\n"
-        "# David Leads — verified EPA ECHO Federal Refresh\n\n"
-        "This dataset is the scheduled, public-data input for the "
+        "# David Leads — verified Federal Refresh\n\n"
+        "This dataset holds scheduled public-data inputs for the "
         "[David Leads](https://huggingface.co/spaces/SZLHOLDINGS/david-leads) "
-        "broker-research demo. It is generated only from the official EPA ECHO "
-        "Exporter and is not a purchased lead list.\n\n"
+        "broker-research demo. The EPA lane uses the official weekly ECHO Exporter. "
+        "DOL uses published Form 5500 disclosures; FMCSA and USAspending use "
+        "bounded captures from their official APIs. Coverage is declared per snapshot.\n\n"
+        "Each lane is available only after verified publication: "
+        "`latest/echo-exporter.json`, `latest/fmcsa.json`, `latest/form5500.json`, "
+        "and `latest/usaspending.json`. `latest.json` is the ECHO compatibility pointer.\n\n"
+        "## Latest EPA ECHO export\n\n"
         f"- Current snapshot: `{snapshot['snapshot_id']}`\n"
-        f"- As of: `{snapshot['created_at']}`\n"
+        f"- Source export date: `{snapshot['source']['source_as_of']}`\n"
+        f"- Processed at: `{snapshot['created_at']}`\n"
         f"- Records: `{snapshot['record_count']}`\n"
         f"- Immutable path: `{prefix}`\n"
         f"- Parser source: `{snapshot['parser']['source_revision']}`\n\n"
         "## Truth and safety boundary\n\n"
-        "Records contain minimized organization/facility facts and inspection "
+        "The ECHO records contain minimized organization/facility facts and inspection "
         "dates for research. They exclude street addresses, coordinates, people, "
         "contacts, demographics, compliance or violation conclusions, enforcement, "
         "penalties, emissions, insurance fields, and risk scores. A record is never "
@@ -173,7 +270,7 @@ def _default_bindings(
     return HfApi(token=token), CommitOperationAdd, RemoteEntryNotFoundError
 
 
-def publish_snapshot(
+def _publish_frozen(
     dataset_id: str,
     snapshot_dir: Path,
     publication_receipt: Path,
@@ -209,13 +306,17 @@ def publish_snapshot(
     snapshot = _load_snapshot(snapshot_dir)
     prefix, digest = _publication_prefix(snapshot)
     latest_bytes = _canonical_json(_pointer(snapshot, prefix))
+    lane = str(snapshot.get("lane") or "echo-exporter")
+    pointer_path = f"latest/{lane}.json"
     payloads: dict[str, Path | bytes] = {
         f"{prefix}/snapshot.json": snapshot_dir / "snapshot.json",
         f"{prefix}/receipt.json": snapshot_dir / "receipt.json",
         f"{prefix}/records.jsonl": snapshot_dir / "records.jsonl",
-        "latest.json": latest_bytes,
-        "README.md": _dataset_card(snapshot, prefix),
+        pointer_path: latest_bytes,
     }
+    if lane == "echo-exporter":
+        payloads["latest.json"] = latest_bytes
+        payloads["README.md"] = _dataset_card(snapshot, prefix)
     file_metadata = {
         remote_path: _payload_metadata(payload)
         for remote_path, payload in payloads.items()
@@ -259,6 +360,31 @@ def publish_snapshot(
         pass
     else:
         raise PublicationError("content-addressed snapshot prefix already exists")
+
+    try:
+        current_pointer_file = api.hf_hub_download(
+            # ECHO runtime consumes this compatibility pointer, including datasets
+            # created before the per-lane alias existed.
+            repo_id=dataset_id, repo_type="dataset",
+            filename="latest.json" if lane == "echo-exporter" else pointer_path,
+            revision=parent_commit, token=token,
+        )
+    except remote_entry_not_found:
+        pass
+    else:
+        with Path(current_pointer_file).open("rb") as current_file:
+            encoded = current_file.read(16_385)
+        if len(encoded) > 16_384:
+            raise PublicationError("existing pointer exceeds metadata budget")
+        current = json.loads(encoded)
+        previous_date = datetime.strptime(current["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+        next_date = datetime.strptime(str(snapshot["created_at"]), "%Y-%m-%dT%H:%M:%SZ")
+        if previous_date > next_date:
+            raise PublicationError("refusing to regress the lane latest pointer")
+        if lane == "echo-exporter":
+            _require_echo_source_progression(
+                api, dataset_id, parent_commit, current, snapshot, token,
+            )
 
     operations = [
         operation_factory(path_in_repo=remote_path, path_or_fileobj=payload)
@@ -320,6 +446,57 @@ def publish_snapshot(
     }
     _write_publication_receipt(publication_receipt, publication)
     return publication
+
+
+def publish_snapshot(
+    dataset_id: str,
+    snapshot_dir: Path,
+    publication_receipt: Path,
+    *,
+    token: str,
+    api_factory: Callable[[str], Any] | None = None,
+    operation_factory: Callable[..., object] | None = None,
+    remote_entry_not_found: type[BaseException] | None = None,
+    verifier: Callable[[Path], int] = verify,
+    clock: Callable[[], datetime] | None = None,
+) -> dict[str, object]:
+    """Freeze one bounded bundle, verify those bytes, and publish those bytes."""
+    if dataset_id != DATASET_ID:
+        raise PublicationError("publisher is restricted to the canonical dataset")
+    if not isinstance(token, str) or not token.strip():
+        raise PublicationError("HF_TOKEN is required")
+    if snapshot_dir.is_symlink():
+        raise PublicationError("snapshot directory must not be a symlink")
+    source = snapshot_dir.resolve(strict=True)
+    output = publication_receipt.resolve()
+    if output == source or source in output.parents or output.exists():
+        raise PublicationError("publication receipt must be new and outside the bundle")
+    if {p.name for p in source.iterdir()} != set(FILES):
+        raise PublicationError("snapshot directory file set mismatch")
+    if clock is not None and clock().tzinfo is None:
+        raise PublicationError("publication clock must be timezone-aware")
+    with tempfile.TemporaryDirectory(prefix="david-publication-frozen-") as folder:
+        frozen = Path(folder)
+        remaining = MAX_BUNDLE_BYTES
+        for name in FILES:
+            original = source / name
+            if original.is_symlink() or not original.is_file():
+                raise PublicationError("snapshot files must be regular files")
+            with original.open("rb") as incoming, (frozen / name).open("xb") as outgoing:
+                while True:
+                    chunk = incoming.read(min(1024 * 1024, remaining + 1))
+                    if not chunk:
+                        break
+                    remaining -= len(chunk)
+                    if remaining < 0:
+                        raise PublicationError("snapshot exceeds publication byte budget")
+                    outgoing.write(chunk)
+        return _publish_frozen(
+            dataset_id, frozen, output, token=token,
+            api_factory=api_factory, operation_factory=operation_factory,
+            remote_entry_not_found=remote_entry_not_found,
+            verifier=verifier, clock=clock,
+        )
 
 
 def main() -> int:

@@ -199,6 +199,13 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
     def setUp(self):
         receipts.reset_chain()
 
+    def test_malformed_success_envelope_cannot_become_empty_coverage(self):
+        for response in ({}, {"error": "provider unavailable"}, [], None, {"results": None}):
+            with self.subTest(response=response):
+                with mock.patch.object(frontier_sources, "_request_json", return_value=response):
+                    with self.assertRaises(ValueError):
+                        frontier_sources.collect_usaspending_live(["NY"], limit=3)
+
     def test_contract_activity_is_not_labeled_a_new_award(self):
         captured = {}
 
@@ -302,6 +309,7 @@ class EchoFrontierSafety(unittest.TestCase):
                 "parser_version": "3.0.0",
                 "freshness_state": "FRESH",
                 "freshness_days": 8,
+                "source": {"source_as_of": "2026-09-04"},
             },
             "receipt": {
                 "receipt_id": "123e4567-e89b-42d3-a456-426614174000",
