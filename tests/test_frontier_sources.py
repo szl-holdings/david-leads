@@ -67,7 +67,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             }]
 
         with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
-            result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+            result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
 
         query = urllib.parse.parse_qs(urllib.parse.urlparse(captured["url"]).query)
         selected = query["$select"][0].split(",")
@@ -116,7 +116,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             with self.subTest(organization_type=organization_type):
                 row = {**base, "business_org_desc": organization_type}
                 with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
-                    result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+                    result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
                 self.assertEqual(result["records"], [])
                 self.assertNotIn("10 PRIVATE RD", str(result))
                 self.assertNotIn("JANE DOE", str(result))
@@ -137,7 +137,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             "phy_zip": "12207",
         }
         with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
-            result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+            result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
 
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["records"][0]["name"], "CURRENT FREIGHT LLC")
@@ -208,7 +208,7 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
             }
 
         with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
-            result = frontier_sources.fetch_usaspending(["NY"], limit=3)
+            result = frontier_sources.collect_usaspending_live(["NY"], limit=3)
 
         self.assertEqual(captured["url"], frontier_sources.USASPENDING["api"])
         self.assertIn("Recipient Location", captured["payload"]["fields"])
@@ -237,7 +237,7 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
             }],
         }
         with mock.patch.object(frontier_sources, "_request_json", return_value=response):
-            result = frontier_sources.fetch_usaspending(["NY"], limit=3)
+            result = frontier_sources.collect_usaspending_live(["NY"], limit=3)
         self.assertEqual(result["records"], [])
 
 

@@ -21,6 +21,7 @@ from typing import Any
 
 from . import benefit_frontier
 from . import echo_snapshot
+from . import federal_snapshot
 from . import evidence_constellation as constellation
 from . import receipts as rc
 
@@ -280,7 +281,7 @@ def _attach_receipt(record: dict[str, Any], signal: str) -> dict[str, Any]:
     return record
 
 
-def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+def collect_fmcsa_live(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return recent active carrier additions without collecting contact/person fields."""
     state_list = _states(states)
     current_date = _now().date()
@@ -429,7 +430,7 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
         signal = (
             f"The EPA ECHO Exporter records an inspection date of {observed} for "
             f"facility registry {registry_id}; the source reports {days} days since "
-            "that inspection at snapshot creation."
+            "that inspection at the upstream export date."
         )
         record = {
             "name": _clean(row["org_name"], 200),
@@ -453,6 +454,7 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
                 "delivery": "VERIFIED_BULK_SNAPSHOT",
                 "dataset_snapshot_id": verified["snapshot"]["snapshot_id"],
                 "dataset_snapshot_created_at": verified["snapshot"]["created_at"],
+                "dataset_source_as_of": verified["snapshot"]["source"]["source_as_of"],
                 "dataset_immutable_path": verified["dataset"]["immutable_path"],
                 "dataset_source_path": "echo-exporter",
                 "dataset_receipt_state": verified["receipt"]["state"],
@@ -509,7 +511,7 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
         "reason": None if records else "NO_MATCHING_RECORDS_IN_VERIFIED_SNAPSHOT",
     }
     snapshot_created = datetime.strptime(
-        verified["snapshot"]["created_at"], "%Y-%m-%dT%H:%M:%SZ"
+        verified["snapshot"]["source"]["source_as_of"], "%Y-%m-%d"
     ).replace(tzinfo=timezone.utc)
     cache_expiry = min(
         _now() + timedelta(minutes=15),
@@ -520,7 +522,7 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
     return json.loads(json.dumps(output))
 
 
-def fetch_usaspending(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+def collect_usaspending_live(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return federal contract activity as a research signal, never as a new-award claim."""
     state_list = _states(states)
     end = _now().date()
@@ -979,7 +981,7 @@ def fetch_sam_entities(
     return json.loads(json.dumps(output))
 
 
-def fetch_form5500(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+def collect_form5500_live(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
     """Return organization-level plan anniversary observations from DOL filings."""
     output = benefit_frontier.collect(_states(states), limit)
     records: list[dict[str, Any]] = []
@@ -987,6 +989,34 @@ def fetch_form5500(states: list[str] | None = None, limit: int = 18) -> dict[str
         records.append(_attach_receipt(record, record["signal_summary"]))
     output["records"] = records
     return output
+
+
+def _fetch_scheduled_lane(lane: str, states: list[str] | None, limit: int) -> dict[str, Any]:
+    """Serve verified scheduled records and bind this process's source receipts."""
+    try:
+        output = federal_snapshot.load_lane(lane, _states(states), limit)
+    except Exception as exc:
+        raise SourceConfigurationUnavailable(
+            f"{lane.upper()}_VERIFIED_SNAPSHOT_UNAVAILABLE: {exc}"
+        ) from exc
+    output["records"] = [
+        _attach_receipt(record, record["signal_summary"])
+        for record in output["records"]
+    ]
+    output["count"] = len(output["records"])
+    return output
+
+
+def fetch_fmcsa(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+    return _fetch_scheduled_lane("fmcsa", states, limit)
+
+
+def fetch_form5500(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+    return _fetch_scheduled_lane("form5500", states, limit)
+
+
+def fetch_usaspending(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+    return _fetch_scheduled_lane("usaspending", states, limit)
 
 
 def _entity_key(record: dict[str, Any]) -> str:

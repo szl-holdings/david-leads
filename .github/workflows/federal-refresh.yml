@@ -16,7 +16,12 @@ permissions:
 
 jobs:
   echo-refresh:
-    name: EPA ECHO verified bulk refresh
+    name: Verified federal refresh (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        lane: [echo, fmcsa, form5500, usaspending]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
@@ -37,6 +42,7 @@ jobs:
           cache: pip
 
       - name: Download official ECHO Exporter archive
+        if: matrix.lane == 'echo'
         shell: bash
         run: |
           set -euo pipefail
@@ -54,6 +60,7 @@ jobs:
           sha256sum echo_exporter.zip | tee evidence/source.sha256
 
       - name: Normalize and create standalone receipt
+        if: matrix.lane == 'echo'
         shell: bash
         run: |
           set -euo pipefail
@@ -62,12 +69,32 @@ jobs:
             --out snapshot \
             --source-revision "$GITHUB_SHA"
 
+      - name: Install locked application dependencies for scheduled collection
+        if: matrix.lane != 'echo'
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+
+      - name: Collect minimized official records into a scheduled snapshot
+        if: matrix.lane != 'echo'
+        env:
+          LANE: ${{ matrix.lane }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python -m tools.ingestor.frontier_refresh_cli \
+            --lane "$LANE" --out snapshot --source-revision "$GITHUB_SHA"
+
       - name: Verify standalone receipt integrity
         id: verify_snapshot
         shell: bash
+        env:
+          LANE: ${{ matrix.lane }}
         run: |
           set -euo pipefail
-          python -m tools.ingestor.verify_snapshot snapshot | tee evidence/verification.txt
+          if [ "$LANE" = "echo" ]; then
+            python -m tools.ingestor.verify_snapshot snapshot | tee evidence/verification.txt
+          else
+            python -c 'from pathlib import Path; from tools.ingestor.publish_snapshot import verify; raise SystemExit(verify(Path("snapshot")))' | tee evidence/verification.txt
+          fi
           python - <<'PY' >> "$GITHUB_OUTPUT"
           import json
 
@@ -84,6 +111,7 @@ jobs:
       - name: Record non-secret attestation reference
         env:
           ATTESTATION_ID: ${{ steps.attest_snapshot.outputs.attestation-id }}
+          LANE: ${{ matrix.lane }}
           ATTESTATION_URL: ${{ steps.attest_snapshot.outputs.attestation-url }}
         run: |
           python - <<'PY'
@@ -136,6 +164,7 @@ jobs:
           evidence.mkdir(exist_ok=True)
           status = {
               "workflow": "federal-refresh",
+              "lane": os.environ.get("LANE", "unknown"),
               "job_status_at_evidence_step": os.environ.get("JOB_STATUS", "unknown"),
               "source_revision": os.environ.get("GITHUB_SHA", ""),
               "run_id": os.environ.get("GITHUB_RUN_ID", ""),
@@ -162,7 +191,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: federal-refresh-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.verify_snapshot.outputs.digest }}
+          name: federal-refresh-evidence-${{ matrix.lane }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.verify_snapshot.outputs.digest }}
           path: |
             evidence/
             snapshot/snapshot.json
