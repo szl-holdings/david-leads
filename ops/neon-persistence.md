@@ -23,5 +23,11 @@ Schema creation is a separate owner-approved operation:
    `DAVID_DATABASE_URL`.
 8. Confirm live health independently reports `POSTGRES_READY`.
 
-The runtime performs read-only schema-contract checks. It fails closed on a missing or mismatched
-schema and never attempts `CREATE TABLE`, `CREATE INDEX`, or another privileged migration.
+Evidence-kernel tables (`source_grants`, `observations`, `identity_candidates`,
+`evidence_nodes`, `evidence_edges`, `derivations`, `clearances`, `suppressions`,
+`outcomes`, `outbox`) are an expand-only addition in `app/evidence_schema.sql`.
+They do not replace `david_dealdesk_state` or `david_dealdesk_events`. The
+runtime still performs read-only schema-contract checks. It fails closed on a
+missing or mismatched schema and never attempts `CREATE TABLE`, `CREATE INDEX`,
+or another privileged migration. Integrity for evidence nodes remains
+`LOCAL_SHA256_UNSIGNED` until the existing Cosign/receipts path binds it.

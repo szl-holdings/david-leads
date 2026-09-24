@@ -95,6 +95,15 @@ try:
     from . import frontier_sources as frontier_data
 except Exception:  # pragma: no cover
     frontier_data = None
+try:
+    from .domain.source_policy import public_capabilities, ready_blockers
+except Exception:  # pragma: no cover
+    public_capabilities = None
+    ready_blockers = None
+try:
+    from .domain.david_postgres import connect_postgres_ledger
+except Exception:  # pragma: no cover
+    connect_postgres_ledger = None
 
 APP_DIR = os.path.dirname(__file__)
 EASTERN_STATES = (
@@ -124,6 +133,7 @@ _PUBLIC_OPENAPI_PATHS = frozenset({
     "/api/frontier-desk",
     "/api/receipt/{rid}",
     "/api/verify/{rid}",
+    "/api/v1/public/capabilities",
 })
 
 
@@ -330,6 +340,34 @@ def _operator_actor(authorization: str | None) -> str:
         if actor:
             return actor[:80]
     return "operator"
+
+
+def _principal_or_public(authorization: str | None) -> str:
+    try:
+        return _auth(authorization, allow_public_readonly=True)
+    except HTTPException:
+        return "unauthenticated"
+
+
+def _deny_ready(*, principal: str, method: str, gates_complete: bool = False) -> JSONResponse:
+    blockers = (
+        ready_blockers(
+            principal=principal,
+            method=method,
+            gates_complete=gates_complete,
+        )
+        if ready_blockers is not None
+        else ("READY_REQUIRES_CLEARANCE",)
+    )
+    return JSONResponse(
+        status_code=403,
+        content={
+            "denied": "READY",
+            "blockers": list(blockers),
+            "detail": "READY is denied for this caller and method.",
+            "integrity": "LOCAL_SHA256_UNSIGNED",
+        },
+    )
 
 
 def _store_public_receipt(receipt: dict) -> None:
@@ -634,6 +672,14 @@ def access_mode():
             "clearances, dispositions, exports, and mutations are not public."
         ),
     }
+
+
+@app.get("/api/v1/public/capabilities")
+def public_capability_card():
+    """Sanitized public capability card. No secrets, DSNs, or operator state."""
+    if public_capabilities is None:
+        raise HTTPException(503, "capability card unavailable")
+    return public_capabilities()
 
 
 @app.post("/api/login")
@@ -1725,12 +1771,32 @@ def frontier_desk(
     return board
 
 
+@app.patch("/api/deal-desk/{opportunity_id}")
+@app.patch("/api/v1/public/opportunities/{opportunity_id}")
+def patch_deal_desk_ready_denied(
+    opportunity_id: str,
+    authorization: str | None = Header(default=None),
+):
+    """Browsers cannot PATCH READY. Public view is denied with named blockers."""
+    del opportunity_id
+    principal = _principal_or_public(authorization)
+    return _deny_ready(principal=principal, method="PATCH", gates_complete=False)
+
+
+class DealDeskCorrectionReq(BaseModel):
+    node_id: str
+    reason: str = "SOURCE_CORRECTED"
+
+
 @app.post("/api/deal-desk/{opportunity_id}")
 def update_deal_desk(
     opportunity_id: str,
     req: DealDeskUpdateReq,
     authorization: str | None = Header(default=None),
 ):
+    if str(req.stage or "").strip().upper() == "READY":
+        principal = _principal_or_public(authorization)
+        return _deny_ready(principal=principal, method="POST", gates_complete=False)
     actor = _operator_actor(authorization)
     if dd is None:
         raise HTTPException(503, "opportunity desk unavailable")
@@ -1755,6 +1821,47 @@ def update_deal_desk(
     except dd.PersistenceUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     return {"ok": True, "opportunity": opportunity}
+
+
+@app.post("/api/deal-desk/{opportunity_id}/correct")
+def correct_deal_desk_evidence(
+    opportunity_id: str,
+    req: DealDeskCorrectionReq,
+    authorization: str | None = Header(default=None),
+):
+    """Revoke a source node and every descendant, including brief, clearance, and CRM task."""
+    _operator_actor(authorization)
+    if connect_postgres_ledger is None:
+        raise HTTPException(503, "evidence adapter unavailable")
+    dsn = os.environ.get("DAVID_DATABASE_URL")
+    if not dsn:
+        raise HTTPException(503, "evidence persistence requires DAVID_DATABASE_URL")
+    node_id = str(req.node_id or "").strip()
+    reason = str(req.reason or "SOURCE_CORRECTED").strip() or "SOURCE_CORRECTED"
+    if not node_id:
+        raise HTTPException(422, "node_id is required")
+    del opportunity_id
+    try:
+        ledger = connect_postgres_ledger(dsn)
+        try:
+            revoked = ledger.correct(
+                "operator",
+                node_id,
+                reason,
+                datetime.now(timezone.utc),
+            )
+        finally:
+            ledger.close()
+    except Exception as exc:
+        if type(exc).__name__ == "Hold":
+            raise HTTPException(422, str(exc)) from exc
+        raise HTTPException(503, "evidence correction unavailable") from None
+    return {
+        "ok": True,
+        "revoked": revoked,
+        "cancels": ("brief", "clearance", "crm_task"),
+        "integrity": "LOCAL_SHA256_UNSIGNED",
+    }
 
 
 @app.post("/api/deal-desk/{opportunity_id}/research")

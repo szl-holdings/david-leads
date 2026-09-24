@@ -24,7 +24,7 @@ def test_automatic_migration_is_schema_only() -> None:
     value = _workflow()
     push = value["__trigger__"]["push"]
     assert push["branches"] == ["main"]
-    assert push["paths"] == ["app/dealdesk_schema.sql"]
+    assert push["paths"] == ["app/dealdesk_schema.sql", "app/evidence_schema.sql"]
 
 
 def test_explicit_governed_entrypoints_remain_available() -> None:
@@ -38,6 +38,7 @@ def test_privileged_environment_and_schema_subject_remain_bound() -> None:
     text = WORKFLOW.read_text(encoding="utf-8")
     assert "name: david-space-credential-rotation" in text
     assert 'Path("app/dealdesk_schema.sql")' in text
+    assert 'Path("app/evidence_schema.sql")' in text
     assert "DAVID_DATABASE_ADMIN_URL" in text
     assert "DAVID_DATABASE_URL" in text
 
