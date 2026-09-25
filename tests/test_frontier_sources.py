@@ -16,6 +16,31 @@ if str(ROOT) not in sys.path:
 from app import dealdesk, frontier_sources, receipts  # noqa: E402
 
 
+class RequestTransportTimeout(unittest.TestCase):
+    def test_default_request_timeout_remains_fifteen_seconds(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"results": []}'
+        with mock.patch.object(frontier_sources.urllib.request, "urlopen", return_value=response) as opener:
+            self.assertEqual(frontier_sources._request_json("https://official.example.test"), {"results": []})
+        self.assertEqual(opener.call_args.kwargs, {"timeout": 15})
+
+    def test_explicit_bounded_request_timeout_reaches_transport(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"results": []}'
+        with mock.patch.object(frontier_sources.urllib.request, "urlopen", return_value=response) as opener:
+            frontier_sources._request_json("https://official.example.test", {"page": 1}, timeout=60)
+        self.assertEqual(opener.call_args.kwargs, {"timeout": 60})
+        self.assertEqual(opener.call_args.args[0].method, "POST")
+
+    def test_invalid_request_timeout_fails_before_network(self):
+        for timeout in (0, -1, 61, True, "60", None, float("nan"), float("inf")):
+            with self.subTest(timeout=timeout):
+                with mock.patch.object(frontier_sources.urllib.request, "urlopen") as opener:
+                    with self.assertRaises(ValueError):
+                        frontier_sources._request_json("https://official.example.test", timeout=timeout)
+                opener.assert_not_called()
+
+
 class TerritoryNormalization(unittest.TestCase):
     def test_all_eastern_markets_reach_the_source_adapters(self):
         eastern = [
@@ -198,6 +223,25 @@ class FmcsaFrontierSafety(unittest.TestCase):
 class UsaSpendingFrontierSafety(unittest.TestCase):
     def setUp(self):
         receipts.reset_chain()
+
+    def test_default_collection_preserves_default_request_interface(self):
+        with mock.patch.object(frontier_sources, "_request_json", return_value={"results": []}) as request:
+            frontier_sources.collect_usaspending_live(["AL"], limit=50)
+        self.assertEqual(request.call_args.kwargs, {})
+
+    def test_scheduled_collection_forwards_explicit_timeout(self):
+        with mock.patch.object(frontier_sources, "_request_json", return_value={"results": []}) as request:
+            frontier_sources.collect_usaspending_live(["AL"], limit=50, request_timeout=60)
+        self.assertEqual(request.call_args.kwargs, {"timeout": 60})
+        self.assertEqual(request.call_args.args[0], frontier_sources.USASPENDING["api"])
+
+    def test_invalid_collection_timeout_fails_before_request(self):
+        for timeout in (0, -1, 61, True, "60", None, float("nan"), float("inf")):
+            with self.subTest(timeout=timeout):
+                with mock.patch.object(frontier_sources, "_request_json") as request:
+                    with self.assertRaises(ValueError):
+                        frontier_sources.collect_usaspending_live(["AL"], request_timeout=timeout)
+                request.assert_not_called()
 
     def test_malformed_success_envelope_cannot_become_empty_coverage(self):
         for response in ({}, {"error": "provider unavailable"}, [], None, {"results": None}):

@@ -12,29 +12,50 @@ import sys
 import time
 import urllib.error
 from collections.abc import Callable
+from functools import partial
 
 from app import federal_snapshot as snapshots
 
 DEFAULT_STATES = snapshots.TARGET_STATES
+SCHEDULED_USASPENDING_TIMEOUT = 60
 
 
-def _collect_with_retry(collector, state):
+def _collect_with_retry(collector, state, *, lane=None, report=None):
     """Bounded transport retries; bot blocks and contract failures stop immediately."""
     for attempt in range(3):
+        started = time.monotonic()
         try:
-            return collector([state], limit=50)
-        except urllib.error.HTTPError as exc:
-            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+            result = collector([state], limit=50)
+        except Exception as exc:
+            retryable = (
+                exc.code in {429, 500, 502, 503, 504}
+                if isinstance(exc, urllib.error.HTTPError)
+                else isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError))
+            )
+            retry = retryable and attempt < 2
+            if report:
+                # Never record exception text, URLs, headers, or provider bodies.
+                report({"event": "COLLECTION_ATTEMPT", "lane": lane, "state": state,
+                        "attempt": attempt + 1, "attempt_limit": 3,
+                        "outcome": "RETRY" if retry else "FAILED",
+                        "error_class": type(exc).__name__,
+                        "http_status": exc.code if isinstance(exc, urllib.error.HTTPError) else None,
+                        "elapsed_ms": round((time.monotonic() - started) * 1000),
+                        "retry_delay_seconds": 2 ** attempt if retry else 0})
+            if not retry:
                 raise
-        except (urllib.error.URLError, TimeoutError, ConnectionError):
-            if attempt == 2:
-                raise
-        time.sleep(2 ** attempt)
+            time.sleep(2 ** attempt)
+        else:
+            if report:
+                report({"event": "COLLECTION_ATTEMPT", "lane": lane, "state": state,
+                        "attempt": attempt + 1, "attempt_limit": 3, "outcome": "RETURNED",
+                        "elapsed_ms": round((time.monotonic() - started) * 1000)})
+            return result
 
 
 def collect_bundle(lane: str, source_revision: str, *, states=None,
                    per_state_limit: int = 20, collector: Callable | None = None,
-                   created_at: str | None = None) -> dict:
+                   created_at: str | None = None, report: Callable | None = None) -> dict:
     if lane not in snapshots.LANES:
         raise snapshots.SnapshotError("unknown federal lane")
     requested = list(DEFAULT_STATES if states is None else states)
@@ -47,14 +68,15 @@ def collect_bundle(lane: str, source_revision: str, *, states=None,
         from app import frontier_sources
         collector = {"fmcsa": frontier_sources.collect_fmcsa_live,
                      "form5500": frontier_sources.collect_form5500_live,
-                     "usaspending": frontier_sources.collect_usaspending_live}[lane]
+                     "usaspending": partial(frontier_sources.collect_usaspending_live,
+                                            request_timeout=SCHEDULED_USASPENDING_TIMEOUT)}[lane]
     records = []
     coverage = {"requested_states": requested, "completed_states": [],
                 "state_record_counts": {}, "per_state_limit": per_state_limit,
                 "status": "COMPLETE", "selection": "BOUNDED_ADAPTER_RESULTS_NOT_EXHAUSTIVE",
                 "query_windows": {}, "admission_counts": {}}
     for state in requested:
-        result = _collect_with_retry(collector, state)
+        result = _collect_with_retry(collector, state, lane=lane, report=report)
         if not isinstance(result, dict) or result.get("mode") != "LIVE":
             raise snapshots.SnapshotError(f"{lane}/{state}: official collection did not complete")
         rows = result.get("records")
@@ -76,6 +98,9 @@ def collect_bundle(lane: str, source_revision: str, *, states=None,
             "adapter_returned": len(rows), "excluded_non_organization": len(rows) - len(admitted),
             "eligible_not_selected": len(admitted) - len(chosen), "selected": len(chosen),
         }
+        if report:
+            report({"event": "STATE_VALIDATED", "lane": lane, "state": state,
+                    **coverage["admission_counts"][state]})
     return snapshots.build_bundle(lane, records, source_revision, coverage, created_at)
 
 
@@ -89,7 +114,9 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     try:
         bundle = collect_bundle(args.lane, args.source_revision, states=args.states,
-                                per_state_limit=args.per_state_limit)
+                                per_state_limit=args.per_state_limit,
+                                report=lambda event: print(json.dumps(event, sort_keys=True),
+                                                           file=sys.stderr, flush=True))
         snapshots.write_bundle(bundle, args.out)
     except Exception as exc:
         # Providers can include arbitrary response bodies in errors; log only class.
