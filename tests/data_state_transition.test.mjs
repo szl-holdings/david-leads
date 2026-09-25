@@ -46,8 +46,40 @@ function fakeElement(classes = []) {
   };
 }
 
+const observationChips = ["metricOrganizationsEvidence", "metricStatesEvidence", "metricSourcesEvidence"];
+
+function metricElements() {
+  const elements = Object.fromEntries([
+    "metricOrganizations", "metricStates", "metricWindows", "metricSources", "metricResearch",
+    "metricCleared", "metricOrganizationsSub", "metricStatesSub", "metricWindowsSub",
+    "metricSourcesSub", "proofLiveSources",
+  ].map((id) => [id, fakeElement()]));
+  for (const id of observationChips) elements[id] = fakeElement(["honesty-chip", "unknown"]);
+  return elements;
+}
+
+function assertObservationState(elements, expected) {
+  for (const id of observationChips) {
+    assert.equal(elements[id].textContent, expected, id);
+    assert.equal(elements[id].classList.contains("measured"), expected === "MEASURED", id);
+    assert.equal(elements[id].classList.contains("unknown"), expected === "UNKNOWN", id);
+  }
+}
+
+function admitPublicObservation(hooks, opportunities = [{ state: "NY" }, { state: "VA" }]) {
+  Object.assign(hooks.state, hooks.admitSourceBoard({
+    access_mode: "PUBLIC_READONLY",
+    generated_at: "2026-09-25T12:00:00Z",
+    opportunities,
+    sources: [{ source: "FMCSA", mode: "LIVE", count: opportunities.length }, { mode: "UNAVAILABLE" }],
+    summary: { total: opportunities.length, live: opportunities.length, call_ready: 0, needs_research: opportunities.length },
+  }));
+  hooks.state.selectedStates = new Set(["NY", "VA"]);
+}
+
 function createHarness(fetch) {
   const elements = {
+    ...metricElements(),
     dataStatePill: fakeElement(["live-pill", "unavailable"]),
     emptyState: fakeElement(),
     errorState: fakeElement(["hidden"]),
@@ -55,6 +87,8 @@ function createHarness(fetch) {
     refreshData: fakeElement(),
     resultCount: fakeElement(),
     workspace: fakeElement(),
+    scopeNotice: fakeElement(),
+    scopeSummary: fakeElement(),
   };
   elements.dataStatePill.lastChild.textContent = "DATA: CHECKING";
 
@@ -78,7 +112,7 @@ function createHarness(fetch) {
   };
   const app = fs.readFileSync(new URL("../app/static/app.js", import.meta.url), "utf8");
   vm.runInNewContext(
-    `${app}\nglobalThis.__dataStateTest = { state, renderDataState, loadLeads, admitSourceBoard, fetchFrontierBoard };`,
+    `${app}\nglobalThis.__dataStateTest = { state, renderDataState, renderMetrics, renderScope, loadLeads, admitSourceBoard, fetchFrontierBoard };`,
     context,
   );
 
@@ -91,6 +125,8 @@ test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
   hooks.state.board = { generated_at: "2026-08-01T20:00:00Z" };
   hooks.state.sources = [{ mode: "LIVE" }, { mode: "UNAVAILABLE" }];
   hooks.renderDataState();
+  hooks.renderMetrics();
+  assertObservationState(elements, "MEASURED");
 
   assert.equal(elements.dataStatePill.lastChild.textContent, "LIVE / MEASURED · 1/2");
   assert.equal(elements.dataStatePill.classList.contains("measured"), true);
@@ -108,6 +144,10 @@ test("a new territory pull replaces stale LIVE evidence with CHECKING", () => {
   assert.equal(elements.workspace.attributes["aria-busy"], "true");
   assert.equal(elements.refreshData.disabled, true);
   assert.equal(elements.resultCount.textContent, "Loading current source records");
+  assertObservationState(elements, "UNKNOWN");
+  assert.equal(elements.metricOrganizations.textContent, "UNKNOWN");
+  assert.equal(elements.metricStates.textContent, "UNKNOWN");
+  assert.equal(elements.metricSources.textContent, "UNKNOWN");
 });
 
 test("an aborted older pull cannot clear the newer pull's busy state", async () => {
@@ -133,6 +173,7 @@ test("an aborted older pull cannot clear the newer pull's busy state", async () 
   assert.equal(elements.workspace.attributes["aria-busy"], "true");
   assert.equal(elements.refreshData.disabled, true);
   assert.equal(elements.loadingState.classList.contains("hidden"), false);
+  assertObservationState(elements, "UNKNOWN");
 });
 
 test("a busy public refresh honors Retry-After and retries without clearing state", async () => {
@@ -180,30 +221,117 @@ test("a successful response with no LIVE source is admitted as unavailable, not 
       { source: "FMCSA", mode: "UNAVAILABLE", count: 0 },
     ],
   };
-  const { hooks } = createHarness(async () => board);
+  const { hooks, elements } = createHarness(async () => board);
   const admitted = hooks.admitSourceBoard(board);
 
   assert.equal(admitted.board, board);
   assert.equal(admitted.sources.length, 2);
   assert.equal(admitted.leads.length, 0);
   assert.match(admitted.loadError, /No official source completed a live observation/);
+  Object.assign(hooks.state, admitted);
+  hooks.renderMetrics();
+  assertObservationState(elements, "UNKNOWN");
+  assert.equal(elements.metricOrganizations.textContent, "UNKNOWN");
+  assert.equal(elements.metricSources.textContent, "UNKNOWN");
+});
+
+test("observation chips start unknown in the document and never imply public clearance", () => {
+  const html = fs.readFileSync(new URL("../app/static/index.html", import.meta.url), "utf8");
+  for (const id of observationChips) {
+    assert.match(html, new RegExp(`id="${id}" class="honesty-chip unknown">UNKNOWN</span>`));
+  }
+  assert.match(html, /Cleared to contact <span class="honesty-chip unknown">UNKNOWN<\/span>/);
+  assert.match(html, /id="metricCleared">UNKNOWN<\/strong>/);
+  assert.match(html, /Private clearance is not exposed in this public view/);
+  assert.match(html, /Public data never creates consent/);
+});
+
+test("admitted live observations measure counts while public clearance remains protected", () => {
+  const { hooks, elements } = createHarness(async () => {});
+  admitPublicObservation(hooks);
+  hooks.renderMetrics();
+
+  assertObservationState(elements, "MEASURED");
+  assert.equal(elements.metricOrganizations.textContent, "2");
+  assert.equal(elements.metricStates.textContent, "2/2");
+  assert.equal(elements.metricSources.textContent, "1/2");
+  assert.equal(elements.metricCleared.textContent, "Protected");
+  // Even an unexpected count cannot expose or manufacture clearance in this public view.
+  hooks.state.board.summary.call_ready = 42;
+  hooks.renderMetrics();
+  assert.equal(elements.metricCleared.textContent, "Protected");
+});
+
+test("a completed LIVE source with no records produces measured zeros", () => {
+  const { hooks, elements } = createHarness(async () => {});
+  admitPublicObservation(hooks, []);
+  hooks.renderMetrics();
+
+  assertObservationState(elements, "MEASURED");
+  assert.equal(elements.metricOrganizations.textContent, "0");
+  assert.equal(elements.metricStates.textContent, "0/2");
+  assert.equal(elements.metricSources.textContent, "1/2");
+  assert.equal(elements.metricCleared.textContent, "Protected");
+});
+
+test("unproved or missing clearance contracts do not manufacture measured clearance", () => {
+  const { hooks, elements } = createHarness(async () => {});
+  admitPublicObservation(hooks);
+  for (const accessMode of [undefined, "AUTHENTICATED"]) {
+    hooks.state.board.access_mode = accessMode;
+    hooks.state.board.summary.call_ready = 3;
+    hooks.renderMetrics();
+    assert.equal(elements.metricCleared.textContent, "UNKNOWN");
+  }
+  delete hooks.state.board.summary.call_ready;
+  hooks.renderMetrics();
+  assert.equal(elements.metricCleared.textContent, "UNKNOWN");
+});
+
+test("metric evidence stays unknown while a busy pull retries", async () => {
+  let attempts = 0;
+  let secondAttempt;
+  const retryStarted = new Promise((resolve) => { secondAttempt = resolve; });
+  const { hooks, elements } = createHarness(async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      return {
+        ok: false, status: 429,
+        headers: { get: (name) => name === "Retry-After" ? "0" : null },
+        json: async () => ({ detail: "live refresh already running" }),
+      };
+    }
+    secondAttempt();
+    return new Promise(() => {});
+  });
+  admitPublicObservation(hooks);
+  hooks.renderMetrics();
+  assertObservationState(elements, "MEASURED");
+  void hooks.loadLeads();
+  await retryStarted;
+
+  assert.equal(attempts, 2);
+  assertObservationState(elements, "UNKNOWN");
+  assert.equal(elements.metricOrganizations.textContent, "UNKNOWN");
+  assert.equal(elements.dataStatePill.lastChild.textContent, "DATA: CHECKING");
+  assert.equal(elements.workspace.attributes["aria-busy"], "true");
+});
+
+test("cross-territory scope describes bounded snapshot selection without a recency claim", () => {
+  const { hooks, elements } = createHarness(async () => {});
+  admitPublicObservation(hooks);
+  hooks.renderScope();
+
+  assert.match(elements.scopeNotice.textContent, /bounded selection from each verified source snapshot/);
+  assert.doesNotMatch(elements.scopeNotice.textContent, /latest records per source/);
+  assert.match(elements.scopeNotice.textContent, /choose one state for a deeper view/);
 });
 
 test("a failed pull clears prior territory evidence without false zeros", () => {
   const strong = { textContent: "Old broker brief: 72 organizations" };
   const small = { textContent: "Old New York observation" };
   const elements = {
-    metricOrganizations: fakeElement(),
-    metricStates: fakeElement(),
-    metricWindows: fakeElement(),
-    metricSources: fakeElement(),
-    metricResearch: fakeElement(),
-    metricCleared: fakeElement(),
-    metricOrganizationsSub: fakeElement(),
-    metricStatesSub: fakeElement(),
-    metricWindowsSub: fakeElement(),
-    metricSourcesSub: fakeElement(),
-    proofLiveSources: fakeElement(),
+    ...metricElements(),
     freshness: fakeElement(),
     dailyBrief: {
       querySelector(selector) {
@@ -234,17 +362,21 @@ test("a failed pull clears prior territory evidence without false zeros", () => 
   };
   const app = fs.readFileSync(new URL("../app/static/app.js", import.meta.url), "utf8");
   vm.runInNewContext(
-    `${app}\nglobalThis.__unavailableTest = { state, renderUnavailableEvidence };`,
+    `${app}\nglobalThis.__unavailableTest = { state, renderMetrics, admitSourceBoard, renderUnavailableEvidence };`,
     context,
   );
 
-  const { state: appState, renderUnavailableEvidence } = context.__unavailableTest;
+  const { state: appState, renderMetrics, renderUnavailableEvidence } = context.__unavailableTest;
+  admitPublicObservation(context.__unavailableTest);
+  renderMetrics();
+  assertObservationState(elements, "MEASURED");
   appState.board = null;
   appState.leads = [];
   appState.sources = [];
   appState.selectedStates = new Set(["NY"]);
   appState.loadError = "The Virginia pull did not complete.";
   renderUnavailableEvidence();
+  assertObservationState(elements, "UNKNOWN");
 
   for (const id of [
     "metricOrganizations", "metricStates", "metricWindows", "metricSources",

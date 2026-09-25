@@ -29,6 +29,7 @@ from .domain.source_policy import FRONTIER_HOLDS
 
 UA = {"User-Agent": "SZL-David-Leads/1.2 research@szlholdings.com"}
 TIMEOUT = 15
+MAX_REQUEST_TIMEOUT = 60
 DEFAULT_STATES = ("NY", "NJ", "PA", "MD", "DE", "CT")
 US_STATE_CODES = frozenset({
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
@@ -156,7 +157,15 @@ def _states(values: list[str] | tuple[str, ...] | None) -> list[str]:
     return result[:30] or list(DEFAULT_STATES)
 
 
-def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:
+def _validate_request_timeout(timeout: float) -> None:
+    if type(timeout) not in (int, float) or not 0 < timeout <= MAX_REQUEST_TIMEOUT:
+        raise ValueError("request timeout must be positive and at most 60 seconds")
+
+
+def _request_json(
+    url: str, payload: dict[str, Any] | None = None, *, timeout: float = TIMEOUT
+) -> Any:
+    _validate_request_timeout(timeout)
     body = None
     headers = dict(UA)
     method = "GET"
@@ -165,7 +174,7 @@ def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:
         headers["Content-Type"] = "application/json"
         method = "POST"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read(2_000_000).decode("utf-8", "replace"))
 
 
@@ -524,8 +533,11 @@ def fetch_echo(states: list[str] | None = None, limit: int = 18) -> dict[str, An
     return json.loads(json.dumps(output))
 
 
-def collect_usaspending_live(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
+def collect_usaspending_live(
+    states: list[str] | None = None, limit: int = 18, *, request_timeout: float = TIMEOUT
+) -> dict[str, Any]:
     """Return federal contract activity as a research signal, never as a new-award claim."""
+    _validate_request_timeout(request_timeout)
     state_list = _states(states)
     end = _now().date()
     start = end - timedelta(days=21)
@@ -546,7 +558,13 @@ def collect_usaspending_live(states: list[str] | None = None, limit: int = 18) -
         "order": "desc",
         "subawards": False,
     }
-    response = _request_json(USASPENDING["api"], payload)
+    # Scheduled capture may allow a slower official query without changing the
+    # default transport budget of other collectors or interactive callers.
+    response = (
+        _request_json(USASPENDING["api"], payload)
+        if request_timeout == TIMEOUT
+        else _request_json(USASPENDING["api"], payload, timeout=request_timeout)
+    )
     if not isinstance(response, dict) or "results" not in response:
         raise ValueError("USAspending response missing results")
     rows = response["results"]

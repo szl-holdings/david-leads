@@ -247,6 +247,52 @@ def test_provider_access_block_is_never_retried():
     assert collector.call_count == 1
 
 
+def test_retry_diagnostics_are_bounded_and_never_expose_provider_text():
+    events = []
+    collector = mock.Mock(side_effect=TimeoutError("SECRET_PROVIDER_BODY https://secret.test?token=x"))
+    with mock.patch("tools.ingestor.frontier_refresh_cli.time.sleep") as sleep:
+        with pytest.raises(TimeoutError):
+            _collect_with_retry(collector, "AL", lane="usaspending", report=events.append)
+    assert [event["outcome"] for event in events] == ["RETRY", "RETRY", "FAILED"]
+    assert [event["attempt"] for event in events] == [1, 2, 3]
+    assert all(event["state"] == "AL" and event["attempt_limit"] == 3 for event in events)
+    assert [call.args[0] for call in sleep.call_args_list] == [1, 2]
+    assert "SECRET" not in json.dumps(events) and "secret.test" not in json.dumps(events)
+
+
+def test_access_block_diagnostic_does_not_retry_or_leak_url():
+    events = []
+    error = urllib.error.HTTPError("https://secret.test?token=x", 403, "SECRET", {}, None)
+    with pytest.raises(urllib.error.HTTPError):
+        _collect_with_retry(mock.Mock(side_effect=error), "NY", lane="usaspending", report=events.append)
+    assert len(events) == 1 and events[0]["outcome"] == "FAILED"
+    assert events[0]["http_status"] == 403 and events[0]["retry_delay_seconds"] == 0
+    assert "SECRET" not in json.dumps(events) and "secret.test" not in json.dumps(events)
+
+
+def test_schema_failure_is_not_retried_and_collection_progress_is_aggregate_only():
+    events = []
+    collector = mock.Mock(side_effect=ValueError("SECRET_RESPONSE"))
+    with pytest.raises(ValueError):
+        _collect_with_retry(collector, "NY", lane="usaspending", report=events.append)
+    assert collector.call_count == 1 and events[0]["error_class"] == "ValueError"
+    events.clear()
+    collect_bundle("fmcsa", REVISION, states=["NY"], collector=fixture_collector(), report=events.append)
+    assert [event["event"] for event in events] == ["COLLECTION_ATTEMPT", "STATE_VALIDATED"]
+    assert events[-1]["selected"] == 1
+    assert "Synthetic" not in json.dumps(events) and "records" not in events[-1]
+
+
+def test_scheduled_usaspending_has_explicit_deadline_without_mutating_default():
+    from app import frontier_sources
+    from tools.ingestor.frontier_refresh_cli import SCHEDULED_USASPENDING_TIMEOUT
+    with mock.patch.object(frontier_sources, "collect_usaspending_live",
+                           return_value=fixture_collector("usaspending")(["NY"], 50)) as collect:
+        collect_bundle("usaspending", REVISION, states=["NY"])
+    collect.assert_called_once_with(["NY"], limit=50, request_timeout=SCHEDULED_USASPENDING_TIMEOUT)
+    assert SCHEDULED_USASPENDING_TIMEOUT == 60 and frontier_sources.TIMEOUT == 15
+
+
 def test_default_capture_queries_every_declared_state():
     calls = []
     def collector(states, limit):

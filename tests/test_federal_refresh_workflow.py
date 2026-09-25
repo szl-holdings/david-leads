@@ -119,6 +119,10 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         self.assertIn('evidence / "run-status.json"', self.workflow)
         self.assertIn("evidence/verification.txt", self.workflow)
         self.assertIn("evidence/attestation.json", self.workflow)
+        collection = self.workflow.split("- name: Collect minimized official records", 1)[1].split("- name:", 1)[0]
+        self.assertIn("set -euo pipefail", collection)
+        self.assertIn("2>&1 | tee evidence/collection.log", collection)
+        self.assertIn("evidence/", upload)
         self.assertIn("if-no-files-found: error", upload)
         self.assertNotIn("echo_exporter.zip", upload)
         self.assertNotIn("snapshot/records.jsonl", upload)

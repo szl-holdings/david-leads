@@ -433,6 +433,7 @@ function showLoading(show) {
   if (show) {
     $("errorState").classList.add("hidden");
     renderDataStateChecking();
+    renderMetrics({ checking: true });
     $("emptyState").classList.add("hidden");
     $("resultCount").textContent = "Loading current source records";
   }
@@ -580,12 +581,20 @@ function renderWorkspaceUnavailable() {
   renderAccessState("unavailable");
 }
 
-function renderMetrics() {
-  if (!state.board || state.loadError) {
+function renderMetrics({ checking = false } = {}) {
+  const liveSources = state.sources.filter((source) => source.mode === "LIVE");
+  const measured = !checking && Boolean(state.board) && !state.loadError && liveSources.length > 0;
+  ["metricOrganizationsEvidence", "metricStatesEvidence", "metricSourcesEvidence"].forEach((id) => {
+    const chip = $(id);
+    chip.textContent = measured ? "MEASURED" : "UNKNOWN";
+    chip.classList.toggle("measured", measured);
+    chip.classList.toggle("unknown", !measured);
+  });
+  if (!measured) {
     ["metricOrganizations", "metricStates", "metricWindows", "metricSources", "metricResearch", "metricCleared"]
       .forEach((id) => { $(id).textContent = "UNKNOWN"; });
-    $("metricOrganizationsSub").textContent = "No completed live pull is available";
-    $("metricStatesSub").textContent = "Choose a territory and retry";
+    $("metricOrganizationsSub").textContent = checking ? "Loading current source records" : "No completed live pull is available";
+    $("metricStatesSub").textContent = checking ? "Checking the selected territory" : "Choose a territory and retry";
     $("metricWindowsSub").textContent = "Waiting for a completed live pull";
     $("metricSourcesSub").textContent = "Source status is unavailable";
     $("proofLiveSources").textContent = "UNKNOWN";
@@ -594,7 +603,6 @@ function renderMetrics() {
   }
   const summary = state.board?.summary || {};
   const represented = new Set(state.leads.map((lead) => lead.state).filter(Boolean));
-  const liveSources = state.sources.filter((source) => source.mode === "LIVE");
   $("metricOrganizations").textContent = formatNumber(summary.total ?? state.leads.length);
   $("metricOrganizationsSub").textContent = summary.live != null
     ? `${formatNumber(summary.live)} records reported LIVE by their source adapters`
@@ -606,7 +614,8 @@ function renderMetrics() {
   $("metricSources").textContent = `${liveSources.length}/${state.sources.length || 0}`;
   $("metricSourcesSub").textContent = `${state.sources.length - liveSources.length} unavailable or not applicable`;
   $("metricResearch").textContent = formatNumber(summary.needs_research ?? state.leads.length);
-  $("metricCleared").textContent = formatNumber(summary.call_ready ?? 0);
+  // A sanitized public board suppresses private clearance, so its zero is not a measured count.
+  $("metricCleared").textContent = state.board.access_mode === "PUBLIC_READONLY" ? "Protected" : "UNKNOWN";
   const timingWindows = state.leads.filter((lead) => {
     const days = Number(lead.timing?.days_to_anniversary);
     return Number.isFinite(days) && days >= 0 && days <= 180;
@@ -839,7 +848,7 @@ function renderScope() {
   const name = selectedRegionName();
   const selectedCopy = selected.length === 1
     ? `${STATE_NAMES[selected[0]]} is selected. This is a deeper state-specific pull.`
-    : `${name} is selected (${selected.length} markets). The cross-territory view shows the latest records per source; choose one state for a deeper pull.`;
+    : `${name} is selected (${selected.length} markets). The cross-territory view shows a bounded selection from each verified source snapshot; choose one state for a deeper view.`;
   $("scopeNotice").textContent = state.loadError
     ? `Live sources could not complete: ${state.loadError}`
     : selectedCopy;
