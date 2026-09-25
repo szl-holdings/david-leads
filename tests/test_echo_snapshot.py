@@ -326,6 +326,9 @@ class EchoSnapshotVerification(unittest.TestCase):
             ("SAMPLE 100 EXAMPLE LN", "332710"),
             ("JOHN & JANE SAMPLE", "332710"),
             ("ALPHA MANUFACTURING LLC", "814110"),
+            ("GERALD R SAMPLE", "332710"),
+            ("SAMPLE JANE", "332710"),
+            ("W1234 EXAMPLE RD", "332710"),
         ):
             with self.subTest(first_name=first_name, first_naics=first_naics):
                 with mock.patch(

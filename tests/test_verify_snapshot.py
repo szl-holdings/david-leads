@@ -195,6 +195,9 @@ def test_record_tamper_fails(tmp_path: Path, field: str, value: object):
         ("SAMPLE 100 EXAMPLE LN", "332710"),
         ("JOHN & JANE SAMPLE", "332710"),
         ("FIXTURE ALPHA MANUFACTURING LLC", "814110"),
+        ("GERALD R SAMPLE", "332710"),
+        ("SAMPLE JANE", "332710"),
+        ("W1234 EXAMPLE RD", "332710"),
     ],
 )
 def test_person_or_residence_record_fails_even_with_valid_bindings(
