@@ -220,9 +220,10 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
     def test_contract_activity_is_not_labeled_a_new_award(self):
         captured = {}
 
-        def fake_request(url, payload=None):
+        def fake_request(url, payload=None, **kwargs):
             captured["url"] = url
             captured["payload"] = payload
+            captured["timeout"] = kwargs.get("timeout")
             return {
                 "results": [{
                     "Award ID": "TEST-AWARD-1",
@@ -247,6 +248,7 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
             result = frontier_sources.collect_usaspending_live(["NY"], limit=3)
 
         self.assertEqual(captured["url"], frontier_sources.USASPENDING["api"])
+        self.assertEqual(captured["timeout"], frontier_sources.USASPENDING_TIMEOUT)
         self.assertIn("Recipient Location", captured["payload"]["fields"])
         self.assertNotIn("Recipient Phone", captured["payload"]["fields"])
         record = result["records"][0]

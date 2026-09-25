@@ -18,17 +18,33 @@ from app import federal_snapshot as snapshots
 DEFAULT_STATES = snapshots.TARGET_STATES
 
 
+class CollectionTransportError(RuntimeError):
+    """A bounded provider transport failure with safe diagnostic fields."""
+
+    def __init__(self, state: str, attempts: int, cause_type: str):
+        super().__init__(f"{state}: {cause_type} after {attempts} attempts")
+        self.state = state
+        self.attempts = attempts
+        self.cause_type = cause_type
+
+
 def _collect_with_retry(collector, state):
     """Bounded transport retries; bot blocks and contract failures stop immediately."""
     for attempt in range(3):
         try:
             return collector([state], limit=50)
         except urllib.error.HTTPError as exc:
-            if exc.code not in {429, 500, 502, 503, 504} or attempt == 2:
+            if exc.code not in {429, 500, 502, 503, 504}:
                 raise
-        except (urllib.error.URLError, TimeoutError, ConnectionError):
             if attempt == 2:
-                raise
+                raise CollectionTransportError(
+                    state, attempt + 1, f"HTTP_{exc.code}"
+                ) from exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            if attempt == 2:
+                raise CollectionTransportError(
+                    state, attempt + 1, type(exc).__name__
+                ) from exc
         time.sleep(2 ** attempt)
 
 
@@ -93,7 +109,15 @@ def main(argv=None) -> int:
         snapshots.write_bundle(bundle, args.out)
     except Exception as exc:
         # Providers can include arbitrary response bodies in errors; log only class.
-        print(f"FEDERAL_REFRESH_FAILED_CLOSED lane={args.lane} error={type(exc).__name__}", file=sys.stderr)
+        safe_state = getattr(exc, "state", "UNAVAILABLE")
+        safe_attempts = getattr(exc, "attempts", "UNAVAILABLE")
+        safe_error = getattr(exc, "cause_type", type(exc).__name__)
+        print(
+            "FEDERAL_REFRESH_FAILED_CLOSED "
+            f"lane={args.lane} state={safe_state} attempts={safe_attempts} "
+            f"error={safe_error}",
+            file=sys.stderr,
+        )
         return 1
     snapshot = bundle["snapshot"]
     print(json.dumps({"state": "LOCAL_VERIFIED", "lane": args.lane,

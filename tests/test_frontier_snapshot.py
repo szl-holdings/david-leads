@@ -11,7 +11,13 @@ from unittest import mock
 import pytest
 
 from app import federal_snapshot as snap
-from tools.ingestor.frontier_refresh_cli import DEFAULT_STATES, collect_bundle, main, _collect_with_retry
+from tools.ingestor.frontier_refresh_cli import (
+    DEFAULT_STATES,
+    CollectionTransportError,
+    _collect_with_retry,
+    collect_bundle,
+    main,
+)
 
 REVISION = "1234567890abcdef1234567890abcdef12345678"
 
@@ -235,9 +241,12 @@ def test_transient_transport_failure_retries_with_a_bound():
     assert collector.call_count == 2
     collector = mock.Mock(side_effect=TimeoutError())
     with mock.patch("tools.ingestor.frontier_refresh_cli.time.sleep"):
-        with pytest.raises(TimeoutError):
+        with pytest.raises(CollectionTransportError) as failure:
             _collect_with_retry(collector, "NY")
     assert collector.call_count == 3
+    assert failure.value.state == "NY"
+    assert failure.value.attempts == 3
+    assert failure.value.cause_type == "TimeoutError"
 
 
 def test_provider_access_block_is_never_retried():
@@ -245,6 +254,21 @@ def test_provider_access_block_is_never_retried():
     with pytest.raises(urllib.error.HTTPError):
         _collect_with_retry(collector, "NY")
     assert collector.call_count == 1
+
+
+def test_retryable_provider_status_is_reported_without_response_body():
+    error = urllib.error.HTTPError(
+        "https://official.gov", 503, "SECRET_PROVIDER_BODY", {}, None
+    )
+    collector = mock.Mock(side_effect=error)
+    with mock.patch("tools.ingestor.frontier_refresh_cli.time.sleep"):
+        with pytest.raises(CollectionTransportError) as failure:
+            _collect_with_retry(collector, "AL")
+    assert collector.call_count == 3
+    assert failure.value.state == "AL"
+    assert failure.value.attempts == 3
+    assert failure.value.cause_type == "HTTP_503"
+    assert "SECRET" not in str(failure.value)
 
 
 def test_default_capture_queries_every_declared_state():
@@ -354,3 +378,19 @@ def test_cli_failure_does_not_write_output_or_print_provider_body(tmp_path, caps
     assert not (tmp_path / "snapshot").exists()
     output = capsys.readouterr()
     assert "FAILED_CLOSED" in output.err and "SECRET" not in output.err
+
+
+def test_cli_transport_failure_reports_safe_state_and_attempt_count(tmp_path, capsys):
+    failure = CollectionTransportError("AL", 3, "TimeoutError")
+    with mock.patch(
+        "tools.ingestor.frontier_refresh_cli.collect_bundle", side_effect=failure
+    ):
+        assert main([
+            "--lane", "usaspending", "--source-revision", REVISION,
+            "--out", str(tmp_path / "snapshot"),
+        ]) == 1
+    assert not (tmp_path / "snapshot").exists()
+    assert (
+        "lane=usaspending state=AL attempts=3 error=TimeoutError"
+        in capsys.readouterr().err
+    )

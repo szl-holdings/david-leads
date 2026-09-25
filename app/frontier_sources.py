@@ -29,6 +29,7 @@ from .domain.source_policy import FRONTIER_HOLDS
 
 UA = {"User-Agent": "SZL-David-Leads/1.2 research@szlholdings.com"}
 TIMEOUT = 15
+USASPENDING_TIMEOUT = 45
 DEFAULT_STATES = ("NY", "NJ", "PA", "MD", "DE", "CT")
 US_STATE_CODES = frozenset({
     "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI",
@@ -156,7 +157,12 @@ def _states(values: list[str] | tuple[str, ...] | None) -> list[str]:
     return result[:30] or list(DEFAULT_STATES)
 
 
-def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:
+def _request_json(
+    url: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    timeout: int = TIMEOUT,
+) -> Any:
     body = None
     headers = dict(UA)
     method = "GET"
@@ -165,7 +171,7 @@ def _request_json(url: str, payload: dict[str, Any] | None = None) -> Any:
         headers["Content-Type"] = "application/json"
         method = "POST"
     request = urllib.request.Request(url, data=body, headers=headers, method=method)
-    with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read(2_000_000).decode("utf-8", "replace"))
 
 
@@ -546,7 +552,13 @@ def collect_usaspending_live(states: list[str] | None = None, limit: int = 18) -
         "order": "desc",
         "subawards": False,
     }
-    response = _request_json(USASPENDING["api"], payload)
+    # USAspending occasionally accepts the request but takes longer than the
+    # interactive 15-second budget to return its award projection. Scheduled
+    # capture has its own bounded deadline and the outer collector still
+    # retries transport failures before failing closed.
+    response = _request_json(
+        USASPENDING["api"], payload, timeout=USASPENDING_TIMEOUT
+    )
     if not isinstance(response, dict) or "results" not in response:
         raise ValueError("USAspending response missing results")
     rows = response["results"]
