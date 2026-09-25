@@ -6,7 +6,9 @@ only when it has an official FRS identity, is active, is in the supported
 territory, and has a recent factual inspection date. The durable projection
 contains organization/facility facts only; precise street location, people,
 contacts, demographics, compliance conclusions, enforcement, and penalties
-cannot enter the serialized schema.
+cannot enter the serialized schema. Because ``FAC_NAME`` is free text, a row
+whose name reads as a private individual or a private residence is rejected
+by the shared ``app.echo_name_screen`` rule before it can become a record.
 """
 
 from __future__ import annotations
@@ -22,6 +24,9 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterator
+
+from app.echo_name_screen import REJECTION_REASON as PERSON_OR_RESIDENCE_REASON
+from app.echo_name_screen import excluded_name_reason
 
 ECHO_EXPORTER_URL = "https://echo.epa.gov/files/echodownloads/echo_exporter.zip"
 ECHO_MEMBER_NAME = "ECHO_EXPORTER.csv"
@@ -277,6 +282,9 @@ def _record_from_row(row: dict[str, object], upstream_hash: str) -> SourceRecord
         return None
     if age is None or observed is None:
         return None
+    naics_codes = _naics_codes(row.get("FAC_NAICS_CODES"))
+    if excluded_name_reason(name, naics_codes) is not None:
+        return None
     programs = tuple(
         program
         for source_field, program in PROGRAM_FIELDS.items()
@@ -295,7 +303,7 @@ def _record_from_row(row: dict[str, object], upstream_hash: str) -> SourceRecord
         last_inspection_date=observed,
         days_since_last_inspection=age,
         inspection_count=_nonnegative_int(row.get("FAC_INSPECTION_COUNT")),
-        naics_codes=_naics_codes(row.get("FAC_NAICS_CODES")),
+        naics_codes=naics_codes,
         programs=programs,
         facility_report_url=(
             "https://echo.epa.gov/detailed-facility-report?fid=" + registry_id
@@ -425,6 +433,12 @@ def iter_operational_echo_records(
                     continue
                 if _inspection_date(row.get("FAC_DATE_LAST_INSPECTION")) is None:
                     stats.reject("NO_VALID_INSPECTION_DATE")
+                    continue
+                if excluded_name_reason(
+                    _clean(row.get("FAC_NAME"), "org_name"),
+                    _naics_codes(row.get("FAC_NAICS_CODES")),
+                ) is not None:
+                    stats.reject(PERSON_OR_RESIDENCE_REASON)
                     continue
                 record = _record_from_row(row, upstream_hash)
                 if record is None:

@@ -17,6 +17,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, BinaryIO
 
+from .echo_name_screen import excluded_name_reason
+
 
 DATASET_REPO_ID = "SZLHOLDINGS/david-leads-data"
 DATASET_BASE_URL = (
@@ -523,6 +525,13 @@ def _validate_record(
         for code in naics
     ):
         raise EchoSnapshotUnavailable(f"{label} NAICS codes invalid")
+    # The declared privacy contract excludes people and street locations.
+    # FAC_NAME is free text, so enforce that exclusion on the name itself.
+    excluded = excluded_name_reason(name, naics)
+    if excluded is not None:
+        raise EchoSnapshotUnavailable(
+            f"{label} violates the person/residence exclusion ({excluded})"
+        )
     programs = record.get("programs")
     if not isinstance(programs, list) or len(programs) != len(set(programs)) or any(
         program not in PROGRAMS for program in programs

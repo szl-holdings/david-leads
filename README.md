@@ -107,6 +107,12 @@ underwriting decision, consumer report, or permission to contact.
   hash, exact JSONL byte hash, ordered record root, cardinality, and an honestly unsigned
   standalone integrity receipt. An unsigned receipt is never presented as a signature or a
   cross-refresh chain.
+- ECHO facility names are free text from permitting programs. The ingestor rejects rows whose
+  name reads as a private individual or a private residence (NAICS 814110 private households,
+  residential permit designations such as SRSTP or SFTF, a house number with a street type, or a
+  personal name with no organization word) and counts them as `PERSON_OR_RESIDENCE_NAME`; the
+  publish-time and Space verifiers refuse any snapshot that still contains one. This name screen
+  is a heuristic, and snapshots published before it was added did not apply it.
 - PurIQ v1 interoperability is tested against the immutable upstream reference recorded in
   `tests/vendor/puriq_v1/UPSTREAM.json`. Snapshot manifests receive separate GitHub OIDC
   provenance in the refresh workflow; payload-hash verification alone is not authentication.

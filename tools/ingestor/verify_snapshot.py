@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.echo_name_screen import excluded_name_reason
 from tools.ingestor.echo_ingestor import (
     DEFAULT_TARGET_STATES,
     ECHO_EXPORTER_URL,
@@ -120,6 +121,9 @@ def _validate_record(
         for code in naics
     ):
         return f"record {line_number}: invalid naics_codes"
+    excluded = excluded_name_reason(record["org_name"], naics)
+    if excluded is not None:
+        return f"record {line_number}: violates the person/residence exclusion ({excluded})"
     programs = record.get("programs")
     allowed_programs = frozenset(PROGRAM_FIELDS.values())
     if not isinstance(programs, list) or len(programs) != len(set(programs)) or any(
