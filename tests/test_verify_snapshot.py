@@ -10,6 +10,7 @@ import json
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -26,12 +27,14 @@ from tools.ingestor.verify_snapshot import verify
 SOURCE_REVISION = "b" * 40
 
 
-def _fixture_zip() -> bytes:
+def _fixture_zip(
+    name: str = "FIXTURE ALPHA MANUFACTURING LLC", naics: str = "332710"
+) -> bytes:
     row = {field: "" for field in ECHO_REQUIRED_HEADERS}
     row.update(
         {
             "REGISTRY_ID": "110000000001",
-            "FAC_NAME": "FIXTURE ALPHA MANUFACTURING LLC",
+            "FAC_NAME": name,
             "FAC_CITY": "ALBANY",
             "FAC_STATE": "NY",
             "FAC_ZIP": "12207",
@@ -42,7 +45,7 @@ def _fixture_zip() -> bytes:
             "FAC_INSPECTION_COUNT": "2",
             "FAC_DATE_LAST_INSPECTION": (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": "3",
-            "FAC_NAICS_CODES": "332710",
+            "FAC_NAICS_CODES": naics,
             "AIR_FLAG": "Y",
             "RCRA_FLAG": "Y",
         }
@@ -59,9 +62,15 @@ def _fixture_zip() -> bytes:
     return buffer.getvalue()
 
 
-def _bundle(tmp_path: Path, *, created_at: str | None = None) -> Path:
+def _bundle(
+    tmp_path: Path,
+    *,
+    created_at: str | None = None,
+    name: str = "FIXTURE ALPHA MANUFACTURING LLC",
+    naics: str = "332710",
+) -> Path:
     zip_path = tmp_path / "echo.zip"
-    zip_path.write_bytes(_fixture_zip())
+    zip_path.write_bytes(_fixture_zip(name, naics))
     bundle = tmp_path / "snapshot"
     ingest_zip(
         zip_path,
@@ -177,6 +186,34 @@ def test_record_tamper_fails(tmp_path: Path, field: str, value: object):
     record[field] = value
     records_path.write_bytes(canonical_json(record) + b"\n")
     assert verify(bundle) != 0
+
+
+@pytest.mark.parametrize(
+    ("name", "naics"),
+    [
+        ("JANE SAMPLE SRSTP", "332710"),
+        ("SAMPLE 100 EXAMPLE LN", "332710"),
+        ("JOHN & JANE SAMPLE", "332710"),
+        ("FIXTURE ALPHA MANUFACTURING LLC", "814110"),
+        ("GERALD R SAMPLE", "332710"),
+        ("SAMPLE JANE", "332710"),
+        ("W1234 EXAMPLE RD", "332710"),
+    ],
+)
+def test_person_or_residence_record_fails_even_with_valid_bindings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str, naics: str
+):
+    # A bundle written without the name screen binds every hash correctly;
+    # the verifier must still refuse it. All names are synthetic.
+    with mock.patch(
+        "tools.ingestor.echo_ingestor.excluded_name_reason", return_value=None
+    ), mock.patch(
+        "tools.ingestor.verify_snapshot.excluded_name_reason", return_value=None
+    ):
+        bundle = _bundle(tmp_path, name=name, naics=naics)
+    capsys.readouterr()
+    assert verify(bundle) != 0
+    assert "person/residence exclusion" in capsys.readouterr().out
 
 
 def test_noncanonical_record_json_and_crlf_fail(tmp_path: Path):

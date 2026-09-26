@@ -221,6 +221,7 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertIn("David Leads — verified Federal Refresh", card)
         self.assertIn("UNSIGNED", card)
         self.assertIn(DIGEST, card)
+        self.assertIn("PERSON_OR_RESIDENCE_NAME", card)
         latest = json.loads(api.remote["latest.json"])
         self.assertEqual(latest["path"], expected_prefix)
         self.assertEqual(latest["snapshot_digest"], DIGEST)

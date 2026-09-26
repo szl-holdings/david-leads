@@ -9,6 +9,7 @@ import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -331,3 +332,96 @@ def test_admission_recomputes_inspection_age_without_rewriting_reported_age(tmp_
     assert result["snapshot"]["record_count"] == 1
     assert result["snapshot"]["ingestion"]["rejected"]["INSPECTION_DATE_OUTSIDE_MONITORING_WINDOW"] == 2
     assert json.loads((out / "records.jsonl").read_text(encoding="utf-8"))["days_since_last_inspection"] == 4
+
+
+# Synthetic person/residence rows. None of these names come from real data.
+_PERSON_OR_RESIDENCE_ROWS = (
+    {"REGISTRY_ID": "110000000011", "FAC_NAME": "FIXTURE SITE", "FAC_NAICS_CODES": "814110"},
+    {"REGISTRY_ID": "110000000012", "FAC_NAME": "JANE SAMPLE SRSTP", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000013", "FAC_NAME": "SAMPLE 100 EXAMPLE LN", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000014", "FAC_NAME": "JOHN & JANE SAMPLE", "FAC_NAICS_CODES": ""},
+)
+
+
+def test_person_and_residence_rows_are_rejected_and_counted(tmp_path: Path):
+    rows = [_base_row()] + [_base_row(**overrides) for overrides in _PERSON_OR_RESIDENCE_ROWS]
+    zip_path = _write_zip(tmp_path / "echo.zip", rows)
+    out = tmp_path / "snapshot"
+    result = ingest_zip(
+        zip_path,
+        out,
+        source_revision=SOURCE_REVISION,
+        created_at=_created_now(),
+    )
+    ingestion = result["snapshot"]["ingestion"]
+    assert result["snapshot"]["record_count"] == 1
+    assert ingestion["rejected"] == {"PERSON_OR_RESIDENCE_NAME": 4}
+    assert ingestion["rows_seen"] == ingestion["rows_admitted"] + sum(ingestion["rejected"].values())
+    emitted = b"\n".join(path.read_bytes() for path in sorted(out.iterdir()))
+    assert b"FIXTURE ALPHA MANUFACTURING LLC" in emitted
+    for overrides in _PERSON_OR_RESIDENCE_ROWS:
+        assert overrides["REGISTRY_ID"].encode() not in emitted
+        assert overrides["FAC_NAME"].encode() not in emitted
+    assert b"814110" not in emitted
+
+
+def test_library_parser_never_builds_a_person_or_residence_record():
+    rows = [_base_row()] + [_base_row(**overrides) for overrides in _PERSON_OR_RESIDENCE_ROWS]
+    records = parse_echo_exporter(_fixture_zip(rows))
+    assert [record.source_record_id for record in records] == ["echo:110000000001"]
+
+
+def test_unfiltered_person_row_cannot_pass_bundle_self_verification(tmp_path: Path):
+    # Simulate an ingestor without the name screen: the bundle self-verifier
+    # still refuses it and leaves no output directory behind.
+    zip_path = _write_zip(
+        tmp_path / "echo.zip", [_base_row(FAC_NAME="JANE SAMPLE SRSTP")]
+    )
+    out = tmp_path / "snapshot"
+    with mock.patch(
+        "tools.ingestor.echo_ingestor.excluded_name_reason", return_value=None
+    ):
+        with pytest.raises(ValueError, match="did not self-verify"):
+            ingest_zip(
+                zip_path,
+                out,
+                source_revision=SOURCE_REVISION,
+                created_at=_created_now(),
+            )
+    assert not out.exists()
+    assert not list(tmp_path.glob(".snapshot-*"))
+
+
+# Synthetic rows for the widened name shapes. None of these names come from
+# real data.
+_WIDENED_SHAPE_ROWS = (
+    {"REGISTRY_ID": "110000000021", "FAC_NAME": "GERALD R SAMPLE", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000022", "FAC_NAME": "SAMPLE JANE", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000023", "FAC_NAME": "MR & MRS SAMPLE", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000024", "FAC_NAME": "W1234 EXAMPLE RD", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000025", "FAC_NAME": "SAMPLE FAMILY TRUST", "FAC_NAICS_CODES": ""},
+    {"REGISTRY_ID": "110000000026", "FAC_NAME": "SAMPLE COTTAGE", "FAC_NAICS_CODES": ""},
+)
+
+
+def test_widened_person_and_residence_shapes_are_rejected_and_counted(tmp_path: Path):
+    rows = [_base_row()] + [_base_row(**overrides) for overrides in _WIDENED_SHAPE_ROWS]
+    zip_path = _write_zip(tmp_path / "echo.zip", rows)
+    out = tmp_path / "snapshot"
+    result = ingest_zip(
+        zip_path,
+        out,
+        source_revision=SOURCE_REVISION,
+        created_at=_created_now(),
+    )
+    ingestion = result["snapshot"]["ingestion"]
+    assert result["snapshot"]["record_count"] == 1
+    assert ingestion["rejected"] == {"PERSON_OR_RESIDENCE_NAME": len(_WIDENED_SHAPE_ROWS)}
+    assert ingestion["rows_seen"] == ingestion["rows_admitted"] + sum(ingestion["rejected"].values())
+    emitted = b"\n".join(path.read_bytes() for path in sorted(out.iterdir()))
+    assert b"FIXTURE ALPHA MANUFACTURING LLC" in emitted
+    for overrides in _WIDENED_SHAPE_ROWS:
+        assert overrides["REGISTRY_ID"].encode() not in emitted
+        assert overrides["FAC_NAME"].encode() not in emitted
+    records = parse_echo_exporter(_fixture_zip(rows))
+    assert [record.source_record_id for record in records] == ["echo:110000000001"]

@@ -42,11 +42,17 @@ class _Response(io.BytesIO):
         return False
 
 
-def _archive(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> bytes:
+def _archive(
+    *,
+    source_date: datetime = NOW,
+    first_inspection_age: int = 3,
+    first_name: str = "ALPHA MANUFACTURING LLC",
+    first_naics: str = "332710",
+) -> bytes:
     values = [
         {
             "REGISTRY_ID": "110000000001",
-            "FAC_NAME": "ALPHA MANUFACTURING LLC",
+            "FAC_NAME": first_name,
             "FAC_CITY": "ALBANY",
             "FAC_STATE": "NY",
             "FAC_ZIP": "12207",
@@ -57,7 +63,7 @@ def _archive(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> b
             "FAC_INSPECTION_COUNT": "4",
             "FAC_DATE_LAST_INSPECTION": (NOW - timedelta(days=first_inspection_age)).strftime("%m/%d/%Y"),
             "FAC_DAYS_LAST_INSPECTION": str(first_inspection_age),
-            "FAC_NAICS_CODES": "332710",
+            "FAC_NAICS_CODES": first_naics,
             "AIR_FLAG": "Y",
             "NPDES_FLAG": "N",
             "SDWIS_FLAG": "N",
@@ -120,9 +126,20 @@ def _archive(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> b
     return archive.getvalue()
 
 
-def _bundle(*, source_date: datetime = NOW, first_inspection_age: int = 3) -> dict[str, bytes]:
+def _bundle(
+    *,
+    source_date: datetime = NOW,
+    first_inspection_age: int = 3,
+    first_name: str = "ALPHA MANUFACTURING LLC",
+    first_naics: str = "332710",
+) -> dict[str, bytes]:
     result = run(
-        _archive(source_date=source_date, first_inspection_age=first_inspection_age),
+        _archive(
+            source_date=source_date,
+            first_inspection_age=first_inspection_age,
+            first_name=first_name,
+            first_naics=first_naics,
+        ),
         session_id="123e4567-e89b-42d3-a456-426614174000",
         source_revision="a" * 40,
         created_at=NOW.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -299,6 +316,36 @@ class EchoSnapshotVerification(unittest.TestCase):
         with mock.patch.object(echo_snapshot, "_open_url", side_effect=_opener(files)):
             with self.assertRaisesRegex(echo_snapshot.EchoSnapshotUnavailable, "inspection date outside monitoring window"):
                 echo_snapshot.load_verified_records(["NY"], 2, now=NOW, base_url=BASE_URL)
+
+    def test_person_or_residence_record_fails_closed_despite_valid_bindings(self):
+        # Simulates a bundle produced without the ingestion name screen: all
+        # hashes, the root, and the receipt bind, but the declared
+        # person/street exclusion does not hold. Every name is synthetic.
+        for first_name, first_naics in (
+            ("JANE SAMPLE SRSTP", "332710"),
+            ("SAMPLE 100 EXAMPLE LN", "332710"),
+            ("JOHN & JANE SAMPLE", "332710"),
+            ("ALPHA MANUFACTURING LLC", "814110"),
+            ("GERALD R SAMPLE", "332710"),
+            ("SAMPLE JANE", "332710"),
+            ("W1234 EXAMPLE RD", "332710"),
+        ):
+            with self.subTest(first_name=first_name, first_naics=first_naics):
+                with mock.patch(
+                    "tools.ingestor.echo_ingestor.excluded_name_reason",
+                    return_value=None,
+                ):
+                    files = _bundle(first_name=first_name, first_naics=first_naics)
+                with mock.patch.object(
+                    echo_snapshot, "_open_url", side_effect=_opener(files)
+                ):
+                    with self.assertRaisesRegex(
+                        echo_snapshot.EchoSnapshotUnavailable,
+                        "record 1 violates the person/residence exclusion",
+                    ):
+                        echo_snapshot.load_verified_records(
+                            ["PA"], 2, now=NOW, base_url=BASE_URL
+                        )
 
     def test_transport_failure_never_falls_back_to_sample_records(self):
         with mock.patch.object(
