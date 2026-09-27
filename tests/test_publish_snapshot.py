@@ -21,6 +21,8 @@ PARENT_COMMIT = "1" * 40
 PUBLISHED_COMMIT = "2" * 40
 DIGEST = "a" * 64
 TOKEN = "hf_test_token_never_print"
+# RFC 2606 reserved domain: a synthetic stand-in for the maintainer's contact.
+TAKEDOWN_CONTACT = "privacy@example.org"
 
 
 class FakeRemoteEntryNotFoundError(Exception):
@@ -102,6 +104,9 @@ class FakeApi:
 
 class PublishSnapshotTests(unittest.TestCase):
     def setUp(self) -> None:
+        contact = mock.patch.object(publisher, "TAKEDOWN_CONTACT", TAKEDOWN_CONTACT)
+        contact.start()
+        self.addCleanup(contact.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.snapshot_dir = self.root / "snapshot"
@@ -205,7 +210,7 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertEqual(commit["revision"], "main")
         self.assertEqual(commit["parent_commit"], PARENT_COMMIT)
         operations = commit["operations"]
-        self.assertEqual(len(operations), 6)  # type: ignore[arg-type]
+        self.assertEqual(len(operations), 7)  # type: ignore[arg-type]
         self.assertEqual(
             {operation.path_in_repo for operation in operations},  # type: ignore[union-attr]
             {
@@ -215,6 +220,7 @@ class PublishSnapshotTests(unittest.TestCase):
                 "latest.json",
                 "latest/echo-exporter.json",
                 "README.md",
+                "LICENSE.md",
             },
         )
         card = api.remote["README.md"].decode("utf-8")
@@ -222,12 +228,29 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertIn("UNSIGNED", card)
         self.assertIn(DIGEST, card)
         self.assertIn("PERSON_OR_RESIDENCE_NAME", card)
+        front_matter = card.split("---\n", 2)[1]
+        self.assertIn("license: other\n", front_matter)
+        self.assertIn("license_name: david-leads-data-use-terms\n", front_matter)
+        self.assertIn("license_link: LICENSE.md\n", front_matter)
+        self.assertIn("## Personal data and removal requests", card)
+        self.assertIn(f"<{TAKEDOWN_CONTACT}>", card)
+        self.assertIn("consumer marketing", card)
+        terms = api.remote["LICENSE.md"].decode("utf-8")
+        self.assertIn("david-leads-data-use-terms", terms)
+        for condition in (
+            "identify, locate, profile, or contact a private individual",
+            "re-identify a person or a residence",
+            "consumer marketing",
+            "not permission to contact anyone",
+            f"<{TAKEDOWN_CONTACT}>",
+        ):
+            self.assertIn(condition, terms)
         latest = json.loads(api.remote["latest.json"])
         self.assertEqual(latest["path"], expected_prefix)
         self.assertEqual(latest["snapshot_digest"], DIGEST)
         self.assertEqual(latest["record_count"], 7)
 
-        self.assertEqual(len(api.download_calls), 7)
+        self.assertEqual(len(api.download_calls), 8)
         self.assertEqual(api.download_calls[0]["revision"], PARENT_COMMIT)
         for call in api.download_calls[1:]:
             self.assertEqual(call["revision"], PUBLISHED_COMMIT)
@@ -236,6 +259,40 @@ class PublishSnapshotTests(unittest.TestCase):
         self.assertEqual(result["published_commit"], PUBLISHED_COMMIT)
         self.assertEqual(result["verification"]["pinned_hub_readback"], "PASS")
         self.assertEqual(json.loads(self.publication.read_text()), result)
+
+    def test_unset_or_invalid_takedown_contact_fails_before_api(self) -> None:
+        for contact in (
+            "",
+            "   ",
+            "TODO",
+            "mailto:",
+            "privacy@example",
+            "privacy @example.org",
+            "http://example.org/removal",
+            "https://example.org/a b",
+            "https://example.org/<removal>",
+            "https://example.org/" + "a" * 256,
+        ):
+            with self.subTest(contact=contact):
+                events: list[str] = []
+                api = FakeApi(events, tree_error=FakeRemoteEntryNotFoundError())
+                with (
+                    mock.patch.object(publisher, "TAKEDOWN_CONTACT", contact),
+                    self.assertRaises(publisher.TakedownContactNotConfigured),
+                ):
+                    self._publish(api, events)
+                self.assertEqual(events, ["verify"])
+                self.assertEqual(api.commit_calls, [])
+                self.assertFalse(self.publication.exists())
+
+    def test_https_takedown_contact_is_published(self) -> None:
+        contact = "https://example.org/data-removal"
+        events: list[str] = []
+        api = FakeApi(events, tree_error=FakeRemoteEntryNotFoundError())
+        with mock.patch.object(publisher, "TAKEDOWN_CONTACT", contact):
+            self._publish(api, events)
+        self.assertIn(f"<{contact}>", api.remote["README.md"].decode("utf-8"))
+        self.assertIn(f"<{contact}>", api.remote["LICENSE.md"].decode("utf-8"))
 
     def test_existing_content_addressed_prefix_fails_without_commit(self) -> None:
         events: list[str] = []

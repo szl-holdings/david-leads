@@ -10,19 +10,20 @@ from unittest import mock
 import pytest
 
 from tests.test_publish_snapshot import (
-    DATASET_ID, PARENT_COMMIT, FakeApi, FakeOperation,
+    DATASET_ID, PARENT_COMMIT, TAKEDOWN_CONTACT, FakeApi, FakeOperation,
     FakeRemoteEntryNotFoundError, FakeNetworkError,
 )
 from tests.test_verify_snapshot import _bundle
 from tools.ingestor import publish_snapshot as pub
 
 
-def publish(directory, receipt, api, **kwargs):
-    return pub.publish_snapshot(
-        DATASET_ID, directory, receipt, token="test-token",
-        api_factory=lambda _token: api, operation_factory=FakeOperation,
-        remote_entry_not_found=FakeRemoteEntryNotFoundError, **kwargs,
-    )
+def publish(directory, receipt, api, *, takedown_contact=TAKEDOWN_CONTACT, **kwargs):
+    with mock.patch.object(pub, "TAKEDOWN_CONTACT", takedown_contact):
+        return pub.publish_snapshot(
+            DATASET_ID, directory, receipt, token="test-token",
+            api_factory=lambda _token: api, operation_factory=FakeOperation,
+            remote_entry_not_found=FakeRemoteEntryNotFoundError, **kwargs,
+        )
 
 
 def test_lazy_missing_prefix_is_consumed_before_atomic_commit(tmp_path):
@@ -264,6 +265,16 @@ def test_missing_credentials_are_a_hard_publication_failure(tmp_path):
     assert not api.create_repo_calls
 
 
+def test_echo_publication_without_takedown_contact_never_reaches_provider(tmp_path):
+    directory = _bundle(tmp_path)
+    api = FakeApi([], tree_error=FakeRemoteEntryNotFoundError())
+    with pytest.raises(pub.TakedownContactNotConfigured):
+        publish(directory, tmp_path / "publication.json", api, takedown_contact="")
+    assert not api.create_repo_calls
+    assert not api.commit_calls
+    assert not (tmp_path / "publication.json").exists()
+
+
 def test_frozen_bytes_are_used_even_if_original_changes_after_verification(tmp_path):
     directory = _bundle(tmp_path)
     original = (directory / "records.jsonl").read_bytes()
@@ -290,7 +301,8 @@ def test_scheduled_lane_commit_does_not_overwrite_echo_pointer(tmp_path, lane):
     directory = tmp_path / "snapshot"
     write_bundle(make_bundle(lane), directory)
     api = FakeApi([], tree_error=FakeRemoteEntryNotFoundError())
-    result = publish(directory, tmp_path / "publication.json", api)
+    # Federal lanes never render the dataset card, so they do not need the contact.
+    result = publish(directory, tmp_path / "publication.json", api, takedown_contact="")
     assert result["status"] == "VERIFIED_PUBLISHED"
     assert result["path"].startswith(f"snapshots/{lane}/")
     assert len(api.commit_calls) == 1
@@ -299,4 +311,5 @@ def test_scheduled_lane_commit_does_not_overwrite_echo_pointer(tmp_path, lane):
     assert "latest.json" not in paths
     assert "latest/echo-exporter.json" not in paths
     assert "README.md" not in paths
+    assert "LICENSE.md" not in paths
     assert len(paths) == 4
