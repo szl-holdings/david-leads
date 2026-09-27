@@ -118,6 +118,12 @@ underwriting decision, consumer report, or permission to contact.
   is a heuristic over the name text, not identity resolution: it can drop an organization whose
   name reads like a person, and it cannot recognize every personal name. It applies to snapshots
   built by an ingestor revision that includes it.
+- Each ECHO publication also writes the dataset's use terms (`LICENSE.md`, declared on the card as
+  `license: other`, `david-leads-data-use-terms`): no identifying, locating, profiling, or
+  contacting a private individual or household, no re-identification, and no consumer marketing.
+  The card adds a personal-data statement and a removal-request contact. That contact is the
+  maintainer-set `TAKEDOWN_CONTACT` in `tools/ingestor/publish_snapshot.py`; while it is unset,
+  ECHO publication fails closed before any Hub call.
 - PurIQ v1 interoperability is tested against the immutable upstream reference recorded in
   `tests/vendor/puriq_v1/UPSTREAM.json`. Snapshot manifests receive separate GitHub OIDC
   provenance in the refresh workflow; payload-hash verification alone is not authentication.

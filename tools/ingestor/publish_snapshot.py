@@ -34,6 +34,14 @@ DATASET_ID = "SZLHOLDINGS/david-leads-data"
 FILES = ("snapshot.json", "receipt.json", "records.jsonl")
 MAX_BUNDLE_BYTES = 512 * 1024 * 1024
 MAX_PRIOR_MANIFEST_BYTES = 128 * 1024
+TERMS_PATH = "LICENSE.md"
+TERMS_NAME = "david-leads-data-use-terms"
+# Where a person can ask for a record naming them or their home to be removed.
+# The maintainer supplies a monitored email address or https URL; it is never
+# guessed. While it is unset, ECHO publication fails closed before any Hub call.
+TAKEDOWN_CONTACT = "research@szlholdings.com"
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
+_HTTPS_RE = re.compile(r"^https://[^\s<>\"'`]+$")
 
 
 def verify(snapshot_dir: Path) -> int:
@@ -49,6 +57,21 @@ def verify(snapshot_dir: Path) -> int:
 
 class PublicationError(RuntimeError):
     """A fail-closed publication precondition or verification failure."""
+
+
+class TakedownContactNotConfigured(PublicationError):
+    """The dataset card has no valid removal-request contact to publish."""
+
+
+def _takedown_contact() -> str:
+    contact = TAKEDOWN_CONTACT.strip() if isinstance(TAKEDOWN_CONTACT, str) else ""
+    if len(contact) > 256 or not (
+        _EMAIL_RE.fullmatch(contact) or _HTTPS_RE.fullmatch(contact)
+    ):
+        raise TakedownContactNotConfigured(
+            "dataset card removal-request contact is not configured"
+        )
+    return contact
 
 
 def _canonical_json(value: object) -> bytes:
@@ -200,12 +223,15 @@ def _require_echo_source_progression(
         raise PublicationError("refusing to regress the ECHO source export date")
 
 
-def _dataset_card(snapshot: dict[str, object], prefix: str) -> bytes:
-    """Render the investor-readable Hub card without asserting a data license."""
+def _dataset_card(snapshot: dict[str, object], prefix: str, contact: str) -> bytes:
+    """Render the investor-readable Hub card and point it at the data use terms."""
 
     return (
         "---\n"
         "pretty_name: David Leads Verified Federal Refresh\n"
+        "license: other\n"
+        f"license_name: {TERMS_NAME}\n"
+        f"license_link: {TERMS_PATH}\n"
         "tags:\n"
         "- public-data\n"
         "- insurance\n"
@@ -244,6 +270,21 @@ def _dataset_card(snapshot: dict[str, object], prefix: str) -> bytes:
         "is not identity resolution: it can drop an organization whose name reads like "
         "a person, and it cannot recognize every personal name. It applies to "
         "snapshots built by a parser revision that includes it.\n\n"
+        "## Personal data and removal requests\n\n"
+        "This dataset is meant to hold organization and facility facts, not personal "
+        "data. ECHO facility names are free text and can name a private individual or "
+        "a private residence, and the screen above is a heuristic, so a record can "
+        "still do so. An ECHO snapshot whose `snapshot.json` has no "
+        "`PERSON_OR_RESIDENCE_NAME` count under `ingestion.rejected` may not have "
+        "been screened; do not use it. To ask for a record about you or your home to "
+        f"be removed, contact <{contact}>.\n\n"
+        "## Use terms\n\n"
+        f"Use of this dataset is subject to [{TERMS_PATH}]"
+        f"(https://huggingface.co/datasets/{DATASET_ID}/blob/main/{TERMS_PATH}) "
+        f"(`{TERMS_NAME}`). Do not use it to identify, locate, profile, or contact "
+        "a private individual or a household, do not combine it with other data to "
+        "re-identify a person or a residence, and do not use it for consumer "
+        "marketing.\n\n"
         "`latest.json` points to a content-addressed directory. `snapshot.json` "
         "binds the upstream ZIP hash, exact parser revision, projection policy, "
         "record count, ordered record root, and exact JSONL byte hash. "
@@ -254,6 +295,31 @@ def _dataset_card(snapshot: dict[str, object], prefix: str) -> bytes:
         "Source-data permission and repository code licensing are separate. Review "
         "the [EPA ECHO data downloads](https://echo.epa.gov/tools/data-downloads) "
         "and the source repository's Apache-2.0 license before reuse.\n"
+    ).encode("utf-8")
+
+
+def _data_use_terms(contact: str) -> bytes:
+    """Render the dataset's use terms, published beside the card as LICENSE.md."""
+
+    return (
+        f"# David Leads data use terms (`{TERMS_NAME}`)\n\n"
+        f"These terms apply to the files in the Hugging Face dataset `{DATASET_ID}`: "
+        "snapshot records, manifests, receipts, and pointers. The records are "
+        "projections of U.S. federal public sources (EPA ECHO, DOL Form 5500, "
+        "FMCSA, and USAspending). These terms do not limit anyone's use of the "
+        "original data obtained from its publisher, whose own terms also apply.\n\n"
+        "You may use this dataset for research about organizations and facilities, "
+        "on these conditions:\n\n"
+        "1. Do not use it to identify, locate, profile, or contact a private "
+        "individual or a household.\n"
+        "2. Do not combine it with other data to re-identify a person or a "
+        "residence.\n"
+        "3. Do not use it for consumer marketing.\n"
+        "4. A record is not permission to contact anyone, an underwriting fact, or "
+        "a consumer report.\n"
+        "5. If a record names a private individual or a private residence, stop "
+        f"using it and report it to <{contact}>.\n\n"
+        "The source repository's code is licensed separately under Apache-2.0.\n"
     ).encode("utf-8")
 
 
@@ -325,8 +391,10 @@ def _publish_frozen(
         pointer_path: latest_bytes,
     }
     if lane == "echo-exporter":
+        contact = _takedown_contact()
         payloads["latest.json"] = latest_bytes
-        payloads["README.md"] = _dataset_card(snapshot, prefix)
+        payloads["README.md"] = _dataset_card(snapshot, prefix, contact)
+        payloads[TERMS_PATH] = _data_use_terms(contact)
     file_metadata = {
         remote_path: _payload_metadata(payload)
         for remote_path, payload in payloads.items()
