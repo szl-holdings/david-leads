@@ -39,7 +39,7 @@ TERMS_NAME = "david-leads-data-use-terms"
 # Where a person can ask for a record naming them or their home to be removed.
 # The maintainer supplies a monitored email address or https URL; it is never
 # guessed. While it is unset, ECHO publication fails closed before any Hub call.
-TAKEDOWN_CONTACT = ""
+TAKEDOWN_CONTACT = "research@szlholdings.com"
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$")
 _HTTPS_RE = re.compile(r"^https://[^\s<>\"'`]+$")
 
