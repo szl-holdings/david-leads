@@ -30,3 +30,12 @@ test("receipt verification exposes signature, chain, scope, and witness limits",
   assert.match(app, /witness\.durability/);
   assert.match(app, /Witness mode/);
 });
+
+test("verified bulk snapshots expose source path and as-of evidence", () => {
+  assert.match(app, /dataset_snapshot_created_at/);
+  assert.match(app, /Dataset as of/);
+  assert.match(app, /dataset_source_path/);
+  assert.match(app, /Source path/);
+  assert.match(app, /dataset_receipt_state/);
+  assert.match(app, /Snapshot receipt/);
+});

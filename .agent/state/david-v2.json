@@ -1,14 +1,22 @@
 {
   "schema": "szl.david.execution-state/v2",
   "task": "01a07ed3-e0bc-7640-aee1-358835737656",
-  "observed_at": "2026-09-12",
+  "observed_at": "2026-09-29",
   "repository": "szl-holdings/david-leads",
-  "main": "8e2158fe2572932040d11e271c11811e6fe5e743",
-  "implementation_base": "bac608bec90208b4ce8df297265dca30efd6fa62",
+  "main": "901f19f0ed2a11113a98d59ccec4e873161ec494",
+  "implementation_base": "ff75071508bd16423453c06d427996ea3a1512ff",
   "stack": [117, 118],
-  "state": "IMPLEMENTATION_IN_PROGRESS",
+  "state": "INTEGRATED_LOCAL_VALIDATION_RELEASE_PENDING",
   "remote_writes": [],
-  "runtime_revision": null,
+  "runtime_revision": "9b55fd50dd79b437a0048ff8ab3bb9c93109e0bb",
+  "runtime_proof": "SELF_REPORT_OLDER_RELEASE",
+  "local_evidence": {
+    "postgres_and_workflow": "57 passed and 4 subtests on disposable PostgreSQL; subsequent collect-only and scope-filter repairs require the final run",
+    "operator_policy_and_safety": "95 passed and 11 subtests",
+    "source_publication": "173 passed and 17 subtests on synthetic canonical snapshot fixtures",
+    "browser": "PENDING",
+    "full_suite": "668 passed and 580 subtests; one Windows symlink privilege failure. Source changed during review repairs, so hosted exact-source CI remains required"
+  },
   "publication_authorized_by_this_record": false,
-  "next_action": "Complete role-safe storage, source health and authenticated workflow integration tests"
+  "next_action": "Finish final suite and browser validation, publish reviewed signed source, verify exact-source CI and current-main migration, then provider bytes and runtime"
 }

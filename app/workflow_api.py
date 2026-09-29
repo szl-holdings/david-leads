@@ -83,7 +83,10 @@ def make_router(context_provider, ledger_provider):
         try:
             context = context_provider(authorization, now)
             ledger = ledger_provider()
-            return action(Workflow(ledger, context, now))
+            def reauthorize():
+                current = datetime.now(timezone.utc)
+                return context_provider(authorization, current), current
+            return action(Workflow(ledger, context, now, reauthorize=reauthorize))
         except HTTPException:
             raise
         except Hold as exc:

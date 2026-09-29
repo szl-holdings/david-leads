@@ -37,7 +37,7 @@ class ImmutableSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(Hold, 'SIGNATURE_INVALID'): self.load(key=b'b'*32)
         files = bundle_files(self.value)
         receipt_path = next(x for x in files if x.endswith('/receipt.json'))
-        data = json.loads(files[receipt_path]); data['signature']['value']='UNSIGNED'
+        data = json.loads(files[receipt_path]); data['signature']['value']='FORGED'
         self.value['receipt'] = data
         with self.assertRaises(Hold): self.load(files=bundle_files(self.value, resign=False))
     def test_pointer_file_hash_mutation(self):
@@ -48,26 +48,24 @@ class ImmutableSnapshotTests(unittest.TestCase):
     def test_wrong_lane_and_traversal(self):
         for key, value in [('lane','echo-exporter'), ('path','../secrets')]:
             files = bundle_files(self.value)
-            pointer=json.loads(files['latest/dol-5500-bulk.json']); pointer[key]=value
-            files['latest/dol-5500-bulk.json']=json.dumps(pointer).encode()
+            pointer=json.loads(files['latest/form5500.json']); pointer[key]=value
+            files['latest/form5500.json']=json.dumps(pointer).encode()
             with self.subTest(key=key),self.assertRaises(Hold):self.load(files=files)
     def test_snapshot_completeness_bound_to_signature(self):
-        self.value['snapshot']['freshness_days']=35
-        with self.assertRaisesRegex(Hold,'RECEIPT_BINDING'): self.load(files=bundle_files(self.value,resign=False))
+        self.value['snapshot']['coverage']['status']='PARTIAL'
+        with self.assertRaisesRegex(Hold,'SIGNATURE_INVALID'): self.load(files=bundle_files(self.value,resign=False))
     def test_partial_unsupported_and_future_denied(self):
-        for field,value in [('completeness','PARTIAL'),('parser_version','0.0.0'),('created_at','2099-01-01T00:00:00Z')]:
+        for field,value in [('record_schema','unsupported'),('parser_version','0.0.0'),('created_at','2099-01-01T00:00:00Z')]:
             changed=copy.deepcopy(self.value); changed['snapshot'][field]=value
             with self.subTest(field=field),self.assertRaises(Hold):self.load(changed)
     def test_stale_denied_without_refreshing_source_time(self):
         with self.assertRaisesRegex(Hold,'SOURCE_STALE'):self.load(now=self.now+timedelta(days=10))
     def test_private_nested_field_cannot_pass_even_resigned(self):
-        self.value['records'][0]['raw']['ein']='synthetic-excluded'
-        with self.assertRaisesRegex(Hold,'MINIMIZATION'):self.load()
+        self.value['records'][0]['operational_snapshot']['ein']='synthetic-excluded'
+        with self.assertRaisesRegex(Hold,'INTEGRITY_FAILED'):self.load()
     def test_duplicate_record_denied(self):
         self.value['records'].append(copy.deepcopy(self.value['records'][0]))
         self.value['snapshot']['record_count']=2
-        self.value['snapshot']['counts']['accepted']=2
-        self.value['snapshot']['counts']['rows_seen']=2
         with self.assertRaises(Hold): self.load()
     def test_network_failure_is_unavailable(self):
         with self.assertRaisesRegex(Hold,'TRANSPORT_UNAVAILABLE'):
@@ -92,8 +90,11 @@ class AdmissionTests(unittest.TestCase):
     def save(self):self.path.write_text(json.dumps(self.policy))
     def admit(self):return admission.get_admitted_observation(admission.SOURCE_ID,'dol-5500:SYNTHETIC-A1',REVISION,self.now)
     def test_full_reviewed_organization_admission(self):
-        result=self.admit();self.assertEqual(result.entity_type,'organization');self.assertEqual(result.observation.fields['form_year'],2025)
-        self.assertTrue(result.observation.fields['amended_filing']);self.assertEqual(result.observation.fields['plan_year_begin'],'2025-01-01')
+        result=self.admit();self.assertEqual(result.entity_type,'organization')
+        self.assertEqual(result.observation.fields['participant_count'],12)
+        self.assertTrue(result.observation.fields['reported_life_benefit'])
+        self.assertNotIn('form_year', result.observation.fields)
+        self.assertNotIn('plan_year_begin', result.observation.fields)
 
     def stored_body(self):
         value = self.admit()
@@ -109,6 +110,14 @@ class AdmissionTests(unittest.TestCase):
         self.save()
         with self.assertRaises(Hold):
             admission.validate_stored_admission(body, self.now)
+
+    def test_collect_authority_rechecked_separately_from_research(self):
+        body = self.stored_body()
+        self.policy['rights']['collect'] = 'DENY'
+        self.save()
+        admission.validate_stored_admission(body, self.now)
+        with self.assertRaises(Hold):
+            admission.validate_stored_admission(body, self.now, operation='collect')
 
     def test_current_classification_removal_denies_admitted_evidence(self):
         body = self.stored_body()
@@ -158,6 +167,27 @@ class AdmissionTests(unittest.TestCase):
         retained=record_source_attempt(saved,failed)
         self.assertEqual(retained.last_success_at,saved.last_success_at);self.assertEqual(retained.snapshot_revision,REVISION)
         self.assertEqual(source_status(admission.SOURCE_ID,health=retained,now=failed.last_attempt_at)['status'],'UNAVAILABLE')
+    def test_health_rechecks_removed_policy_and_preserves_last_success(self):
+        saved = record_source_attempt(SourceHealthRecord(admission.SOURCE_ID), admission.evaluate_source_health(REVISION,self.now))
+        self.path.unlink()
+        current = admission.current_source_health(saved, self.now)
+        self.assertEqual(current.last_success_at, saved.last_success_at)
+        self.assertNotEqual(source_status(admission.SOURCE_ID, health=current, now=self.now)['policy_state'], 'APPROVED')
+        self.assertEqual(source_status(admission.SOURCE_ID, health=current, now=self.now)['eligible_operations'], [])
+
+    def test_health_rechecks_rotated_key_and_preserves_last_success(self):
+        saved = record_source_attempt(SourceHealthRecord(admission.SOURCE_ID), admission.evaluate_source_health(REVISION,self.now))
+        self.keypath.write_bytes(b'rotated-synthetic-key-at-least-32-bytes')
+        current = admission.current_source_health(saved, self.now)
+        self.assertEqual(current.last_success_at, saved.last_success_at)
+        self.assertEqual(source_status(admission.SOURCE_ID, health=current, now=self.now)['status'], 'INTEGRITY_FAILED')
+        self.assertEqual(source_status(admission.SOURCE_ID, health=current, now=self.now)['eligible_operations'], [])
+
+    def test_health_fingerprint_survives_storage_encoding(self):
+        from app.domain.source_health_store import _encode, _decode
+        saved = record_source_attempt(SourceHealthRecord(admission.SOURCE_ID), admission.evaluate_source_health(REVISION,self.now))
+        self.assertEqual(_decode(json.loads(_encode(saved))), saved)
+
     def test_partial_dimensions_and_chicago_both_blockers(self):
         status=source_status('chicago-new-business-licenses',now=self.now)
         self.assertIn('POLICY_HOLD',status['blocking_reasons']);self.assertIn('AUTH_REQUIRED',status['blocking_reasons'])

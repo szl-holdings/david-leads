@@ -1,2 +1,2 @@
 # Publication-only dependency, also installed by the regression suite.
-huggingface_hub==1.10.1
+huggingface_hub==2.0.0

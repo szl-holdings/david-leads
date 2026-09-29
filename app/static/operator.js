@@ -351,7 +351,14 @@ function createOperatorWorkspace(env) {
         for (const id of result[key]) if (typeof id === "string" && /^[0-9a-f]{64}$/.test(id)) container.append(text("code", id, "operator-parent"));
       }
       status("Stored brief comparison loaded. No later evidence was added to an earlier brief.");
-    } catch (error) { if (serial === generation) { if (error.status === 401) reset(errorMessage(error)); else status(errorMessage(error), "error"); } }
+    } catch (error) {
+      if (serial !== generation) return;
+      if (error.status === 401) reset(errorMessage(error));
+      else {
+        if (error.status === 403) clearEvidence();
+        status(errorMessage(error), "error");
+      }
+    }
     finally { if (serial === generation) { pending = false; updateControls(); } }
   }
   function init() {

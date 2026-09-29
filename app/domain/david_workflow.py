@@ -6,6 +6,7 @@ Mutation linearization is the ledger's scope lock and expected epoch comparison.
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from functools import wraps
 from typing import Any
 
 from .david_reference import Hold, aware, digest, parse_stamp, stamp
@@ -25,12 +26,42 @@ OUTCOMES = frozenset({"WRONG_ENTITY", "SOURCE_STALE", "NOT_RELEVANT", "FURTHER_V
 CORRECTIONS = frozenset({"SOURCE_CORRECTED", "SOURCE_WITHDRAWN", "IDENTITY_MISMATCH", "PERMISSION_REVOKED", "INTEGRITY_FAILED"})
 
 
+def scoped_authority(action):
+    """Recheck authority after waiting for the same lock that serializes writes."""
+    def decorate(method):
+        @wraps(method)
+        def protected(self, scope, *args, **kwargs):
+            with self.ledger.scope_read(self.context.tenant, scope):
+                self._reauthorize(action)
+                return method(self, scope, *args, **kwargs)
+        return protected
+    return decorate
+
+
 class Workflow:
-    def __init__(self, ledger, context: OperatorContext, now: datetime):
+    def __init__(self, ledger, context: OperatorContext, now: datetime, reauthorize=None):
         self.ledger, self.context, self.now = ledger, context, aware(now)
+        self.reauthorize = reauthorize
+
+    def _reauthorize(self, action):
+        if self.reauthorize is not None:
+            context, now = self.reauthorize()
+            if (context.username, context.tenant, context.policy_digest) != (
+                    self.context.username, self.context.tenant, self.context.policy_digest):
+                raise Hold("OPERATOR_POLICY_CHANGED")
+            self.context, self.now = context, aware(now)
+        self.context.require(action, self.now)
+        return self.now
+
+    def _admission_authority(self, body):
+        from .source_admission import validate_stored_admission
+        now = self._reauthorize("admit")
+        validate_stored_admission(body, now)
+        validate_stored_admission(body, now, operation="collect")
+        return now
 
     def _node(self, scope: str, node_id: str, kinds=None, *, valid=True):
-        node = self.ledger.get_node(self.context.tenant, node_id, self.now)
+        node = self.ledger.get_node(self.context.tenant, node_id, self.now, scope_id=scope)
         if not node or node.get("scope_id") != scope:
             raise Hold("EVIDENCE_NOT_FOUND_IN_SCOPE")
         if kinds is not None and node["kind"] not in kinds:
@@ -40,7 +71,7 @@ class Workflow:
         if valid:
             self._current_admissions(scope, node)
         if valid and node["kind"] in {"source", "observation"}:
-            grants = [self.ledger.get_node(self.context.tenant, parent, self.now)
+            grants = [self.ledger.get_node(self.context.tenant, parent, self.now, scope_id=scope)
                       for parent in node.get("parents", [])]
             if not any(grant and grant["kind"] == "grant" and grant["state"] == "VALID"
                        and grant.get("scope_id") == scope
@@ -64,7 +95,7 @@ class Workflow:
             if current["kind"] in {"source", "observation"} and current["body"].get("source_id") == SOURCE_ID:
                 validate_stored_admission(current["body"], self.now)
             for parent_id in current.get("parents", []):
-                parent = self.ledger.get_node(self.context.tenant, parent_id, self.now)
+                parent = self.ledger.get_node(self.context.tenant, parent_id, self.now, scope_id=scope)
                 if not parent or parent.get("scope_id") != scope or parent["state"] != "VALID":
                     raise Hold("CURRENT_DEPENDENCY_REQUIRED")
                 queue.append(parent)
@@ -108,6 +139,7 @@ class Workflow:
             [node["id"] for node in parents], expiry, self.now,
             scope_id=scope, expected_epoch=epoch)
 
+    @scoped_authority("read")
     def view_node(self, scope, node_id):
         self.context.require("read", self.now)
         with self.ledger.scope_read(self.context.tenant, scope):
@@ -151,6 +183,7 @@ class Workflow:
                     result["detail"]["counter_evidence_ids"] = list(body.get("counter_evidence_ids", []))
         return result
 
+    @scoped_authority("read")
     def workspace(self, scope):
         self.context.require("read", self.now)
         with self.ledger.scope_read(self.context.tenant, scope):
@@ -160,7 +193,9 @@ class Workflow:
         nodes = self._scope_nodes(scope)
         from .source_health_store import SourceHealthStore
         from .source_policy import source_status
+        from .source_admission import current_source_health
         health = SourceHealthStore(self.ledger).read(self.context.tenant, "dol-form5500-benefit-timing")
+        health = current_source_health(health, self.now)
         return {"schema": "szl.david.workspace/v2", "scope_id": scope,
             "decision_epoch": self.ledger.decision_epoch(self.context.tenant, scope),
             "nodes": [self.view_node(scope, node["id"]) for node in nodes],
@@ -170,16 +205,18 @@ class Workflow:
 
     def refresh_source(self, scope, epoch, snapshot_revision):
         self.context.require("admit", self.now)
-        from .source_admission import evaluate_source_health
+        from .source_admission import current_source_health, evaluate_source_health
         from .source_health_store import SourceHealthStore
         from .source_policy import source_status
         # Network work precedes the database transaction. Health describes this
         # attempt only and never grants evidence or workflow authority.
         attempt = evaluate_source_health(snapshot_revision, self.now)
         with self.ledger.scope_read(self.context.tenant, scope):
+            self._reauthorize("admit")
             if self.ledger.decision_epoch(self.context.tenant, scope) != epoch:
                 raise Hold("DECISION_EPOCH_CONFLICT")
             record = SourceHealthStore(self.ledger).record_attempt(self.context.tenant, attempt)
+            record = current_source_health(record, self.now)
         return source_status(record.source_id, health=record, now=self.now)
 
     @staticmethod
@@ -200,6 +237,7 @@ class Workflow:
         digest(selected)  # Reject nonfinite values before they enter a derivation.
         return selected
 
+    @scoped_authority("review")
     def review_identity(self, scope, epoch, source_ids, decision):
         self.context.require("review", self.now)
         if decision not in {"ORGANIZATION_CONFIRMED", "NEEDS_REVIEW", "REJECTED"}:
@@ -228,9 +266,11 @@ class Workflow:
                     snapshot_revision=admitted.snapshot_revision)
         self._facts({"body": body})
         node_id = self.ledger.admit_observation(self.context.tenant, scope,
-            admitted.grant, body, admitted.observation.expires_at, self.now, expected_epoch=epoch)
+            admitted.grant, body, admitted.observation.expires_at, self.now, expected_epoch=epoch,
+            authorize=lambda: self._admission_authority(body))
         return self.view_node(scope, node_id)
 
+    @scoped_authority("brief")
     def brief(self, scope, epoch, source_ids, identity_review_id):
         self.context.require("brief", self.now)
         identity = self._node(scope, identity_review_id, {"organization_review"})
@@ -260,6 +300,7 @@ class Workflow:
         node_id = self._append(scope, epoch, "brief", body, parents, self._expiry(parents))
         return self.view_node(scope, node_id)
 
+    @scoped_authority("review")
     def review_brief(self, scope, epoch, brief_id, approved):
         self.context.require("review", self.now)
         brief = self._node(scope, brief_id, {"brief"})
@@ -271,6 +312,7 @@ class Workflow:
             "reason": "HUMAN_REVIEW_RECORDED"}, [brief], self._expiry([brief]))
         return self.view_node(scope, node_id)
 
+    @scoped_authority("clearance")
     def clearance(self, scope, epoch, review_id):
         self.context.require("clearance", self.now)
         review = self._node(scope, review_id, {"brief_review"})
@@ -287,6 +329,7 @@ class Workflow:
             "policy_revision": self.context.policy_revision}, [review, brief], self._expiry([review, brief]))
         return self.view_node(scope, node_id)
 
+    @scoped_authority("manual_task")
     def manual_task(self, scope, epoch, clearance_id, task_type, idempotency_key):
         self.context.require("manual_task", self.now)
         clearance = self._node(scope, clearance_id, {"clearance"})
@@ -304,6 +347,7 @@ class Workflow:
             self._expiry([clearance]), self.now)
         return self.view_node(scope, task_id)
 
+    @scoped_authority("correct")
     def correct(self, scope, epoch, node_id, reason):
         self.context.require("correct", self.now)
         if reason not in CORRECTIONS:
@@ -319,6 +363,7 @@ class Workflow:
                 "decision_epoch": self.ledger.decision_epoch(self.context.tenant, scope),
                 "external_recall_guaranteed": False}
 
+    @scoped_authority("read")
     def decision_diff(self, scope, before_id, after_id):
         self.context.require("read", self.now)
         before = self._node(scope, before_id, {"brief"})
@@ -334,6 +379,7 @@ class Workflow:
                 "known_then": before["body"]["as_of"], "known_later": after["body"]["as_of"],
                 "interpretation": "STORED_DETERMINISTIC_FEATURES_NO_LATER_EVIDENCE_INJECTED"}
 
+    @scoped_authority("suppress")
     def suppress(self, scope, epoch):
         self.context.require("suppress", self.now)
         result = self.ledger.suppress(self.context.tenant, scope, "OPERATOR_SUPPRESSION", self.now,
@@ -342,6 +388,7 @@ class Workflow:
                 "decision_epoch": self.ledger.decision_epoch(self.context.tenant, scope),
                 "external_recall_guaranteed": False}
 
+    @scoped_authority("outcome")
     def outcome(self, scope, epoch, task_id, outcome):
         self.context.require("outcome", self.now)
         if outcome not in OUTCOMES:
@@ -350,6 +397,7 @@ class Workflow:
         node_id = self._append(scope, epoch, "outcome", {"outcome": outcome}, [task], self._expiry([task]))
         return self.view_node(scope, node_id)
 
+    @scoped_authority("review")
     def counter_evidence(self, scope, epoch, source_ids, reason):
         self.context.require("review", self.now)
         if reason not in {"CONTRADICTORY_SOURCE", "IDENTITY_CONFLICT", "STALE_EVENT", "MISSING_EXPECTED_EVIDENCE"}:

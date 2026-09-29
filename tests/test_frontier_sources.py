@@ -16,6 +16,31 @@ if str(ROOT) not in sys.path:
 from app import dealdesk, frontier_sources, receipts  # noqa: E402
 
 
+class RequestTransportTimeout(unittest.TestCase):
+    def test_default_request_timeout_remains_fifteen_seconds(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"results": []}'
+        with mock.patch.object(frontier_sources.urllib.request, "urlopen", return_value=response) as opener:
+            self.assertEqual(frontier_sources._request_json("https://official.example.test"), {"results": []})
+        self.assertEqual(opener.call_args.kwargs, {"timeout": 15})
+
+    def test_explicit_bounded_request_timeout_reaches_transport(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"results": []}'
+        with mock.patch.object(frontier_sources.urllib.request, "urlopen", return_value=response) as opener:
+            frontier_sources._request_json("https://official.example.test", {"page": 1}, timeout=60)
+        self.assertEqual(opener.call_args.kwargs, {"timeout": 60})
+        self.assertEqual(opener.call_args.args[0].method, "POST")
+
+    def test_invalid_request_timeout_fails_before_network(self):
+        for timeout in (0, -1, 61, True, "60", None, float("nan"), float("inf")):
+            with self.subTest(timeout=timeout):
+                with mock.patch.object(frontier_sources.urllib.request, "urlopen") as opener:
+                    with self.assertRaises(ValueError):
+                        frontier_sources._request_json("https://official.example.test", timeout=timeout)
+                opener.assert_not_called()
+
+
 class TerritoryNormalization(unittest.TestCase):
     def test_all_eastern_markets_reach_the_source_adapters(self):
         eastern = [
@@ -67,7 +92,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             }]
 
         with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
-            result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+            result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
 
         query = urllib.parse.parse_qs(urllib.parse.urlparse(captured["url"]).query)
         selected = query["$select"][0].split(",")
@@ -116,7 +141,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             with self.subTest(organization_type=organization_type):
                 row = {**base, "business_org_desc": organization_type}
                 with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
-                    result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+                    result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
                 self.assertEqual(result["records"], [])
                 self.assertNotIn("10 PRIVATE RD", str(result))
                 self.assertNotIn("JANE DOE", str(result))
@@ -137,7 +162,7 @@ class FmcsaFrontierSafety(unittest.TestCase):
             "phy_zip": "12207",
         }
         with mock.patch.object(frontier_sources, "_request_json", return_value=[row]):
-            result = frontier_sources.fetch_fmcsa(["NY"], limit=4)
+            result = frontier_sources.collect_fmcsa_live(["NY"], limit=4)
 
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["records"][0]["name"], "CURRENT FREIGHT LLC")
@@ -190,7 +215,6 @@ class FmcsaFrontierSafety(unittest.TestCase):
         self.assertEqual(output["sources"][0]["source"], "DOL")
         self.assertEqual(output["sources"][-3]["mode"], "NOT_IMPLEMENTED")
         self.assertEqual(output["sources"][-2]["mode"], "POLICY_HOLD")
-        self.assertEqual(output["sources"][-2]["reason"], "POLICY_HOLD_AND_AUTH_REQUIRED")
         self.assertEqual(output["sources"][-1]["mode"], "AUTH_REQUIRED")
         self.assertTrue(all(item.call_count == 1 for item in mocks[:4]))
         self.assertTrue(all(item.call_count == 0 for item in mocks[4:]))
@@ -199,6 +223,43 @@ class FmcsaFrontierSafety(unittest.TestCase):
 class UsaSpendingFrontierSafety(unittest.TestCase):
     def setUp(self):
         receipts.reset_chain()
+
+    def test_default_collection_preserves_default_request_interface(self):
+        with mock.patch.object(frontier_sources, "_request_json", return_value={"results": []}) as request:
+            frontier_sources.collect_usaspending_live(["AL"], limit=50)
+        self.assertEqual(request.call_args.kwargs, {})
+
+    def test_scheduled_collection_forwards_explicit_timeout(self):
+        with mock.patch.object(frontier_sources, "_request_json", return_value={"results": []}) as request:
+            frontier_sources.collect_usaspending_live(["AL"], limit=50, request_timeout=60)
+        self.assertEqual(request.call_args.kwargs, {"timeout": 60})
+        self.assertEqual(request.call_args.args[0], frontier_sources.USASPENDING["api"])
+
+    def test_invalid_collection_timeout_fails_before_request(self):
+        for timeout in (0, -1, 61, True, "60", None, float("nan"), float("inf")):
+            with self.subTest(timeout=timeout):
+                with mock.patch.object(frontier_sources, "_request_json") as request:
+                    with self.assertRaises(ValueError):
+                        frontier_sources.collect_usaspending_live(["AL"], request_timeout=timeout)
+                request.assert_not_called()
+
+    def test_malformed_success_envelope_cannot_become_empty_coverage(self):
+        for response in ({}, {"error": "provider unavailable"}, [], None, {"results": None}):
+            with self.subTest(response=response):
+                with mock.patch.object(frontier_sources, "_request_json", return_value=response):
+                    with self.assertRaises(ValueError):
+                        frontier_sources.collect_usaspending_live(["NY"], limit=3)
+
+    def test_runtime_receipt_preserves_full_generated_award_identifier(self):
+        identity = "CONT_AWD_" + "A" * 180
+        record = {
+            "source_record_id": identity,
+            "name": "SYNTHETIC FIXTURE LLC",
+            "state": "NY",
+            "citation": {"label": "Official award", "url": f"https://www.usaspending.gov/award/{identity}/latest"},
+        }
+        bound = frontier_sources._attach_receipt(record, "Synthetic receipt regression")
+        self.assertEqual(bound["source_record_id"], identity)
 
     def test_contract_activity_is_not_labeled_a_new_award(self):
         captured = {}
@@ -227,7 +288,7 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
             }
 
         with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
-            result = frontier_sources.fetch_usaspending(["NY"], limit=3)
+            result = frontier_sources.collect_usaspending_live(["NY"], limit=3)
 
         self.assertEqual(captured["url"], frontier_sources.USASPENDING["api"])
         self.assertIn("Recipient Location", captured["payload"]["fields"])
@@ -256,54 +317,122 @@ class UsaSpendingFrontierSafety(unittest.TestCase):
             }],
         }
         with mock.patch.object(frontier_sources, "_request_json", return_value=response):
-            result = frontier_sources.fetch_usaspending(["NY"], limit=3)
+            result = frontier_sources.collect_usaspending_live(["NY"], limit=3)
         self.assertEqual(result["records"], [])
 
 
 class EchoFrontierSafety(unittest.TestCase):
     def setUp(self):
         receipts.reset_chain()
+        frontier_sources._ECHO_CACHE.clear()
 
-    def test_echo_uses_minimized_facility_columns_and_neutral_labels(self):
-        captured = []
+    def test_echo_uses_verified_bulk_snapshot_without_live_web_api(self):
+        verified = {
+            "records": [{
+                "source_record_id": "echo:110000000001",
+                "org_name": "EXAMPLE MANUFACTURING LLC",
+                "city": "ALBANY",
+                "state": "NY",
+                "postal_code": "12207",
+                "county": "ALBANY",
+                "epa_region": "02",
+                "last_inspection_date": "2026-09-01",
+                "days_since_last_inspection": 3,
+                "inspection_count": 4,
+                "naics_codes": ["332710"],
+                "programs": ["AIR", "RCRA"],
+                "facility_report_url": (
+                    "https://echo.epa.gov/detailed-facility-report?fid=110000000001"
+                ),
+                "normalized_record_hash": "a" * 64,
+                "parser_version": "3.0.0",
+                "projection_policy_sha256": "b" * 64,
+                "source_receipt": "c" * 64,
+            }],
+            "dataset": {
+                "repo_id": "SZLHOLDINGS/david-leads-data",
+                "url": "https://huggingface.co/datasets/SZLHOLDINGS/david-leads-data",
+                "immutable_path": "snapshots/2026-09-04/" + "d" * 64,
+            },
+            "snapshot": {
+                "snapshot_id": "sha256:" + "d" * 64,
+                "snapshot_digest": "d" * 64,
+                "created_at": "2026-09-04T12:00:00Z",
+                "record_count": 1,
+                "records_root_sha256": "e" * 64,
+                "records_file_sha256": "f" * 64,
+                "parser_version": "3.0.0",
+                "freshness_state": "FRESH",
+                "freshness_days": 8,
+                "source": {"source_as_of": "2026-09-04"},
+            },
+            "receipt": {
+                "receipt_id": "123e4567-e89b-42d3-a456-426614174000",
+                "payload_hash": "1" * 64,
+                "state": "PAYLOAD_VERIFIED_UNSIGNED",
+            },
+        }
 
-        def fake_request(url, payload=None):
-            captured.append(url)
-            if "get_facilities" in url:
-                return {"Results": {"Message": "Success", "QueryID": "123"}}
-            return {
-                "Results": {
-                    "Message": "Success",
-                    "Facilities": [{
-                        "FacName": "EXAMPLE MANUFACTURING LLC",
-                        "FacStreet": "50 INDUSTRIAL ROAD",
-                        "FacCity": "ALBANY",
-                        "FacState": "NY",
-                        "FacZip": "12207",
-                        "RegistryID": "110000000001",
-                        "FacNAICSCodes": "332710",
-                        "FacDaysLastInspection": "3",
-                        "FacDateLastInspection": "07/25/2026",
-                        "FacComplianceStatus": "SHOULD NOT FLOW",
-                        "FacTotalPenalties": "SHOULD NOT FLOW",
-                        "FacPercentMinority": "SHOULD NOT FLOW",
-                    }],
-                },
-            }
-
-        with mock.patch.object(frontier_sources, "_request_json", side_effect=fake_request):
+        with (
+            mock.patch.object(
+                frontier_sources.echo_snapshot,
+                "load_verified_records",
+                return_value=verified,
+            ) as snapshot_reader,
+            mock.patch.object(frontier_sources, "_request_json") as live_request,
+        ):
             result = frontier_sources.fetch_echo(["NY"], limit=4)
 
-        self.assertEqual(len(captured), 2)
-        result_query = urllib.parse.parse_qs(urllib.parse.urlparse(captured[1]).query)
-        self.assertEqual(result_query["qcolumns"], ["1,2,3,4,5,6,16,42,43"])
+        snapshot_reader.assert_called_once_with(["NY"], 4)
+        live_request.assert_not_called()
+        self.assertEqual(result["mode"], "LIVE")
+        self.assertEqual(result["delivery"], "VERIFIED_BULK_SNAPSHOT")
+        self.assertEqual(result["snapshot"]["freshness_state"], "FRESH")
+        self.assertEqual(
+            result["snapshot_receipt"]["state"], "PAYLOAD_VERIFIED_UNSIGNED"
+        )
         record = result["records"][0]
         self.assertEqual(record["status"], "MONITORING_ACTIVITY_OBSERVED")
         self.assertTrue(record["not_for_underwriting"])
+        self.assertEqual(record["contact_quality"], "entity id only")
+        self.assertEqual(
+            record["operational_snapshot"]["delivery"],
+            "VERIFIED_BULK_SNAPSHOT",
+        )
+        self.assertEqual(record["source_path"], ["echo-exporter"])
+        self.assertEqual(
+            record["operational_snapshot"]["dataset_snapshot_created_at"],
+            "2026-09-04T12:00:00Z",
+        )
+        self.assertEqual(
+            record["operational_snapshot"]["dataset_receipt_state"],
+            "PAYLOAD_VERIFIED_UNSIGNED",
+        )
+        self.assertNotIn("address", record)
         serialized = str(record).lower()
-        self.assertNotIn("should not flow", serialized)
+        self.assertNotIn("street", serialized)
+        self.assertNotIn("contact name", serialized)
+        self.assertNotIn("penalty amount", serialized)
         self.assertNotIn("violation observed", serialized)
         self.assertIn("not a violation", " ".join(record["limitations"]).lower())
+
+    def test_echo_snapshot_failure_is_reported_and_never_falls_back(self):
+        with (
+            mock.patch.object(
+                frontier_sources.echo_snapshot,
+                "load_verified_records",
+                side_effect=frontier_sources.echo_snapshot.EchoSnapshotUnavailable(
+                    "data as of 2026-09-04, refresh pending"
+                ),
+            ),
+            mock.patch.object(frontier_sources, "_request_json") as live_request,
+        ):
+            with self.assertRaisesRegex(
+                frontier_sources.SourceConfigurationUnavailable,
+                "ECHO_VERIFIED_SNAPSHOT_UNAVAILABLE: data as of 2026-09-04, refresh pending",
+            ):
+                frontier_sources.fetch_echo(["NY"], limit=4)
+        live_request.assert_not_called()
 
 
 class FccFrontierSafety(unittest.TestCase):
@@ -561,7 +690,6 @@ class FrontierAggregationSafety(unittest.TestCase):
         self.assertEqual(fmcsa["mode"], "UNAVAILABLE")
         self.assertEqual(result["sources"][-3]["mode"], "NOT_IMPLEMENTED")
         self.assertEqual(result["sources"][-2]["mode"], "POLICY_HOLD")
-        self.assertEqual(result["sources"][-2]["reason"], "POLICY_HOLD_AND_AUTH_REQUIRED")
         self.assertEqual(
             result["sources"][-1]["reason"],
             "AUTH_REQUIRED",

@@ -199,6 +199,14 @@ class PostgresV2Tests(unittest.TestCase):
             self.assertEqual(cursor.rowcount, 0)
         self.assertEqual(self.ledger.state(self.tenant, source, NOW), "VALID")
 
+    def test_scope_filtered_read_rejects_foreign_node_before_second_scope_lock(self):
+        foreign, *_ = seed(self.ledger, self.tenant, "foreign-work")
+        reader = self.second()
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            with self.ledger.scope_read(self.tenant, "foreign-work"):
+                pending = workers.submit(reader.get_node, self.tenant, foreign, NOW, scope_id="work")
+                self.assertIsNone(pending.result(timeout=3))
+
     def test_missing_tenant_insert_and_cross_tenant_write_denied_by_sql(self):
         source, *_ = seed(self.ledger, self.tenant)
         for tenant in (None, "other-" + self.tenant):

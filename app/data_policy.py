@@ -131,8 +131,8 @@ OFFICIAL_GUIDANCE = [
         "url": "https://privacy.ca.gov/drop/",
     },
     {
-        "label": "EPA ECHO web services and data-use guidance",
-        "url": "https://echo.epa.gov/tools/web-services",
+        "label": "EPA ECHO bulk data downloads and data-use guidance",
+        "url": "https://echo.epa.gov/tools/data-downloads",
     },
     {
         "label": "LinkedIn User Agreement",

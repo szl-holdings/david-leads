@@ -18,11 +18,14 @@ INTEGRITY = "LOCAL_SHA256_UNSIGNED"
 PUBLIC_CAPABILITY_KEYS = ("schema", "integrity", "receipt_minted", "access", "contact_permission", "ready_patch", "kernel", "sources", "operations", "unsigned_until")
 SOURCE_CATALOG = (
     {"id": "dol-form5500-benefit-timing", "label": "DOL Form 5500 benefit-plan filings", "order": 1, "enabled": True, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": True},
-    {"id": "irs-form990", "label": "IRS Form 990 organization filings", "order": 2, "enabled": False, "policy": "POLICY_HOLD", "credential": "NOT_REQUIRED", "implemented": False},
-    {"id": "nyc-acris", "label": "NYC ACRIS property records", "order": 3, "enabled": False, "policy": "POLICY_HOLD", "credential": "NOT_REQUIRED", "implemented": False},
-    {"id": "chicago-new-business-licenses", "label": "Chicago new active business licenses", "order": 4, "enabled": False, "policy": "POLICY_HOLD", "credential": "AUTH_REQUIRED", "implemented": True},
-    {"id": "sam-active-entity-updates", "label": "SAM.gov active entity updates", "order": 5, "enabled": False, "policy": "NOT_EVALUATED", "credential": "AUTH_REQUIRED", "implemented": True},
-    {"id": "fcc-uls-organization-licenses", "label": "FCC ULS organization license activity", "order": 6, "enabled": False, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": False},
+    {"id": "fmcsa-company-census", "label": "FMCSA Company Census", "order": 2, "enabled": True, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": True},
+    {"id": "usaspending-contract-activity", "label": "USAspending federal contract activity", "order": 3, "enabled": True, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": True},
+    {"id": "epa-echo-monitoring-activity", "label": "EPA ECHO facility inspection activity", "order": 4, "enabled": True, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": True},
+    {"id": "irs-form990", "label": "IRS Form 990 organization filings", "order": 5, "enabled": False, "policy": "POLICY_HOLD", "credential": "NOT_REQUIRED", "implemented": False},
+    {"id": "nyc-acris", "label": "NYC ACRIS property records", "order": 6, "enabled": False, "policy": "POLICY_HOLD", "credential": "NOT_REQUIRED", "implemented": False},
+    {"id": "chicago-new-business-licenses", "label": "Chicago new active business licenses", "order": 7, "enabled": False, "policy": "POLICY_HOLD", "credential": "AUTH_REQUIRED", "implemented": True},
+    {"id": "sam-active-entity-updates", "label": "SAM.gov active entity updates", "order": 8, "enabled": False, "policy": "NOT_EVALUATED", "credential": "AUTH_REQUIRED", "implemented": True},
+    {"id": "fcc-uls-organization-licenses", "label": "FCC ULS organization license activity", "order": 9, "enabled": False, "policy": "NOT_EVALUATED", "credential": "NOT_REQUIRED", "implemented": False},
 )
 FRONTIER_HOLDS = {
     "fcc-uls-organization-licenses": ("NOT_IMPLEMENTED", "NOT_IMPLEMENTED"),
@@ -53,6 +56,7 @@ class SourceHealthRecord:
     snapshot_revision: str | None = None
     snapshot_observed_at: datetime | None = None
     snapshot_expires_at: datetime | None = None
+    signing_key_fingerprint: str | None = None
 
 
 def _valid_record(record: SourceHealthRecord) -> None:
@@ -64,6 +68,8 @@ def _valid_record(record: SourceHealthRecord) -> None:
     for field in ("last_attempt_at", "last_success_at", "snapshot_observed_at", "snapshot_expires_at"):
         if getattr(record, field) is not None:
             aware(getattr(record, field))
+    if record.signing_key_fingerprint is not None and not re.fullmatch(r"[0-9a-f]{64}", record.signing_key_fingerprint):
+        raise Hold("SOURCE_HEALTH_SIGNING_KEY")
     if record.snapshot_revision is not None and not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", record.snapshot_revision):
         raise Hold("SOURCE_HEALTH_REVISION")
     if record.last_success_at is not None and (record.last_attempt_at is None or record.last_success_at > record.last_attempt_at):
@@ -90,7 +96,8 @@ def record_source_attempt(previous: SourceHealthRecord, attempt: SourceHealthRec
     return replace(attempt, last_success_at=previous.last_success_at,
         snapshot_revision=previous.snapshot_revision or attempt.snapshot_revision,
         snapshot_observed_at=previous.snapshot_observed_at or attempt.snapshot_observed_at,
-        snapshot_expires_at=previous.snapshot_expires_at or attempt.snapshot_expires_at)
+        snapshot_expires_at=previous.snapshot_expires_at or attempt.snapshot_expires_at,
+        signing_key_fingerprint=previous.signing_key_fingerprint or attempt.signing_key_fingerprint)
 
 
 def source_status(source_id: str, *, health: SourceHealthRecord | None = None,
@@ -167,7 +174,7 @@ def source_status(source_id: str, *, health: SourceHealthRecord | None = None,
         "last_attempt_at": stamp(health.last_attempt_at) if health.last_attempt_at else None,
         "last_success_at": stamp(health.last_success_at) if health.last_success_at else None,
         "snapshot_revision": health.snapshot_revision, "eligible_operations": allowed if not blockers else [],
-        "blocking_reasons": blockers}
+        "blocking_reasons": blockers, "collector": "VERIFIED_SNAPSHOT_REQUIRED" if item["enabled"] else "NOT_ENABLED"}
 
 
 def ready_blockers(*, principal: str, method: str, gates_complete: bool = False) -> tuple[str, ...]:
@@ -190,7 +197,7 @@ def public_capabilities(*, source_health: Mapping[str, SourceHealthRecord] | Non
     return {"schema": CAPABILITIES_SCHEMA, "integrity": INTEGRITY, "receipt_minted": False,
         "access": "PUBLIC_READONLY", "contact_permission": "NOT_EVALUATED", "ready_patch": "DENIED", "kernel": SCHEMA,
         "sources": [source_status(item["id"], health=source_health.get(item["id"]), now=now) for item in SOURCE_CATALOG],
-        "operations": {"collect": "DOL_FIRST", "research": "REVIEW", "public_display": "REVIEW", "redistribute": "DENY", "train": "DENY", "patch_ready": "DENY"},
+        "operations": {"collect": "SCHEDULED_FEDERAL_SNAPSHOTS", "research": "REVIEW", "public_display": "REVIEW", "redistribute": "DENY", "train": "DENY", "patch_ready": "DENY"},
         "unsigned_until": "existing Cosign/receipts path binds integrity"}
 
 
@@ -205,6 +212,7 @@ class _PublicSource(_PublicDTO):
     status: Literal["HEALTHY", "POLICY_HOLD", "AUTH_REQUIRED", "NOT_IMPLEMENTED", "UNAVAILABLE", "RATE_LIMITED", "INTEGRITY_FAILED", "SCHEMA_CHANGED", "PARTIAL", "STALE", "NOT_EVALUATED"]
     enabled: bool
     configured_enabled: bool
+    collector: Literal["VERIFIED_SNAPSHOT_REQUIRED", "NOT_ENABLED"]
     policy_state: Literal["APPROVED", "EXPIRED", "NOT_EVALUATED", "POLICY_HOLD"]
     credential_state: Literal["NOT_REQUIRED", "AVAILABLE", "AUTH_REQUIRED", "NOT_EVALUATED"]
     transport_state: Literal["NOT_EVALUATED", "SUCCESS", "UNAVAILABLE", "RATE_LIMITED"]
@@ -220,7 +228,7 @@ class _PublicSource(_PublicDTO):
 
 
 class _PublicOperations(_PublicDTO):
-    collect: Literal["DOL_FIRST"]
+    collect: Literal["SCHEDULED_FEDERAL_SNAPSHOTS"]
     research: Literal["REVIEW"]
     public_display: Literal["REVIEW"]
     redistribute: Literal["DENY"]
@@ -254,7 +262,7 @@ def sanitize_public_payload(value: Mapping[str, Any]) -> dict[str, Any]:
         codes = {"CONFIGURED_DISABLED", "NOT_IMPLEMENTED", "POLICY_EXPIRED", "POLICY_HOLD", "POLICY_NOT_EVALUATED", "AUTH_REQUIRED", "CREDENTIAL_NOT_EVALUATED", "FRESHNESS_STALE", "FRESHNESS_NOT_EVALUATED", "SNAPSHOT_NOT_EVALUATED", "SUCCESS_NOT_OBSERVED"}
         codes.update(field.removesuffix("_state").upper() + "_" + state for field, states in _STATES.items() if field != "credential_state" for state in states)
         for source, expected in zip(result["sources"], baseline["sources"]):
-            if any(source[key] != expected[key] for key in ("id", "label", "order", "enabled", "configured_enabled")):
+            if any(source[key] != expected[key] for key in ("id", "label", "order", "enabled", "configured_enabled", "collector")):
                 raise ValueError("source identity")
             if any(code not in codes for code in source["blocking_reasons"]):
                 raise ValueError("unrecognized code")

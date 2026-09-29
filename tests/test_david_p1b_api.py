@@ -52,7 +52,7 @@ class PublicCapabilitiesTests(unittest.TestCase):
 
     def test_catalog_does_not_enable_held_sources(self):
         enabled = [item["id"] for item in SOURCE_CATALOG if item["enabled"]]
-        self.assertEqual(enabled, ["dol-form5500-benefit-timing"])
+        self.assertEqual(enabled, ["dol-form5500-benefit-timing", "fmcsa-company-census", "usaspending-contract-activity", "epa-echo-monitoring-activity"])
 
 
 class ReadyGateTests(unittest.TestCase):

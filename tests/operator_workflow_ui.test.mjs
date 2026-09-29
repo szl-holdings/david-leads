@@ -258,6 +258,47 @@ test("comparison requests exact stored brief references and renders only known f
   assert.doesNotMatch(h.element("operatorDiffResult").textContent, /must-not-render/);
 });
 
+test("a denied comparison clears protected data and disables actions until a successful reload", async () => {
+  let comparisons = 0, denied = false;
+  const privateNodes = [
+    node("a", "brief", "VALID", { detail: { summary: "Protected research summary" } }),
+    node("b", "brief"),
+    node("c", "source", "VALID", { facts: { legal_name: "Protected organization" } }),
+  ];
+  const h = harness((path) => {
+    if (path === "/api/login") return login();
+    if (path.includes("decision-diff")) {
+      if (++comparisons > 1) { denied = true; return response({ detail: { code: "OPERATOR_SCOPE_DENIED_OR_EXPIRED" } }, 403); }
+      return response({ known_then: "2026-09-12T00:00:00Z", added: [id("c")], removed: [], unchanged: [] });
+    }
+    return denied ? response({ detail: { code: "OPERATOR_SCOPE_DENIED_OR_EXPIRED" } }, 403) : response(workspace(privateNodes));
+  });
+  await h.signIn(); await h.open();
+  h.element("operatorDiffBefore").value = id("a"); h.element("operatorDiffAfter").value = id("b");
+  await h.event("operatorDiff");
+  assert.match(h.element("operatorDiffResult").textContent, /2026-09-12/);
+  assert.match(h.element("operatorHistory").textContent, /Protected research summary/);
+  await h.event("operatorDiff");
+  for (const element of ["operatorEvidenceList", "operatorHistory", "operatorBriefPreview", "operatorDiffResult", "operatorSourceHealth"]) {
+    assert.equal(h.element(element).textContent, "");
+  }
+  assert.equal(h.element("operatorWorkspace").hidden, true);
+  assert.equal(h.element("operatorAdmission").querySelector("button").disabled, true);
+  assert.equal(h.element("operatorDiff").querySelector("button").disabled, true);
+  assert.equal(h.element("operatorSession").hidden, false);
+  const requestCount = h.requests.length;
+  await h.event("operatorAdmission"); await h.event("operatorDiff");
+  assert.equal(h.requests.length, requestCount);
+  await h.event("operatorReload", "click");
+  assert.equal(h.element("operatorAdmission").querySelector("button").disabled, true);
+  assert.equal(h.element("operatorHistory").textContent, "");
+  denied = false;
+  await h.event("operatorReload", "click");
+  assert.equal(h.element("operatorWorkspace").hidden, false);
+  assert.equal(h.element("operatorAdmission").querySelector("button").disabled, false);
+  assert.match(h.element("operatorHistory").textContent, /Protected research summary/);
+});
+
 test("source health keeps failed attempt and last success distinct and checks references separately", async () => {
   const health = { status: "HOLD", configured_enabled: true, policy_state: "ALLOW", credential_state: "NOT_REQUIRED", transport_state: "FAILED", schema_state: "NOT_EVALUATED", integrity_state: "NOT_EVALUATED", completeness_state: "NOT_EVALUATED", freshness_state: "STALE", last_attempt_at: "2026-09-19T00:00:00Z", last_success_at: "2026-09-12T00:00:00Z", snapshot_revision: "a".repeat(40), eligible_operations: [], blocking_reasons: ["TRANSPORT_FAILED"], future_secret: "never-render-health" };
   const h = harness((path, options) => path === "/api/login" ? login() : response(options.method === "POST" ? health : { ...workspace([], 7), source_health: health }));

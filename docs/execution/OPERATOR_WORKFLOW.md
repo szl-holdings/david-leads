@@ -10,6 +10,9 @@ The application must use the non-owner runtime `DAVID_DATABASE_URL`. The migrati
 workflow separately uses `DAVID_DATABASE_ADMIN_URL` in its existing protected
 environment. `/readyz` now requires both legacy deal-desk persistence and the
 evidence runtime-role/schema contract. A privileged database login fails admission.
+The readiness response evaluates `operator_workflow.workspace_access` separately
+using the configured operator's current policy. Public availability does not
+establish source admission or permission to create a manual task.
 
 Install a reviewed operator policy with either `DAVID_OPERATOR_POLICY_PATH`
 (absolute private file) or `DAVID_OPERATOR_POLICY_JSON` (Space secret). An explicit
@@ -19,6 +22,14 @@ Each authorized operator must have `read`, a real tenant, a purpose of
 `organization_research`, an expiry and only the required actions. Existing
 `DAVID_USER`, `DAVID_PASS`, and `DAVID_ACCESS_KEY` remain the authentication inputs.
 Policy revision/digest changes invalidate previously bound task authority.
+
+The canonical dataset is private. Configure `DAVID_DATASET_READ_TOKEN` as a
+separate Space secret with read access to `SZLHOLDINGS/david-leads-data`. Runtime
+readers use this explicit credential and the fixed canonical endpoint, without
+developer token-cache or publisher-token fallback. Credentials are removed from
+off-origin redirects. Missing reader credentials fail transport without changing
+dataset visibility. The protected deployment's dataset verification uses its
+existing encrypted credential for the read step only.
 
 DOL source admission independently requires a reviewed `szl.david.dol-admission/v1`
 policy via `DAVID_DOL_POLICY_PATH` or secret `DAVID_DOL_POLICY_JSON`, and its HMAC key
@@ -33,6 +44,13 @@ redistribute and train. Approving research does not approve the other operations
 Each admitted record needs a reviewed organization classification bound to its
 normalized record hash, review reference and expiry. Legal-name suffixes do not
 establish an organization. A changed/removed key requires new snapshot admission.
+
+Private admission reads `latest/form5500.json` at that reviewed immutable commit,
+the canonical verified projection, and a separate `admission-signature.json`.
+The publisher optionally emits this HMAC sidecar when its signing secret exists;
+private admission requires it. The canonical public projection and unsigned
+PurIQ receipt retain their own contract. Public and private consumers share the
+normalized record hash; absent raw filing fields are not reconstructed.
 
 These reviewed values must come from the owner's actual source and operator
 decisions. Synthetic fixtures under tests are not deployment configuration.
@@ -49,6 +67,9 @@ decisions. Synthetic fixtures under tests are not deployment configuration.
    Snapshot publication is distinct from an unknown original filing-publication time.
 4. Review the brief, obtain a server clearance and create a manual research task.
    Every mutation binds the expected scope epoch; stale decisions require reload.
+   Operator policy, session expiry and current time are checked again after the
+   database lock wait. Admission separately rechecks current collect and research
+   rights after the source download and grant/scope lock waits.
    Newer rejections supersede prior approvals. Client READY flags create no authority.
 5. Record outcomes, counter-evidence, corrections or suppression. Corrections
    invalidate dependent evidence/briefs/clearances/tasks and cancel pending delivery.
@@ -67,6 +88,11 @@ identified by `DAVID_EVIDENCE_TEST_DSN`, then `node --test tests/*.test.mjs`. Th
 bootstrap creates a separate least-privilege runtime login. CI refuses zero tests
 and skipped required tests. The release-contract utility only reports
 `CONTRACT_COMPLETE_UNVERIFIED`; it does not authorize deployment.
+
+The Windows task's native PostgreSQL harness is a disposable local test
+environment. Its synthetic grants are not deployment inputs. Linux CI must also
+execute the symlink-containment test that this Windows account cannot run due to
+its symlink privilege restriction. A platform limitation is not a passing gate.
 
 Merge through the protected source process, run the exact-current-main schema
 migration, and allow the existing successful-migration publication chain to proceed.

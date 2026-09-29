@@ -1,9 +1,11 @@
 """Real PostgreSQL HTTP workflow with explicitly synthetic reviewed policy/facts."""
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import time
 import unittest
 from unittest.mock import patch
@@ -15,7 +17,7 @@ from app import server
 from app.domain.david_reference import Grant, Observation, Verdict
 from app.domain.david_postgres import connect_postgres_ledger
 from app.domain.operator_policy import ACTIONS
-from tests.postgres_support import bootstrap_test_database
+from tests.postgres_support import admin_connection, bootstrap_test_database
 
 
 class RealWorkflowApiTests(unittest.TestCase):
@@ -90,6 +92,101 @@ class RealWorkflowApiTests(unittest.TestCase):
     def clearance(self):
         brief, review = self.reviewed_brief()
         return self.post("clearances", {"review_id": review["id"]})
+
+    def blocked_mutation(self, path, values, change_authority):
+        """Change authority only after observing the HTTP writer blocked in SQL."""
+        epoch = self.workspace()["decision_epoch"]
+        blocker = connect_postgres_ledger(self.dsn)
+        self.addCleanup(blocker.close)
+        connected = threading.Event()
+        writer = {}
+        original = server.connect_postgres_ledger
+
+        def connect(*args, **kwargs):
+            ledger = original(*args, **kwargs)
+            writer["pid"] = ledger.conn.info.backend_pid
+            connected.set()
+            return ledger
+
+        with patch.object(server, "connect_postgres_ledger", side_effect=connect), ThreadPoolExecutor(max_workers=1) as pool:
+            with blocker.scope_read(self.tenant, self.scope):
+                pending = pool.submit(self.client.post, self.base + "/" + path,
+                    headers=self.headers, json={"expected_epoch": epoch, **values})
+                self.assertTrue(connected.wait(5), "HTTP writer did not connect to PostgreSQL")
+                deadline = time.monotonic() + 8
+                with admin_connection() as connection:
+                    while time.monotonic() < deadline:
+                        row = connection.execute(
+                            "SELECT wait_event_type,pg_blocking_pids(pid) FROM pg_stat_activity WHERE pid=%s",
+                            (writer["pid"],)).fetchone()
+                        if row and row[0] == "Lock" and blocker.conn.info.backend_pid in row[1]:
+                            break
+                        threading.Event().wait(0.01)
+                    else:
+                        self.fail("HTTP request never reached the held PostgreSQL scope lock")
+                change_authority()
+            return pending.result(timeout=10)
+
+    def assert_no_tasks(self):
+        with admin_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM manual_tasks WHERE tenant=%s AND scope_id=%s",
+                (self.tenant, self.scope)).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM outbox WHERE tenant=%s AND event_type='MANUAL_TASK_READY'",
+                (self.tenant,)).fetchone()[0], 0)
+
+    def test_scope_lock_wait_cannot_preserve_revoked_operator_task_permission(self):
+        clearance = self.clearance()
+        def revoke():
+            self.policy["operators"][0]["actions"] = ["read"]
+            self.write_policy()
+        response = self.blocked_mutation("tasks", {"clearance_id": clearance["id"],
+            "task_type": "VERIFY_SOURCE", "idempotency_key": "synthetic-lock-policy"}, revoke)
+        self.assertEqual(response.status_code, 403, response.text)
+        self.assert_no_tasks()
+
+    def test_scope_lock_wait_cannot_preserve_expired_session_task_permission(self):
+        clearance = self.clearance()
+        response = self.blocked_mutation("tasks", {"clearance_id": clearance["id"],
+            "task_type": "VERIFY_SOURCE", "idempotency_key": "synthetic-lock-session"},
+            lambda: server._TOKENS[self.token].update(expires_at=time.time()-1))
+        self.assertEqual(response.status_code, 401, response.text)
+        self.assert_no_tasks()
+
+    def test_scope_lock_wait_cannot_preserve_revoked_source_grant_admission(self):
+        self.revoked_admission_during_scope_wait("research")
+
+    def test_scope_lock_wait_cannot_preserve_revoked_collect_while_research_remains_allowed(self):
+        self.revoked_admission_during_scope_wait("collect")
+
+    def revoked_admission_during_scope_wait(self, operation):
+        from tests.dol_fixtures import fixture, policy, bundle_files, KEY, REVISION
+        from app.domain import source_admission
+        from app.federal_refresh_store import load_dol_snapshot
+        value = fixture()
+        reviewed_policy = policy(value)
+        path = Path(self.tmp.name) / "dol-wait-policy.json"
+        key = Path(self.tmp.name) / "dol-wait-key"
+        path.write_text(json.dumps(reviewed_policy), encoding="utf-8")
+        key.write_bytes(KEY)
+        files = bundle_files(value)
+        def revoke():
+            reviewed_policy["rights"][operation] = "DENY"
+            path.write_text(json.dumps(reviewed_policy), encoding="utf-8")
+        with patch.dict(os.environ, {"DAVID_DOL_POLICY_PATH": str(path), "DAVID_DOL_SIGNING_KEY_FILE": str(key)}), patch.object(
+            source_admission, "load_dol_snapshot", side_effect=lambda revision, **kwargs:
+                load_dol_snapshot(revision, downloader=lambda filename, _revision: files[filename], **kwargs)):
+            response = self.blocked_mutation("admissions", {"source_id": source_admission.SOURCE_ID,
+                "record_id": "dol-5500:SYNTHETIC-A1", "snapshot_revision": REVISION}, revoke)
+        self.assertIn(response.status_code, (403, 409), response.text)
+        with admin_connection() as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM observations WHERE tenant=%s AND source_id=%s",
+                (self.tenant, source_admission.SOURCE_ID)).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM source_grants WHERE tenant=%s AND source_id=%s",
+                (self.tenant, source_admission.SOURCE_ID)).fetchone()[0], 0)
 
     def test_authorized_brief_review_clearance_and_durable_manual_task(self):
         clearance = self.clearance()

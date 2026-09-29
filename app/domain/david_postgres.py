@@ -146,9 +146,19 @@ class PostgresLedger:
             self._lock_scope(cursor, tenant, scope)
             return self._state_unlocked(cursor, tenant, node, now)
 
-    def get_node(self, tenant, node, now):
+    def get_node(self, tenant, node, now, *, scope_id=None):
         with self.transaction(tenant) as cursor:
-            scope = self._node_scope(cursor, tenant, node)
+            if scope_id is None:
+                scope = self._node_scope(cursor, tenant, node)
+            else:
+                # The caller may already hold its own scope lock. Reject an
+                # unrelated identifier before taking any second scope lock.
+                cursor.execute(
+                    "SELECT scope_id FROM evidence_nodes WHERE tenant=%s AND id=%s AND scope_id=%s",
+                    (tenant, node, scope_id),
+                )
+                row = cursor.fetchone()
+                scope = row[0] if row else None
             if scope is None:
                 return None
             epoch, _ = self._lock_scope(cursor, tenant, scope)
@@ -430,38 +440,45 @@ class PostgresLedger:
             raise Hold("SOURCE_GRANT_REVOKED")
 
     def admit_observation(
-        self, tenant, scope_id, grant, body, expires_at, now, expected_epoch=None
+        self, tenant, scope_id, grant, body, expires_at, now, expected_epoch=None,
+        *, authorize=None
     ):
         """Trusted admission: grant lock precedes the scope lock in every path.
 
         A permanent grant tombstone also protects previously unseen scopes.
         No browser-supplied rights or classification belong in this interface.
         """
-        grant.require("collect", now)
-        grant.require("research", now)
-        observation = Observation(
-            grant.source_id,
-            body["source_record_id"],
-            body["revision"],
-            parse_stamp(body["published_at"]),
-            parse_stamp(body["observed_at"]),
-            expires_at,
-            body["fields"],
-        )
-        checked = observation.body(grant, now)
-        for key in (
-            "entity_type",
-            "organization_admission",
-            "classification_reference",
-            "classification_evidence",
-            "signing_key_fingerprint",
-            "snapshot_revision",
-        ):
-            if key in body:
-                checked[key] = body[key]
         with self.transaction(tenant) as cursor:
             self._lock_grant(cursor, tenant, grant.source_id, grant.policy_revision)
             self._lock_scope(cursor, tenant, scope_id, expected_epoch)
+            # Production authority and wall time must be refreshed after both
+            # potentially blocking locks, before any durable evidence write.
+            if authorize is not None:
+                if not callable(authorize):
+                    raise Hold("ADMISSION_AUTHORIZATION_REQUIRED")
+                now = aware(authorize())
+            grant.require("collect", now)
+            grant.require("research", now)
+            observation = Observation(
+                grant.source_id,
+                body["source_record_id"],
+                body["revision"],
+                parse_stamp(body["published_at"]),
+                parse_stamp(body["observed_at"]),
+                expires_at,
+                body["fields"],
+            )
+            checked = observation.body(grant, now)
+            for key in (
+                "entity_type",
+                "organization_admission",
+                "classification_reference",
+                "classification_evidence",
+                "signing_key_fingerprint",
+                "snapshot_revision",
+            ):
+                if key in body:
+                    checked[key] = body[key]
             grant_node = self.put_grant(tenant, grant, now, scope_id=scope_id)
             return self.append(
                 tenant,

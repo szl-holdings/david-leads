@@ -121,13 +121,13 @@ def get_admitted_observation(source_id: str, record_id: str, snapshot_revision: 
     return _admit_record(policy, bundle, record, now, "research")
 
 
-def validate_stored_admission(body: dict, now: datetime) -> None:
+def validate_stored_admission(body: dict, now: datetime, *, operation: str = "research") -> None:
     """Recheck current reviewed rights/classification on every protected use.
 
     Immutable provenance preserves history; it does not preserve revoked rights.
     No download is needed because the admitted record hash is bound in the DAG.
     """
-    policy = load_admission_policy(now)
+    policy = load_admission_policy(now, operation=operation)
     current_key = hashlib.sha256(_private_file("DAVID_DOL_SIGNING_KEY_FILE", 4096)).hexdigest()
     if body.get("signing_key_fingerprint") != current_key:
         raise Hold("CURRENT_SOURCE_SIGNING_KEY_REQUIRED")
@@ -188,7 +188,8 @@ def evaluate_source_health(snapshot_revision: str, now: datetime) -> SourceHealt
         bundle = _bundle(policy, snapshot_revision, now, allow_stale=True)
         return replace(attempt, transport_state="SUCCESS", schema_state="SUPPORTED", integrity_state="VERIFIED_SIGNATURE",
                        completeness_state="COMPLETE", snapshot_revision=bundle.revision,
-                       snapshot_observed_at=bundle.observed_at, snapshot_expires_at=bundle.expires_at)
+                       snapshot_observed_at=bundle.observed_at, snapshot_expires_at=bundle.expires_at,
+                       signing_key_fingerprint=bundle.signing_key_fingerprint)
     except Hold as exc:
         code = str(exc)
         if code in {"SOURCE_TRANSPORT_UNAVAILABLE", "SOURCE_BYTE_BUDGET"}:
@@ -200,3 +201,25 @@ def evaluate_source_health(snapshot_revision: str, now: datetime) -> SourceHealt
         if code in {"SOURCE_SCHEMA_CHANGED", "SOURCE_POINTER_SCHEMA", "SOURCE_MINIMIZATION_FAILED", "SOURCE_POINTER_SCOPE"}:
             return replace(attempt, transport_state="SUCCESS", schema_state="SCHEMA_CHANGED")
         return attempt
+
+
+def current_source_health(record: SourceHealthRecord, now: datetime) -> SourceHealthRecord:
+    """Overlay current authority on retained observations without minting success.
+
+    A saved successful fetch never preserves revoked rights or trust in a rotated
+    key. Historical attempt/success times remain visible for incident analysis.
+    """
+    from dataclasses import replace
+    if record.source_id != SOURCE_ID:
+        return record
+    try:
+        policy = load_admission_policy(now)
+        key = _private_file("DAVID_DOL_SIGNING_KEY_FILE", 4096)
+    except Hold:
+        return replace(record, grant=None)
+    current = replace(record, grant=policy.grant)
+    if record.snapshot_revision != policy.snapshot_revision:
+        return replace(current, grant=None)
+    if not 32 <= len(key) <= 4096 or record.signing_key_fingerprint != hashlib.sha256(key).hexdigest():
+        return replace(current, integrity_state="INTEGRITY_FAILED" if record.signing_key_fingerprint else "NOT_EVALUATED")
+    return current

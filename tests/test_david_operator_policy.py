@@ -103,6 +103,39 @@ class OperatorPolicyTests(unittest.TestCase):
         with self.assertRaises(Hold):
             load_operator_context(str(self.path), "synthetic-a", self.now, self.now)
 
+    def test_secret_policy_supports_deployment_without_a_mutable_file(self):
+        with patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_JSON": json.dumps(self.policy)}):
+            context = load_operator_context(None, "synthetic-a", self.now+timedelta(hours=1), self.now)
+        self.assertEqual(context.tenant, "synthetic-tenant-a")
+
+    def test_explicit_invalid_file_does_not_fall_back_to_secret_authority(self):
+        with patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_JSON": json.dumps(self.policy)}):
+            with self.assertRaisesRegex(Hold, "OPERATOR_POLICY_INVALID"):
+                load_operator_context(str(self.path), "synthetic-a", self.now+timedelta(hours=1), self.now)
+
+    def test_public_readiness_reports_current_operator_policy_separately(self):
+        client = TestClient(server.app)
+        with (
+            patch.object(server, "_CREDS_CONFIGURED", True),
+            patch.object(server, "_CREDS_ROTATION_REQUIRED", False),
+            patch.object(server, "DAVID_USER", "synthetic-a"),
+            patch.object(server.dd, "persistence_state", return_value="POSTGRES_READY"),
+            patch.object(server, "_evidence_readiness", return_value="POSTGRES_READY"),
+            patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_PATH": "", "DAVID_OPERATOR_POLICY_JSON": ""}),
+        ):
+            missing = client.get("/readyz")
+            self.assertEqual(missing.status_code, 200)
+            self.assertEqual(missing.json()["operator_workflow"]["workspace_access"], "BLOCKED")
+            with patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_JSON": json.dumps(self.policy)}):
+                current = client.get("/readyz").json()
+                self.assertEqual(current["operator_workflow"]["workspace_access"], "AVAILABLE")
+                self.assertEqual(current["operator_workflow"]["source_admission"], "CURRENT_SOURCE_GRANT_REQUIRED")
+                self.assertNotIn("synthetic-a", json.dumps(current))
+            self.policy["expires_at"] = (self.now-timedelta(seconds=1)).isoformat()
+            with patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_JSON": json.dumps(self.policy)}):
+                expired = client.get("/readyz").json()
+                self.assertEqual(expired["operator_workflow"]["workspace_access"], "BLOCKED")
+
 
 class WorkflowHttpBoundaryTests(unittest.TestCase):
     def setUp(self):

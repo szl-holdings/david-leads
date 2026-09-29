@@ -484,6 +484,28 @@ def healthz():
     body["deal_desk_persistence"] = persistence
     body["evidence_persistence"] = evidence
     body["operator_policy"] = "CONFIGURED_UNVERIFIED" if (os.environ.get("DAVID_OPERATOR_POLICY_PATH") or os.environ.get("DAVID_OPERATOR_POLICY_JSON")) else "NOT_CONFIGURED"
+    # Public application readiness must not imply the private workflow is usable.
+    # Evaluate policy now, without exposing operator identities or source grants.
+    operator_blockers = []
+    if not ready:
+        operator_blockers.append("APPLICATION_NOT_READY")
+    try:
+        from .domain.operator_policy import load_operator_context
+        from .domain.david_reference import Hold
+        now = datetime.now(timezone.utc)
+        context = load_operator_context(os.environ.get("DAVID_OPERATOR_POLICY_PATH"),
+            DAVID_USER or "", datetime.max.replace(tzinfo=timezone.utc), now)
+        context.require("read", now)
+        body["operator_policy"] = "VALID_CURRENT_POLICY"
+    except Hold as exc:
+        operator_blockers.append(str(exc))
+    body["operator_workflow"] = {
+        "workspace_access": "BLOCKED" if operator_blockers else "AVAILABLE",
+        "blockers": operator_blockers,
+        "source_admission": "CURRENT_SOURCE_GRANT_REQUIRED",
+        "manual_tasks": "REVIEWED_CLEARANCE_REQUIRED",
+        "contact_permission": "NOT_GRANTED",
+    }
     body["persistence_diagnostic"] = (
         dd.persistence_diagnostic() if dd is not None else "MODULE_UNAVAILABLE"
     )

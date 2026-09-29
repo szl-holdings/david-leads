@@ -41,7 +41,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: hf-deploy-${{ github.ref_name || github.event.workflow_run.head_branch }}
+  group: hf-write/space/SZLHOLDINGS/david-leads
   cancel-in-progress: false
 
 jobs:
@@ -55,12 +55,12 @@ jobs:
       admission: ${{ steps.source.outputs.admission }}
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
       - name: Check out protected history
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -134,9 +134,50 @@ jobs:
           echo "Admission: $admission"
           echo "Deploy allowed: $deploy_allowed"
 
+  dataset-admission:
+    name: Verify four published datasets before replacing runtime
+    needs: classify
+    if: needs.classify.outputs.deploy_allowed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - name: Check out exact admitted verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.classify.outputs.source_sha }}
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Verify complete fresh bundles using the runtime contract
+        env:
+          DAVID_DATASET_READ_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json
+          from app import echo_snapshot, federal_snapshot
+
+          states = list(federal_snapshot.TARGET_STATES)
+          epa = echo_snapshot.load_verified_records(states, 1)
+          if not epa["records"]:
+              raise SystemExit("EPA snapshot has no currently eligible demo records")
+          admitted = {"echo": epa["snapshot"]["snapshot_id"]}
+          for lane in federal_snapshot.LANES:
+              result = federal_snapshot.load_lane(lane, states, 1)
+              if not result["records"]:
+                  raise SystemExit(f"{lane}: published snapshot has no demo records")
+              admitted[lane] = result["snapshot"]["id"]
+          print(json.dumps({"state": "VERIFIED_DATASET_ADMISSION", "snapshots": admitted}, sort_keys=True))
+          PY
+
   deploy:
     name: Publish exact admitted source to Hugging Face
-    needs: classify
+    needs: [classify, dataset-admission]
     if: needs.classify.outputs.deploy_allowed == 'true'
     uses: szl-holdings/.github/.github/workflows/reusable-hf-deploy.yml@47607d3149dd54c4e107d7eeb2129ebdff5d2d03
     secrets:
@@ -155,12 +196,12 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Harden runner
-        uses: step-security/harden-runner@bf7454d06d71f1098171f2acdf0cd4708d7b5920 # v2.20.0
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
       - name: Download exact deployment evidence
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: hf-deploy-evidence
           path: release-evidence
@@ -221,7 +262,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check \
-            "huggingface_hub==1.19.0" "requests==2.32.5"
+            "huggingface_hub==2.0.0" "requests==2.32.5"
           python3 - <<'PY'
           import json
           import os

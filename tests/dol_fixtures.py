@@ -1,38 +1,49 @@
-"""Synthetic fixtures: no actual organization records or production rights."""
-from dataclasses import asdict
+"""Synthetic canonical fixtures; no actual organizations or production rights."""
 from datetime import datetime, timedelta, timezone
-import hashlib
-import hmac
 import json
-from tools.ingestor.dol_5500_ingestor import run_dol_5500
+from app import federal_snapshot as snapshots
+from app import dol_admission_signature as signatures
+from tools.ingestor.frontier_refresh_cli import collect_bundle
 
 KEY = b"synthetic-test-signing-key-32-bytes-only"
 REVISION = "a" * 40
 NOW = datetime.now(timezone.utc).replace(microsecond=0)
-PAYLOAD = b"ACK_ID|SPONSOR_DFE_PN|SPONS_DFE_MAIL_US_STATE|FORM_YEAR|PLAN_YEAR_BEGIN_DATE|PLAN_YEAR_END_DATE|AMENDED_IND|SPONSOR_DFE_EIN|SIGNER_NAME|TOT_PARTCP_BOY_CNT\nSYNTHETIC-A1|Synthetic Review Fixture Corp|NY|2025|20250101|20251231|1|EXCLUDED-EIN|EXCLUDED-PERSON|12\n"
+canonical = snapshots.canonical
 
-def canonical(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
 def fixture():
-    value = run_dol_5500(PAYLOAD, session_id="synthetic", signing_key=KEY)
-    value["records"] = [asdict(record) for record in value["records"]]
+    row = {key: "Synthetic filing observation" for key in snapshots.TEXT_FIELDS}
+    row.update(name="Synthetic Review Fixture Corp", state="NY", city="ALBANY", zip="12207",
+               credential="DOL ACK SYNTHETIC-A1", license_or_issue_date="2025-01-01", trigger_date="2025-01-01",
+               citation={"label": "DOL Form 5500", "url": snapshots.LANES["form5500"]["url"]},
+               source_record={"label": "DOL Form 5500", "url": snapshots.LANES["form5500"]["url"]},
+               authoritative_entity_ids=[{"system": "DOL Form 5500 ACK ID", "value": "SYNTHETIC-A1"}],
+               limitations=["Synthetic test; no contact permission."],
+               operational_snapshot={"participants_reported": 12, "benefit_categories": ["Life"]},
+               timing={"label": "0-90 days", "next_anniversary": (NOW + timedelta(days=40)).date().isoformat(),
+                       "days_to_anniversary": 40, "basis": "Reported period", "hypothesis_only": True},
+               raw={"ein": "EXCLUDED", "person": "EXCLUDED"})
+    def collector(states, limit):
+        return {"mode": "LIVE", "count": 1, "records": [row],
+                "query_window": {"anniversary_start": NOW.date().isoformat(),
+                                 "anniversary_end": (NOW + timedelta(days=365)).date().isoformat()}}
+    value = collect_bundle("form5500", REVISION, states=["NY"], collector=collector,
+                           created_at=NOW.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    value["records"] = [json.loads(line) for line in value["records_bytes"].splitlines()]
+    value["admission_signature"] = signatures.sign(value["snapshot"], value["receipt"], KEY)
     return value
+
 
 def bundle_files(value, *, resign=True):
     snapshot, receipt = value["snapshot"], value["receipt"]
-    if resign:
-        receipt["subject"]["snapshot_sha256"] = hashlib.sha256(canonical(snapshot)).hexdigest()
-        receipt["issued_at"] = snapshot["created_at"]
-        body = {k:v for k,v in receipt.items() if k not in {"payload_hash", "signature"}}
-        receipt["payload_hash"] = hashlib.sha256(canonical(body)).hexdigest()
-        receipt["signature"]["value"] = hmac.new(KEY, bytes.fromhex(receipt["payload_hash"]), hashlib.sha256).hexdigest()
-    base = f"snapshots/dol-5500-bulk/{snapshot['created_at'][:10]}/{snapshot['snapshot_id']}"
+    pointer = snapshots.pointer_for(snapshot)
+    base = pointer["path"]
+    signature = signatures.sign(snapshot, receipt, KEY) if resign else value["admission_signature"]
     payloads = {"snapshot.json": canonical(snapshot), "receipt.json": canonical(receipt),
-                "records.jsonl": b"\n".join(canonical(record) for record in value["records"])}
-    pointer = {"snapshot_id":snapshot["snapshot_id"], "created_at":snapshot["created_at"],"lane":"dol-5500-bulk", "path":base,
-               "files_sha256":{key:hashlib.sha256(data).hexdigest() for key,data in payloads.items()}}
-    return {"latest/dol-5500-bulk.json":canonical(pointer), **{f"{base}/{key}":data for key,data in payloads.items()}}
+                "records.jsonl": b"".join(canonical(record) + b"\n" for record in value["records"]),
+                signatures.FILENAME: canonical(signature)}
+    return {"latest/form5500.json": canonical(pointer), **{f"{base}/{key}": data for key, data in payloads.items()}}
+
 
 def policy(value, *, display="DENY"):
     from app.domain.source_admission import SOURCE_ID, FIELDS
