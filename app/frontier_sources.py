@@ -1011,13 +1011,22 @@ def fetch_sam_entities(
 
 
 def fetch_form5500(states: list[str] | None = None, limit: int = 18) -> dict[str, Any]:
-    """Return organization-level plan anniversary observations from DOL filings."""
-    output = benefit_frontier.collect(_states(states), limit)
-    records: list[dict[str, Any]] = []
-    for record in output.pop("records", []):
-        records.append(_attach_receipt(record, record["signal_summary"]))
-    output["records"] = records
-    return output
+    """Read the signed bulk lane under separate display rights; no live fallback."""
+    from .domain.david_reference import Hold
+    from .domain.source_admission import public_dol_records
+    result = {"source": FORM5500["label"], "source_id": FORM5500["id"], "count": 0,
+              "records": [], "configured_enabled": True,
+              "citation": {"label": FORM5500["label"], "url": FORM5500["portal"]},
+              "privacy": "REVIEWED_ORGANIZATION_FIELDS_ONLY"}
+    try:
+        records, revision = public_dol_records(_states(states), limit, _now())
+    except Hold as exc:
+        code = str(exc)
+        reason = code if re.fullmatch(r"[A-Z_]{1,80}", code) else "DATA_ADMISSION_HOLD"
+        result.update(mode="POLICY_HOLD" if reason.startswith(("DATA_", "ORGANIZATION_")) else "UNAVAILABLE", reason=reason)
+    else:
+        result.update(mode="VERIFIED_SNAPSHOT", records=records, count=len(records), snapshot_revision=revision)
+    return result
 
 
 def _entity_key(record: dict[str, Any]) -> str:

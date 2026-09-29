@@ -72,6 +72,8 @@ jobs:
             https://www.dol.gov/sites/dolgov/files/EBSA/ebsa-key-documents/foia/5500/f_5500_latest.zip
           sha256sum f5500_latest.zip
       - name: Normalize, snapshot, receipt
+        env:
+          DOL_SNAPSHOT_SIGNING_KEY: ${{ secrets.DOL_SNAPSHOT_SIGNING_KEY }}
         run: python -m tools.ingestor.dol_5500_ingestor_cli --zip f5500_latest.zip --out snapshot-dol/
       - name: Verify receipt hash-chain
         run: python -m tools.ingestor.verify_snapshot snapshot-dol/

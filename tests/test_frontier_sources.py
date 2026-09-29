@@ -189,7 +189,8 @@ class FmcsaFrontierSafety(unittest.TestCase):
         )
         self.assertEqual(output["sources"][0]["source"], "DOL")
         self.assertEqual(output["sources"][-3]["mode"], "NOT_IMPLEMENTED")
-        self.assertEqual(output["sources"][-2]["mode"], "AUTH_REQUIRED")
+        self.assertEqual(output["sources"][-2]["mode"], "POLICY_HOLD")
+        self.assertEqual(output["sources"][-2]["reason"], "POLICY_HOLD_AND_AUTH_REQUIRED")
         self.assertEqual(output["sources"][-1]["mode"], "AUTH_REQUIRED")
         self.assertTrue(all(item.call_count == 1 for item in mocks[:4]))
         self.assertTrue(all(item.call_count == 0 for item in mocks[4:]))
@@ -559,7 +560,8 @@ class FrontierAggregationSafety(unittest.TestCase):
         )
         self.assertEqual(fmcsa["mode"], "UNAVAILABLE")
         self.assertEqual(result["sources"][-3]["mode"], "NOT_IMPLEMENTED")
-        self.assertEqual(result["sources"][-2]["mode"], "AUTH_REQUIRED")
+        self.assertEqual(result["sources"][-2]["mode"], "POLICY_HOLD")
+        self.assertEqual(result["sources"][-2]["reason"], "POLICY_HOLD_AND_AUTH_REQUIRED")
         self.assertEqual(
             result["sources"][-1]["reason"],
             "AUTH_REQUIRED",

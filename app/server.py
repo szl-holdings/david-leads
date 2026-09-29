@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from . import signals as sig
 from . import signals_v3 as sig3
@@ -449,6 +449,19 @@ def _reject_non_production_sources(sources: list[dict]) -> None:
         raise HTTPException(503, "production source returned a non-live example mode")
 
 
+def _evidence_readiness():
+    """Verify the runtime role and migrated evidence schema through its own login."""
+    ledger = None
+    try:
+        ledger = _workflow_ledger()
+        return "POSTGRES_READY"
+    except Exception:
+        return "UNAVAILABLE"
+    finally:
+        if ledger is not None:
+            ledger.close()
+
+
 @app.get("/healthz")
 def healthz():
     body = {
@@ -465,12 +478,12 @@ def healthz():
         "doctrine": "SZL governed-AI · honest by design",
     }
     persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
-    ready = body["authentication"] == "CONFIGURED" and persistence in {
-        "FILE_READY",
-        "POSTGRES_READY",
-    }
+    evidence = _evidence_readiness()
+    ready = body["authentication"] == "CONFIGURED" and persistence == "POSTGRES_READY" and evidence == "POSTGRES_READY"
     body["status"] = "ready" if ready else "blocked"
     body["deal_desk_persistence"] = persistence
+    body["evidence_persistence"] = evidence
+    body["operator_policy"] = "CONFIGURED_UNVERIFIED" if (os.environ.get("DAVID_OPERATOR_POLICY_PATH") or os.environ.get("DAVID_OPERATOR_POLICY_JSON")) else "NOT_CONFIGURED"
     body["persistence_diagnostic"] = (
         dd.persistence_diagnostic() if dd is not None else "MODULE_UNAVAILABLE"
     )
@@ -1784,7 +1797,9 @@ def patch_deal_desk_ready_denied(
 
 
 class DealDeskCorrectionReq(BaseModel):
-    node_id: str
+    model_config = ConfigDict(extra="forbid", strict=True)
+    node_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_epoch: int = Field(ge=0)
     reason: str = "SOURCE_CORRECTED"
 
 
@@ -1830,7 +1845,13 @@ def correct_deal_desk_evidence(
     authorization: str | None = Header(default=None),
 ):
     """Revoke a source node and every descendant, including brief, clearance, and CRM task."""
-    _operator_actor(authorization)
+    from .domain.david_workflow import Workflow
+    from .domain.david_reference import Hold
+    now = datetime.now(timezone.utc)
+    try:
+        context = _workflow_context(authorization, now)
+    except Hold:
+        raise HTTPException(403, {"code": "OPERATOR_SCOPE_NOT_ADMITTED", "state": "HOLD"}) from None
     if connect_postgres_ledger is None:
         raise HTTPException(503, "evidence adapter unavailable")
     dsn = os.environ.get("DAVID_DATABASE_URL")
@@ -1840,25 +1861,20 @@ def correct_deal_desk_evidence(
     reason = str(req.reason or "SOURCE_CORRECTED").strip() or "SOURCE_CORRECTED"
     if not node_id:
         raise HTTPException(422, "node_id is required")
-    del opportunity_id
     try:
         ledger = connect_postgres_ledger(dsn)
         try:
-            revoked = ledger.correct(
-                "operator",
-                node_id,
-                reason,
-                datetime.now(timezone.utc),
-            )
+            result = Workflow(ledger, context, now).correct(
+                opportunity_id, req.expected_epoch, node_id, reason)
         finally:
             ledger.close()
     except Exception as exc:
-        if type(exc).__name__ == "Hold":
-            raise HTTPException(422, str(exc)) from exc
+        if isinstance(exc, Hold):
+            raise HTTPException(409, {"code": "EVIDENCE_CONFLICT", "state": "HOLD"}) from None
         raise HTTPException(503, "evidence correction unavailable") from None
     return {
         "ok": True,
-        "revoked": revoked,
+        **result,
         "cancels": ("brief", "clearance", "crm_task"),
         "integrity": "LOCAL_SHA256_UNSIGNED",
     }
@@ -2387,6 +2403,32 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
         return {"ok": True, "sent": False,
                 "reason": "outbound POST failed (%s)" % type(e).__name__,
                 "destination": hostname, "would_send": payload}
+
+
+def _workflow_context(authorization, now):
+    """Bind the real expiring session to independently configured operator grants."""
+    from .domain.david_reference import Hold
+    from .domain.operator_policy import load_operator_context
+    _auth(authorization)
+    session = _TOKENS.get(authorization.split(" ", 1)[1])
+    if not isinstance(session, dict) or not isinstance(session.get("username"), str) or not session["username"].strip():
+        raise HTTPException(401, {"code": "NAMED_OPERATOR_SESSION_REQUIRED"})
+    try:
+        expiry = datetime.fromtimestamp(float(session["expires_at"]), timezone.utc)
+    except (ValueError, TypeError, KeyError, OverflowError):
+        raise HTTPException(401, {"code": "SESSION_EXPIRED"}) from None
+    return load_operator_context(os.environ.get("DAVID_OPERATOR_POLICY_PATH"), session["username"], expiry, now)
+
+
+def _workflow_ledger():
+    from .domain.david_reference import Hold
+    if connect_postgres_ledger is None or not os.environ.get("DAVID_DATABASE_URL"):
+        raise Hold("WORKFLOW_PERSISTENCE_NOT_CONFIGURED")
+    return connect_postgres_ledger(os.environ["DAVID_DATABASE_URL"])
+
+
+from .workflow_api import make_router as _make_workflow_router
+app.include_router(_make_workflow_router(_workflow_context, _workflow_ledger))
 
 
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)

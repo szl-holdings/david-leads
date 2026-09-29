@@ -182,6 +182,9 @@
         <button id="investorsTab" class="workspace-tab" data-view-target="investors" type="button" role="tab" aria-controls="investorsView" aria-selected="false" tabindex="-1">
           <span>03</span> Investor proof
         </button>
+        <button id="operatorTab" class="workspace-tab" data-view-target="operator" type="button" role="tab" aria-controls="operatorView" aria-selected="false" tabindex="-1">
+          <span>04</span> Operator research
+        </button>
       </nav>
 
       <section id="leadsView" class="view-panel active" role="tabpanel" aria-labelledby="leadsTab" tabindex="0">
@@ -421,6 +424,54 @@
         </div>
       </section>
 
+      <section id="operatorView" class="view-panel operator-view" role="tabpanel" aria-labelledby="operatorTab" hidden>
+        <header class="operator-heading">
+          <div><span class="eyebrow">Protected organization research</span><h2>Evidence into accountable action.</h2><p>Inspect a source, review the organization, and record a manual research task. Every decision stays linked to its evidence.</p></div>
+          <span class="operator-boundary">Research only · Contact not granted</span>
+        </header>
+        <div id="operatorStatus" class="operator-status" role="status" aria-live="polite">Sign in to open your protected research workspace.</div>
+        <form id="operatorLogin" class="operator-card operator-login">
+          <div><h3>Operator sign in</h3><p>Your account and current server policy determine access. Credentials and research are not saved in browser storage.</p></div>
+          <label for="operatorUsername">Username<input id="operatorUsername" name="username" autocomplete="username" required maxlength="128"></label>
+          <label for="operatorPassword">Password<input id="operatorPassword" name="password" type="password" autocomplete="current-password" required></label>
+          <label for="operatorAccessKey">Access key<input id="operatorAccessKey" name="access_key" type="password" autocomplete="off" required></label>
+          <button class="primary-button" type="submit">Sign in to research</button>
+        </form>
+        <div id="operatorSession" hidden>
+          <div class="operator-session-bar"><p id="operatorSessionLabel"></p><button id="operatorLogout" type="button" class="operator-secondary">Sign out</button></div>
+          <form id="operatorScopeForm" class="operator-scope-form">
+            <label for="operatorScope">Research workspace ID<input id="operatorScope" required maxlength="128" pattern="[A-Za-z0-9_.:-]+" placeholder="Enter the assigned workspace ID" autocomplete="off" spellcheck="false"></label>
+            <button class="primary-button" type="submit">Open workspace</button><button id="operatorReload" class="operator-secondary" type="button" disabled>Reload evidence</button>
+          </form>
+          <div id="operatorWorkspace" hidden aria-busy="false">
+            <div class="operator-summary"><div><span>Workspace</span><strong id="operatorScopeLabel"></strong></div><div><span>Decision version</span><strong id="operatorEpoch">—</strong></div><div><span>Evidence records</span><strong id="operatorNodeCount">—</strong></div><div><span>Last loaded</span><strong id="operatorLoadedAt">—</strong></div></div>
+            <p class="operator-explainer">A decision uses the displayed version. If evidence or permission changes, the server rejects a stale decision and you must review again.</p>
+            <div class="operator-layout">
+              <aside class="operator-evidence" aria-labelledby="operatorEvidenceHeading">
+                <div class="operator-card"><span class="eyebrow">01 · Admitted evidence</span><h3 id="operatorEvidenceHeading">Source records</h3><p>Select the records to review together. Invalidated facts are withheld.</p><p id="operatorSelectionCount" class="operator-selection">No source records selected</p><div id="operatorEvidenceList"></div></div>
+                <section class="operator-card" aria-labelledby="operatorHealthHeading"><span class="eyebrow">Source readiness</span><h3 id="operatorHealthHeading">DOL Form 5500</h3><p>Configuration, rights, and a successful source observation are separate checks. A failed attempt does not replace the last successful observation.</p><div id="operatorSourceHealth"></div><form id="operatorSourceRefresh" data-operator-action="admit"><label for="operatorHealthSnapshot">Snapshot revision to check<input id="operatorHealthSnapshot" required pattern="[0-9a-f]{40}" maxlength="40" placeholder="40-character published revision" autocomplete="off" spellcheck="false"></label><button type="submit" class="operator-secondary">Check source health</button></form><p class="operator-fineprint">This check records source health. Admit a specific record separately.</p></section>
+                <details class="operator-card"><summary>Admit an approved source reference</summary><p>The server loads an exact published snapshot and checks its reviewed rights and organization classification. A public record alone does not grant admission.</p><form id="operatorAdmission" data-operator-action="admit"><label for="operatorSource">Source<select id="operatorSource"><option value="dol-form5500-benefit-timing">DOL Form 5500 · Organization research</option></select></label><label for="operatorRecordId">Published record ID<input id="operatorRecordId" required maxlength="256" autocomplete="off"></label><label for="operatorSnapshot">Snapshot revision<input id="operatorSnapshot" required pattern="[0-9a-f]{40}" maxlength="40" placeholder="40-character published revision" autocomplete="off" spellcheck="false"></label><button type="submit" class="operator-secondary">Check and admit reference</button></form></details>
+              </aside>
+              <div class="operator-actions">
+                <section class="operator-card"><span class="eyebrow">02 · Organization review</span><h3>Confirm what the records identify</h3><p>Review the selected source facts. This decision records a relation; it does not assign a canonical organization identity.</p><form id="operatorIdentity" data-operator-action="review"><label for="operatorIdentityDecision">Your identity decision<select id="operatorIdentityDecision"><option value="NEEDS_REVIEW">Needs further review</option><option value="ORGANIZATION_CONFIRMED">Organization confirmed by my review</option><option value="REJECTED">Rejected</option></select></label><button type="submit" class="operator-secondary">Record identity review</button></form></section>
+                <section class="operator-card"><span class="eyebrow">03 · Evidence brief</span><h3>Build and inspect the research brief</h3><form id="operatorBrief" data-operator-action="brief"><label for="operatorIdentityRef">Confirmed identity review<select id="operatorIdentityRef" data-node-kind="organization_review" data-node-decision="ORGANIZATION_CONFIRMED" required></select></label><button type="submit" class="operator-secondary">Build brief from selected records</button></form><div id="operatorBriefPreview" class="operator-brief-preview"></div><form id="operatorReview" data-operator-action="review"><label for="operatorBriefRef">Brief to review<select id="operatorBriefRef" data-node-kind="brief" required></select></label><label for="operatorBriefDecision">Your brief decision<select id="operatorBriefDecision"><option value="REJECTED">Do not approve</option><option value="APPROVED">Approve for manual research only</option></select></label><button type="submit" class="operator-secondary">Record brief review</button></form></section>
+                <section class="operator-card"><span class="eyebrow">04 · Current permission</span><h3>Request research clearance</h3><p>The server rechecks the named operator, review, source grants, suppression, and evidence version. Clearance cannot authorize outreach.</p><form id="operatorClearance" data-operator-action="clearance"><label for="operatorReviewRef">Approved brief review<select id="operatorReviewRef" data-node-kind="brief_review" data-node-decision="APPROVED" required></select></label><button type="submit" class="operator-secondary">Check research clearance</button></form></section>
+                <section class="operator-card"><span class="eyebrow">05 · Manual research</span><h3>Create a traceable task</h3><form id="operatorTask" data-operator-action="manual_task"><label for="operatorClearanceRef">Research clearance<select id="operatorClearanceRef" data-node-kind="clearance" required></select></label><label for="operatorTaskType">Task<select id="operatorTaskType"><option value="VERIFY_SOURCE">Verify the original source</option><option value="RESOLVE_IDENTITY">Resolve organization identity</option><option value="REVIEW_CHANGE">Review the observed change</option><option value="REVIEW_COUNTER_EVIDENCE">Investigate contradictory evidence</option></select></label><button type="submit" class="primary-button">Create manual research task</button></form><p class="operator-fineprint">An uncertain submission retains its request ID for a safe retry. This workspace has no message sender.</p></section>
+              </div>
+            </div>
+            <section class="operator-card operator-history"><div><span class="eyebrow">Decision record</span><h3>Reviews, briefs, and tasks</h3><p>Open a record to inspect its permitted facts and dependency references.</p></div><div id="operatorHistory"></div></section>
+            <div class="operator-followthrough">
+              <details class="operator-card"><summary>Record a research outcome</summary><form id="operatorOutcome" data-operator-action="outcome"><label for="operatorTaskRef">Research task<select id="operatorTaskRef" data-node-kind="manual_task,crm_task" required></select></label><label for="operatorOutcomeType">Outcome<select id="operatorOutcomeType"><option value="FURTHER_VERIFICATION_NEEDED">Further verification needed</option><option value="WRONG_ENTITY">Wrong entity</option><option value="SOURCE_STALE">Source stale</option><option value="NOT_RELEVANT">Not relevant</option><option value="PERMISSION_DECLINED">Permission declined</option><option value="RESEARCH_COMPLETED">Research completed</option></select></label><button type="submit" class="operator-secondary">Record outcome</button></form></details>
+              <details class="operator-card"><summary>Record counter-evidence</summary><p>This attaches an unresolved conflict to the selected source records. New briefs include it.</p><form id="operatorCounter" data-operator-action="review"><label for="operatorCounterReason">Conflict<select id="operatorCounterReason"><option value="CONTRADICTORY_SOURCE">Contradictory source</option><option value="IDENTITY_CONFLICT">Identity conflict</option><option value="STALE_EVENT">Stale event</option><option value="MISSING_EXPECTED_EVIDENCE">Missing expected evidence</option></select></label><button type="submit" class="operator-secondary">Record counter-evidence</button></form></details>
+              <details class="operator-card"><summary>Compare two stored briefs</summary><p>Compare facts known at each recorded time. Later evidence is not inserted into an earlier brief.</p><form id="operatorDiff" data-operator-action="read"><label for="operatorDiffBefore">Earlier brief<select id="operatorDiffBefore" data-node-kind="brief" required></select></label><label for="operatorDiffAfter">Later brief<select id="operatorDiffAfter" data-node-kind="brief" required></select></label><button type="submit" class="operator-secondary">Compare decisions</button></form><div id="operatorDiffResult" aria-live="polite"></div></details>
+              <details class="operator-card"><summary>Correct or withdraw evidence</summary><p>Revocation also invalidates dependent research. External copies cannot be recalled by this action.</p><form id="operatorCorrection" data-operator-action="correct"><label for="operatorCorrectionRef">Evidence record<select id="operatorCorrectionRef" data-node-kind="*" required></select></label><label for="operatorCorrectionReason">Reason<select id="operatorCorrectionReason"><option value="SOURCE_CORRECTED">Source corrected</option><option value="SOURCE_WITHDRAWN">Source withdrawn</option><option value="IDENTITY_MISMATCH">Identity mismatch</option><option value="PERMISSION_REVOKED">Permission revoked</option><option value="INTEGRITY_FAILED">Integrity failed</option></select></label><button type="submit" class="operator-danger">Revoke record and dependents</button></form></details>
+              <details class="operator-card"><summary>Suppress this workspace</summary><p>Stop derived activity for this research scope. This action does not recall external copies.</p><form id="operatorSuppression" data-operator-action="suppress"><label class="operator-check"><input id="operatorSuppressConfirm" type="checkbox" required><span>I intend to suppress this research workspace.</span></label><button type="submit" class="operator-danger">Suppress workspace</button></form></details>
+            </div>
+            <div id="operatorActionResult" class="operator-action-result" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
       <footer class="app-footer">
         <p>David Leads uses public organization-level records for prospecting research only.</p>
         <div>
@@ -463,6 +514,7 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=kanchay-honesty-20260828" defer></script>
+  <script src="operator.js?v=evidence-workflow-v2" defer></script>
+  <script src="app.js?v=evidence-workflow-v2" defer></script>
 </body>
 </html>

@@ -1,0 +1,175 @@
+{
+  "observed_at": "2026-09-19T16:46:13.286981+00:00",
+  "scope": "public Hub metadata only; not application readiness or source parity",
+  "spaces": [
+    {
+      "id": "SZLHOLDINGS/a11oy",
+      "sha": "2484f622cb1aa880f89887298941f8aefb6b71bc",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-13 15:15:15+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/killinchu",
+      "sha": "952e0fc2213d782c6f691ae69b6339d97ee6e5d3",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-19 14:40:26+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/counsel",
+      "sha": "e8846d7bbdc14b72edab9f5aff43009e841fa928",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 00:24:57+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/terra",
+      "sha": "4d4fcce97f2ce154cb3c6adde206cca98a72c23d",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 00:24:52+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/sentra",
+      "sha": "315dfdf06cc5feab64e3e327f2a69e2939d40e42",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 00:24:55+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/finance",
+      "sha": "a300ec6a434d799a4311a2b33cee3565dd93c244",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 00:24:59+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/lyte",
+      "sha": "94734aeddcd326d4975abd1d17519a62a53a7c88",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-11 22:24:51+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/vertical-services",
+      "sha": "9eca173122ea06725a1b6d2c041385be1706580e",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-08 07:22:27+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-command-lab",
+      "sha": "ca01073d30f2b2c6de1190e3659ecf08702fc633",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-12 09:10:05+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/david-leads",
+      "sha": "be41689918da529c3a20de93a74834f7e23ba852",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-12 20:42:12+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-constellation",
+      "sha": "78f38b613a58c255892015d7d92f007fc3120570",
+      "private": false,
+      "sdk": "gradio",
+      "runtime_stage": null,
+      "last_modified": "2026-09-08 03:34:16+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-frontier",
+      "sha": "54fa9b95a3c76703ae9c79f7242b4b3706604502",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-18 15:10:30+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-model-inference-lab",
+      "sha": "bdc5af2ee3a9df79476bf9494ecde2912c17cfd4",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-05 16:28:17+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/immune-lattice",
+      "sha": "6237ab5b88e71388ba161c22eff0e6f72e1951a8",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-04 20:25:41+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/immune",
+      "sha": "b030caa80587dd7d1350550eab2ffd30e7269de1",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-17 01:30:28+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/ayllu",
+      "sha": "8cc7b9a6a3528f12155b36d16140d8e2b5b99d5c",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 02:00:56+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/yarqa",
+      "sha": "3201cf748ce82f8600f2185bcbeb1f9124b93e5d",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-07 19:50:32+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-atelier",
+      "sha": "44339796e55a0ce23754b795f0f7674e5d5c4a90",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-07 20:10:15+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/holographic-unify",
+      "sha": "c206b2c93b8b9693ee136f7ab13f37fe31d13bf7",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-12 09:33:59+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/szl-khipu",
+      "sha": "95bafc090028015ea63deece5c1468287721b536",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-12 10:24:19+00:00"
+    },
+    {
+      "id": "SZLHOLDINGS/llm-router-live",
+      "sha": "52558f4a272a1a804382b4ab4ecbb3c529852ca8",
+      "private": false,
+      "sdk": "docker",
+      "runtime_stage": null,
+      "last_modified": "2026-09-14 12:39:06+00:00"
+    }
+  ],
+  "status": "OBSERVED"
+}

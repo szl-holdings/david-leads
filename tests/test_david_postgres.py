@@ -1,4 +1,5 @@
 """Postgres evidence-adapter contracts. SQLite is not used here."""
+
 from __future__ import annotations
 
 import json
@@ -13,8 +14,10 @@ from app.domain.david_postgres import (
     PostgresLedger,
     SCHEMA_PATH,
     apply_evidence_schema,
+    connect_postgres_ledger,
 )
 from app.domain.david_reference import Grant, Hold, Identifier, Verdict, aware
+from tests.postgres_support import bootstrap_test_database, admin_connection
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 9, 11, 12, tzinfo=timezone.utc)
@@ -40,27 +43,25 @@ def _connect():
 
 def _apply_expand(connection) -> None:
     dealdesk = (ROOT / "app" / "dealdesk_schema.sql").read_text(encoding="utf-8")
-    statements = [part.strip() for part in dealdesk.split(";") if part.strip()]
     with connection.transaction():
         with connection.cursor() as cursor:
-            for statement in statements:
-                cursor.execute(statement)
+            cursor.execute(dealdesk, prepare=False)
     apply_evidence_schema(connection)
 
 
 def _truncate(connection) -> None:
     with connection.cursor() as cursor:
         cursor.execute(
-            "TRUNCATE "
-            + ", ".join(EVIDENCE_TABLES)
-            + " RESTART IDENTITY CASCADE"
+            "TRUNCATE " + ", ".join(EVIDENCE_TABLES) + " RESTART IDENTITY CASCADE"
         )
 
 
 class EvidenceSchemaExpandTests(unittest.TestCase):
     def test_sql_is_expand_only_and_keeps_dealdesk_tables(self):
         sql = SCHEMA_PATH.read_text(encoding="utf-8")
-        dealdesk_sql = (ROOT / "app" / "dealdesk_schema.sql").read_text(encoding="utf-8")
+        dealdesk_sql = (ROOT / "app" / "dealdesk_schema.sql").read_text(
+            encoding="utf-8"
+        )
         for table in EVIDENCE_TABLES:
             self.assertIn(f"CREATE TABLE IF NOT EXISTS {table}", sql)
         for table in DEALDESK_TABLES:
@@ -75,7 +76,9 @@ class EvidenceSchemaExpandTests(unittest.TestCase):
         self.assertIn("ENABLE ROW LEVEL SECURITY", sql)
 
     def test_runtime_adapter_does_not_migrate(self):
-        source = (ROOT / "app" / "domain" / "david_postgres.py").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "domain" / "david_postgres.py").read_text(
+            encoding="utf-8"
+        )
         self.assertNotIn("CREATE TABLE", source.split("apply_evidence_schema", 1)[0])
         self.assertIn("never creates schema", source)
 
@@ -84,18 +87,22 @@ class EvidenceSchemaExpandTests(unittest.TestCase):
 class PostgresLedgerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.conn = _connect()
-        _apply_expand(cls.conn)
+        cls.ledger_connection = connect_postgres_ledger(bootstrap_test_database())
+        cls.conn = cls.ledger_connection.conn
+        cls.admin = admin_connection()
 
     @classmethod
     def tearDownClass(cls):
         cls.conn.close()
+        cls.admin.close()
 
     def setUp(self):
-        _truncate(self.conn)
+        _truncate(self.admin)
         self.ledger = PostgresLedger(self.conn)
 
-    def add(self, kind="source", parents=(), body=None, tenant="test-tenant", expiry=None):
+    def add(
+        self, kind="source", parents=(), body=None, tenant="test-tenant", expiry=None
+    ):
         return self.ledger.append(
             tenant,
             kind,
@@ -107,12 +114,14 @@ class PostgresLedgerTests(unittest.TestCase):
 
     def test_idempotent_ingestion(self):
         self.assertEqual(self.add(), self.add())
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute("SELECT COUNT(*) FROM evidence_nodes")
             self.assertEqual(cursor.fetchone()[0], 1)
 
-    def test_restart_preserves_evidence(self):
+    def test_adapter_reconstruction_preserves_evidence(self):
         node = self.add()
         restarted = PostgresLedger(self.conn)
         self.assertEqual(restarted.state("test-tenant", node, NOW), "VALID")
@@ -127,21 +136,27 @@ class PostgresLedgerTests(unittest.TestCase):
     def test_unknown_dependency_rolls_back(self):
         with self.assertRaises(Hold):
             self.add("brief", ("missing",))
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute("SELECT COUNT(*) FROM evidence_nodes")
             self.assertEqual(cursor.fetchone()[0], 0)
 
     def test_correction_revokes_brief_clearance_and_crm_task(self):
         source = self.add()
-        identity = self.add("identity", (source,), body={
-            "relationship": "CANDIDATE_REVIEW",
-            "canonical_organization_id": None,
-            "kind": "organization",
-            "namespace": "SEC_CIK",
-            "jurisdiction": "US",
-            "value_normalized": "0000000123",
-        })
+        identity = self.add(
+            "identity",
+            (source,),
+            body={
+                "relationship": "CANDIDATE_REVIEW",
+                "canonical_organization_id": None,
+                "kind": "organization",
+                "namespace": "SEC_CIK",
+                "jurisdiction": "US",
+                "value_normalized": "0000000123",
+            },
+        )
         brief = self.add("brief", (identity,))
         clearance = self.add("clearance", (brief,), body={"named_operator": "David"})
         crm = self.add("crm_task", (clearance,), body={"task": "follow-up"})
@@ -151,8 +166,10 @@ class PostgresLedgerTests(unittest.TestCase):
         )
         for node in (source, identity, brief, clearance, crm):
             self.assertEqual(self.ledger.state("test-tenant", node, NOW), "REVOKED")
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute("SELECT state FROM derivations WHERE id=%s", (brief,))
             self.assertEqual(cursor.fetchone()[0], "REVOKED")
             cursor.execute("SELECT state FROM clearances WHERE id=%s", (clearance,))
@@ -194,8 +211,10 @@ class PostgresLedgerTests(unittest.TestCase):
             expires_at=NOW + DAY,
             now=NOW,
         )
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute(
                 "SELECT relationship, canonical_organization_id FROM identity_candidates "
                 "WHERE id=%s",
@@ -225,8 +244,10 @@ class PostgresLedgerTests(unittest.TestCase):
 
     def test_tampered_content_fails_integrity(self):
         node = self.add()
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute(
                 "UPDATE evidence_nodes SET envelope=%s WHERE id=%s",
                 ("{}", node),
@@ -239,8 +260,10 @@ class PostgresLedgerTests(unittest.TestCase):
 
     def test_unsigned_status_not_confused_with_signature(self):
         node = self.add()
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
             cursor.execute(
                 "SELECT envelope FROM evidence_nodes WHERE id=%s",
                 (node,),
@@ -265,9 +288,13 @@ class PostgresLedgerTests(unittest.TestCase):
         )
         node = self.ledger.put_grant("test-tenant", grant, NOW)
         self.assertEqual(self.ledger.state("test-tenant", node, NOW), "VALID")
-        with self.conn.cursor() as cursor:
-            cursor.execute("SELECT set_config('david.tenant', %s, true)", ("test-tenant",))
-            cursor.execute("SELECT source_id FROM source_grants WHERE node_id=%s", (node,))
+        with self.ledger.transaction("test-tenant") as cursor:
+            cursor.execute(
+                "SELECT set_config('david.tenant', %s, true)", ("test-tenant",)
+            )
+            cursor.execute(
+                "SELECT source_id FROM source_grants WHERE node_id=%s", (node,)
+            )
             self.assertEqual(cursor.fetchone()[0], "synthetic-source")
 
 

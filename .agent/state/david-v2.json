@@ -1,0 +1,14 @@
+{
+  "schema": "szl.david.execution-state/v2",
+  "task": "01a07ed3-e0bc-7640-aee1-358835737656",
+  "observed_at": "2026-09-12",
+  "repository": "szl-holdings/david-leads",
+  "main": "8e2158fe2572932040d11e271c11811e6fe5e743",
+  "implementation_base": "bac608bec90208b4ce8df297265dca30efd6fa62",
+  "stack": [117, 118],
+  "state": "IMPLEMENTATION_IN_PROGRESS",
+  "remote_writes": [],
+  "runtime_revision": null,
+  "publication_authorized_by_this_record": false,
+  "next_action": "Complete role-safe storage, source health and authenticated workflow integration tests"
+}

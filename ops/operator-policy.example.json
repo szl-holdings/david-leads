@@ -1,0 +1,7 @@
+{
+  "schema": "szl.david.operator-policy/v1",
+  "revision": "EXAMPLE_NOT_ADMITTED",
+  "review_reference": "OWNER_REVIEW_REQUIRED",
+  "expires_at": "2026-01-01T00:00:00Z",
+  "operators": []
+}

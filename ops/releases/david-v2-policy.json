@@ -1,0 +1,26 @@
+{
+  "schema": "szl.david.release-policy-proposal/v2",
+  "state": "REVIEW_REQUIRED",
+  "repository": "szl-holdings/david-leads",
+  "promotion_authorized": false,
+  "candidate_revision": null,
+  "bundle_sha256": null,
+  "required_evidence": [
+    "operational-safety",
+    "evidence-kernel-postgres",
+    "non-owner-runtime-role-isolation",
+    "two-connection-correction-and-task-races",
+    "fresh-process-restart-and-disposable-restore",
+    "admitted-dol-snapshot-consumer-parity",
+    "authorized-api-and-browser-workflow",
+    "schema-and-role-migration-readback",
+    "exact-subject-source-review",
+    "protected-main-admission",
+    "frozen-hf-bundle-readback-and-attestation",
+    "external-public-and-operator-sandbox-runtime-checks",
+    "rollback-compatibility"
+  ],
+  "offline_contract_verifier": "ops/release_contract.py",
+  "offline_verifier_can_authorize_release": false,
+  "note": "A reviewed exact candidate policy and authenticated evidence are required before release. This proposal deliberately does not satisfy the offline release-policy/v2 input schema."
+}

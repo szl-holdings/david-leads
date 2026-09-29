@@ -942,7 +942,7 @@ function renderInvestorProof() {
 }
 
 function switchView(view) {
-  if (!["leads", "markets", "investors"].includes(view)) return;
+  if (!["leads", "markets", "investors", "operator"].includes(view)) return;
   state.activeView = view;
   document.querySelectorAll(".view-panel").forEach((panel) => {
     const active = panel.id === `${view}View`;
@@ -1160,6 +1160,7 @@ async function checkForNewRelease() {
 }
 
 async function bootstrap() {
+  window.DavidOperator?.init();
   restoreTerritoryFromUrl();
   syncTerritoryControls();
   bindEvents();

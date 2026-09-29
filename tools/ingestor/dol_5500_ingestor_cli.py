@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -20,7 +21,11 @@ def main() -> int:
     args = ap.parse_args()
 
     payload = Path(args.zip).read_bytes()
-    result = run_dol_5500(payload)
+    configured_key = os.environ.get("DOL_SNAPSHOT_SIGNING_KEY", "")
+    signing_key = configured_key.encode("utf-8") if configured_key else None
+    if signing_key is not None and len(signing_key) < 32:
+        raise ValueError("DOL_SIGNING_KEY_TOO_SHORT")
+    result = run_dol_5500(payload, signing_key=signing_key)
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -39,7 +44,7 @@ def main() -> int:
             }) + "\n")
     print(f"snapshot_id={result['snapshot']['snapshot_id']} "
           f"records={result['snapshot']['record_count']} "
-          f"receipt={result['receipt']['signature']['value']}")
+          f"receipt={'HMAC_SIGNED' if signing_key else 'UNSIGNED'}")
     return 0
 
 

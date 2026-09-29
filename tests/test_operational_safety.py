@@ -1635,6 +1635,7 @@ class ApiSafety(unittest.TestCase):
             patch.object(self.server, "_CREDS_CONFIGURED", True),
             patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
             patch.object(self.server.dd, "persistence_state", return_value="POSTGRES_READY"),
+            patch.object(self.server, "_evidence_readiness", return_value="POSTGRES_READY"),
         ):
             readiness = self.client.get("/readyz")
         self.assertEqual(readiness.status_code, 200)

@@ -380,7 +380,20 @@ class PublicReadOnlyApiTests(unittest.TestCase):
         self.assertIn("corroborating_signals", script)
         self.assertNotIn('id="login"', page)
         self.assertNotIn("Assigned username", page)
-        self.assertNotIn("Password", page)
+        # Login is an opt-in protected tab; the public cockpit still opens without
+        # a credential prompt or an automatic fetch of private research.
+        self.assertIn('activeView: "leads"', script)
+        self.assertIn('id="leadsView" class="view-panel active"', page)
+        operator_tag = page.split('id="operatorView"', 1)[1].split('>', 1)[0]
+        self.assertIn(' hidden', operator_tag)
+        operator_tab = page.split('id="operatorTab"', 1)[1].split('>', 1)[0]
+        self.assertIn('aria-selected="false"', operator_tab)
+        self.assertIn('id="operatorPassword"', page)
+        self.assertNotIn('/api/v1/operator/', script)
+        operator_script = (root / "app" / "static" / "operator.js").read_text(encoding="utf-8")
+        initializer = operator_script.split('  function init() {', 1)[1].split('  return { init };', 1)[0]
+        self.assertIn('addEventListener("submit", signIn)', initializer)
+        self.assertNotIn('await request(', initializer)
         self.assertNotIn("Developer quickstart", page)
         self.assertIn('id="boot"', page)
         self.assertNotIn("Export governed CSV", page)

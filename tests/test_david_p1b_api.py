@@ -26,11 +26,15 @@ class PublicCapabilitiesTests(unittest.TestCase):
         self.assertEqual(body["ready_patch"], "DENIED")
         self.assertEqual(body["contact_permission"], "NOT_EVALUATED")
         sources = {item["id"]: item for item in body["sources"]}
-        self.assertEqual(sources["dol-form5500-benefit-timing"]["status"], "ENABLED")
+        self.assertEqual(sources["dol-form5500-benefit-timing"]["status"], "NOT_EVALUATED")
+        self.assertTrue(sources["dol-form5500-benefit-timing"]["configured_enabled"])
+        self.assertEqual(sources["dol-form5500-benefit-timing"]["eligible_operations"], [])
         self.assertEqual(sources["dol-form5500-benefit-timing"]["order"], 1)
         self.assertEqual(sources["irs-form990"]["status"], "POLICY_HOLD")
         self.assertEqual(sources["nyc-acris"]["status"], "POLICY_HOLD")
-        self.assertEqual(sources["chicago-new-business-licenses"]["status"], "AUTH_REQUIRED")
+        self.assertEqual(sources["chicago-new-business-licenses"]["status"], "POLICY_HOLD")
+        self.assertIn("AUTH_REQUIRED", sources["chicago-new-business-licenses"]["blocking_reasons"])
+        self.assertIn("POLICY_HOLD", sources["chicago-new-business-licenses"]["blocking_reasons"])
         self.assertEqual(sources["sam-active-entity-updates"]["status"], "AUTH_REQUIRED")
         self.assertEqual(sources["fcc-uls-organization-licenses"]["status"], "NOT_IMPLEMENTED")
         serialized = json.dumps(body).lower()
@@ -115,36 +119,47 @@ class CorrectionApiTests(unittest.TestCase):
         with patch.object(server, "_PUBLIC_READONLY", True):
             response = self.client.post(
                 "/api/deal-desk/opp-1/correct",
-                json={"node_id": "abc", "reason": "SOURCE_CORRECTED"},
+                json={"node_id": "a" * 64, "reason": "SOURCE_CORRECTED", "expected_epoch": 0},
             )
         self.assertEqual(response.status_code, 401)
 
-    def test_operator_correction_revokes_descendants(self):
-        class FakeLedger:
-            def correct(self, tenant, node, reason, now):
-                self.seen = (tenant, node, reason, now.tzinfo is not None)
-                return 5
+    def test_operator_correction_binds_authenticated_context_scope_and_epoch(self):
+        from datetime import datetime, timedelta, timezone
+        from app.domain.operator_policy import OperatorContext
+        context = OperatorContext("synthetic-operator", "synthetic-tenant", frozenset({"correct"}),
+            "synthetic-policy", "b" * 64, datetime.now(timezone.utc)+timedelta(hours=1))
 
+        class FakeLedger:
             def close(self):
                 self.closed = True
+
+        class RoutingProbe:
+            def __init__(self, ledger, principal, now):
+                self.principal = principal
+                self.now = now
+
+            def correct(self, scope, epoch, node, reason):
+                fake.seen = (self.principal.tenant, scope, epoch, node, reason, self.now.tzinfo is not None)
+                return {"revoked": 5, "impact": [], "decision_epoch": epoch+1}
 
         fake = FakeLedger()
         with (
             patch.dict(os.environ, {"DAVID_DATABASE_URL": "postgresql://test"}, clear=False),
             patch.object(server, "connect_postgres_ledger", return_value=fake),
+            patch.object(server, "_workflow_context", return_value=context),
+            patch("app.domain.david_workflow.Workflow", RoutingProbe),
         ):
             response = self.client.post(
                 "/api/deal-desk/opp-1/correct",
                 headers=self.headers,
-                json={"node_id": "source-node", "reason": "SOURCE_CORRECTED"},
+                json={"node_id": "a" * 64, "reason": "SOURCE_CORRECTED", "expected_epoch": 7},
             )
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["revoked"], 5)
         self.assertEqual(list(body["cancels"]), ["brief", "clearance", "crm_task"])
         self.assertEqual(body["integrity"], "LOCAL_SHA256_UNSIGNED")
-        self.assertEqual(fake.seen[0], "operator")
-        self.assertEqual(fake.seen[1], "source-node")
+        self.assertEqual(fake.seen, ("synthetic-tenant", "opp-1", 7, "a" * 64, "SOURCE_CORRECTED", True))
         self.assertTrue(fake.closed)
 
 
