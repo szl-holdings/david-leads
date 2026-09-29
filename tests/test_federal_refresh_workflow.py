@@ -14,7 +14,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
 
     def test_non_cancelling_serial_concurrency(self) -> None:
-        self.assertIn("group: federal-refresh", self.workflow)
+        self.assertIn("group: hf-write/dataset/SZLHOLDINGS/david-leads-data", self.workflow)
         self.assertIn("cancel-in-progress: false", self.workflow)
 
     def test_daily_refresh_covers_all_four_lanes_serially(self) -> None:
@@ -49,7 +49,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         for action in uses:
             self.assertRegex(action, r"^[^@]+@[0-9a-f]{40}$")
         self.assertIn(
-            "step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c",
+            "step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1",
             uses,
         )
         self.assertIn(
@@ -103,7 +103,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("Verify receipt hash-chain", self.workflow)
 
     def test_publisher_is_pinned_and_token_is_step_scoped(self) -> None:
-        self.assertIn("huggingface_hub==1.19.0", self.workflow)
+        self.assertIn("huggingface_hub==2.0.0", self.workflow)
         self.assertIn("--dataset SZLHOLDINGS/david-leads-data", self.workflow)
         self.assertIn("--receipt-out publication.json", self.workflow)
         self.assertEqual(self.workflow.count("secrets.HF_TOKEN"), 1)

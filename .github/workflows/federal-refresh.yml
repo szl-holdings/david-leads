@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: federal-refresh
+  group: hf-write/dataset/SZLHOLDINGS/david-leads-data
   cancel-in-progress: false
 
 permissions:
@@ -139,7 +139,7 @@ jobs:
       - name: Install pinned Hugging Face publisher
         run: >-
           python -m pip install --disable-pip-version-check --no-cache-dir
-          huggingface_hub==1.19.0
+          huggingface_hub==2.0.0
 
       - name: Publish one atomic verified dataset commit
         env:
