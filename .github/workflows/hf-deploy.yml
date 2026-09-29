@@ -41,7 +41,7 @@ permissions:
   attestations: write
 
 concurrency:
-  group: hf-deploy-${{ github.ref_name || github.event.workflow_run.head_branch }}
+  group: hf-write/space/SZLHOLDINGS/david-leads
   cancel-in-progress: false
 
 jobs:
@@ -260,7 +260,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check \
-            "huggingface_hub==1.19.0" "requests==2.32.5"
+            "huggingface_hub==2.0.0" "requests==2.32.5"
           python3 - <<'PY'
           import json
           import os
