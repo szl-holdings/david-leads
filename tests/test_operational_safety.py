@@ -206,11 +206,13 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
         ).read_text(encoding="utf-8")
         poll = workflow.split(
-            "          while time.monotonic() < deadline:", 1
+            "          while time.monotonic() < authentication_deadline:", 1
         )[1].split("          if health is None:", 1)[0]
         self.assertIn('requests.post(', poll)
         self.assertIn('f"{base_url}/api/login"', poll)
         self.assertIn("if login.status_code == 200:", poll)
+        self.assertIn("login_payload.get(\"rotation_generation\")", poll)
+        self.assertIn("require_rotation_generation(", poll)
         self.assertIn("session_token = candidate_token", poll)
         self.assertIn("response.status_code in {200, 503}", poll)
         login_prefix = poll.split("requests.post(", 1)[0]
@@ -221,7 +223,8 @@ class PublicCredentialSafety(unittest.TestCase):
             ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
         ).read_text(encoding="utf-8")
         self.assertNotIn("api.restart_space(", workflow)
-        self.assertIn("deadline = time.monotonic() + 900", workflow)
+        self.assertIn("authentication_deadline = time.monotonic() + 420", workflow)
+        self.assertIn("runtime_deadline = time.monotonic() + 420", workflow)
         self.assertIn("timeout-minutes: 25", workflow)
 
     def test_rotation_normalizes_only_accidental_secret_line_endings(self):
@@ -256,11 +259,27 @@ class PublicCredentialSafety(unittest.TestCase):
             "DAVID_DATASET_READ_TOKEN: ${{ secrets.HF_TOKEN }}",
             workflow,
         )
-        self.assertIn('normalized_role != "finegrained"', workflow)
-        self.assertIn('dataset_id = "SZLHOLDINGS/david-leads-data"', workflow)
-        self.assertIn('filename="latest.json"', workflow)
+        self.assertIn("reader_role = require_fine_grained_role(reader_identity)", workflow)
+        self.assertIn("dataset_id = DATASET_ID", workflow)
+        self.assertIn("for source_id, filename in POINTER_FILES.items():", workflow)
+        self.assertIn("require_pointer_sizes(pointer_sizes)", workflow)
         self.assertIn("revision=dataset_revision", workflow)
         self.assertIn('"DAVID_DATASET_READ_TOKEN": dataset_read_token', workflow)
+        self.assertIn("runtime_report = frontier_live_canary.run(", workflow)
+        self.assertIn("rotation_generation,", workflow)
+        self.assertIn("runtime_evidence = validate_runtime_report(", workflow)
+        self.assertIn('key="DAVID_ROTATION_GENERATION"', workflow)
+        self.assertIn("last_rotation_generation == rotation_generation", workflow)
+        self.assertIn(
+            '"updated_variable_names": ["DAVID_ROTATION_GENERATION"]',
+            workflow,
+        )
+        self.assertLess(
+            workflow.index("api.add_space_secret("),
+            workflow.index("runtime_report = frontier_live_canary.run("),
+        )
+        self.assertIn('"dataset_reader_preflight_verified": True', workflow)
+        self.assertIn('"runtime": runtime_evidence', workflow)
         self.assertIn('"credential_values_recorded": False', workflow)
 
     def test_rotation_timeout_diagnostics_never_include_response_or_secret_values(self):
@@ -1466,11 +1485,13 @@ class ApiSafety(unittest.TestCase):
         cls.server._TOKENS.pop(cls.token, None)
 
     def test_login_accepts_utf8_secret_factors_without_server_error(self):
+        generation = "sha256:" + "d" * 64
         with (
             patch.object(self.server, "_CREDS_ROTATION_REQUIRED", False),
             patch.object(self.server, "_CREDS_CONFIGURED", True),
             patch.object(self.server, "USERS", {"operador-ñ": "frase-🔒"}),
             patch.object(self.server, "ACCESS_KEY", "llave-🗝️"),
+            patch.dict(os.environ, {"DAVID_ROTATION_GENERATION": generation}),
         ):
             response = self.client.post(
                 "/api/login",
@@ -1481,6 +1502,7 @@ class ApiSafety(unittest.TestCase):
                 },
             )
             self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["rotation_generation"], generation)
             token = response.json()["token"]
             logout = self.client.post(
                 "/api/logout",
@@ -1675,6 +1697,23 @@ class ApiSafety(unittest.TestCase):
         self.assertEqual(body["github_huggingface_alignment"], "UNVERIFIED")
         self.assertRegex(body["bundle_sha256"], r"^[0-9a-f]{64}$")
         self.assertFalse(body["receipt_minted"])
+
+    def test_rotation_generation_exposes_only_an_exact_nonsecret_digest(self):
+        generation = "sha256:" + "d" * 64
+        with patch.dict(
+            os.environ,
+            {"DAVID_ROTATION_GENERATION": generation},
+        ):
+            self.assertEqual(self.server._rotation_generation(), generation)
+            self.assertEqual(
+                self.server._runtime_bundle_manifest()["rotation_generation"],
+                generation,
+            )
+        with patch.dict(
+            os.environ,
+            {"DAVID_ROTATION_GENERATION": "raw-run-identifier"},
+        ):
+            self.assertIsNone(self.server._rotation_generation())
 
     def test_build_info_accepts_only_exact_revision_github_oidc_receipt(self):
         revision = "a" * 40

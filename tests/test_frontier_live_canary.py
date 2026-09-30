@@ -15,10 +15,13 @@ SPEC.loader.exec_module(canary)
 
 
 class FrontierLiveCanaryTests(unittest.TestCase):
+    ROTATION_GENERATION = "sha256:" + "f" * 64
+
     def _build(self, revision: str = "a" * 40) -> dict:
         return {
             "source_revision": revision,
             "receipt_minted": True,
+            "rotation_generation": self.ROTATION_GENERATION,
             "release_receipt": {
                 "state": "GITHUB_OIDC_ATTESTED",
                 "source_revision": revision,
@@ -60,6 +63,7 @@ class FrontierLiveCanaryTests(unittest.TestCase):
                 })
             sources.append(source)
         return {
+            "rotation_generation": self.ROTATION_GENERATION,
             "sources": sources,
             "opportunities": [
                 {
@@ -135,6 +139,27 @@ class FrontierLiveCanaryTests(unittest.TestCase):
         )
         self.assertFalse(report["complete"])
         self.assertFalse(report["deployment"]["source_bound"])
+
+    def test_expected_rotation_generation_binds_board_and_build_processes(self) -> None:
+        report = canary.evaluate(
+            self._board(),
+            self._build(),
+            expected_revision="a" * 40,
+            expected_rotation_generation=self.ROTATION_GENERATION,
+        )
+        self.assertTrue(report["complete"])
+        self.assertTrue(report["deployment"]["rotation_generation_bound"])
+
+        board = self._board()
+        board["rotation_generation"] = "sha256:" + "e" * 64
+        report = canary.evaluate(
+            board,
+            self._build(),
+            expected_revision="a" * 40,
+            expected_rotation_generation=self.ROTATION_GENERATION,
+        )
+        self.assertFalse(report["complete"])
+        self.assertFalse(report["deployment"]["rotation_generation_bound"])
 
     def test_missing_snapshot_or_delivery_never_passes_live_counts(self) -> None:
         for index in range(4):

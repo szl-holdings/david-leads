@@ -476,6 +476,7 @@ def healthz():
         ),
         "access_mode": "PUBLIC_READONLY" if _PUBLIC_READONLY else "AUTHENTICATED",
         "doctrine": "SZL governed-AI · honest by design",
+        "rotation_generation": _rotation_generation(),
     }
     persistence = dd.persistence_state() if dd is not None else "UNAVAILABLE"
     evidence = _evidence_readiness()
@@ -575,6 +576,12 @@ def _observed_source_revision() -> str | None:
     return None
 
 
+def _rotation_generation() -> str | None:
+    """Expose only the non-secret marker loaded by this exact Space process."""
+    value = str(os.environ.get("DAVID_ROTATION_GENERATION") or "").lower()
+    return value if re.fullmatch(r"sha256:[0-9a-f]{64}", value) else None
+
+
 def _runtime_bundle_manifest() -> dict:
     """Hash the exact runtime files Docker copies so live bytes can be compared to GitHub."""
     roots = [
@@ -629,6 +636,7 @@ def _runtime_bundle_manifest() -> dict:
         "files": files,
         "source_revision": revision,
         "source_revision_state": "OBSERVED" if revision else "UNAVAILABLE",
+        "rotation_generation": _rotation_generation(),
         "github_huggingface_alignment": "UNVERIFIED",
         "alignment_note": (
             "Compare this runtime bundle digest and file manifest with the Docker-copied GitHub tree. "
@@ -742,7 +750,12 @@ def login(req: LoginReq):
         "expires_at": time.time() + _TOKEN_TTL_SECONDS,
         "username": req.username,
     }
-    return {"token": tok, "user": req.username, "expires_in": _TOKEN_TTL_SECONDS}
+    return {
+        "token": tok,
+        "user": req.username,
+        "expires_in": _TOKEN_TTL_SECONDS,
+        "rotation_generation": _rotation_generation(),
+    }
 
 
 @app.post("/api/logout")
@@ -1800,6 +1813,7 @@ def frontier_desk(
     board["multi_source_accounts"] = source.get("multi_source_accounts", 0)
     board["evidence_constellation"] = source.get("evidence_constellation", {})
     board["frontier_doctrine"] = source.get("doctrine")
+    board["rotation_generation"] = _rotation_generation()
     if principal == "operator":
         _STATE["frontier_desk"] = board
     else:
