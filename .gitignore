@@ -19,3 +19,5 @@ recover_*.png
 deploy_build/
 hf_space/
 PY
+# local venv
+.venv/
