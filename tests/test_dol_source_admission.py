@@ -5,15 +5,14 @@ import json
 import os
 from pathlib import Path
 import tempfile
-import unittest
-from unittest import mock
+from unittest import TestCase, mock
 from app.domain.david_reference import Hold
 from app.domain import source_admission as admission
 from app.domain.source_policy import SourceHealthRecord, public_capabilities, record_source_attempt, sanitize_public_payload, source_status
 from app.federal_refresh_store import load_dol_snapshot
 from tests.dol_fixtures import KEY, NOW, REVISION, fixture, bundle_files, policy
 
-class ImmutableSnapshotTests(unittest.TestCase):
+class ImmutableSnapshotTests(TestCase):
     def setUp(self):
         self.value = fixture()
         self.now = max(NOW, __import__('datetime').datetime.now(__import__('datetime').timezone.utc))
@@ -74,7 +73,7 @@ class ImmutableSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(Hold,'SCHEMA_CHANGED'):
             load_dol_snapshot(REVISION,signing_key=KEY,now=self.now,downloader=lambda *_:b'{"lane":1,"lane":2}')
 
-class AdmissionTests(unittest.TestCase):
+class AdmissionTests(TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.value=fixture(); self.policy=policy(self.value)

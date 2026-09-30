@@ -16,7 +16,7 @@ import urllib.error
 from collections.abc import Callable
 from functools import partial
 
-from app import federal_snapshot as snapshots
+from app import dol_admission_signature, federal_snapshot as snapshots
 
 DEFAULT_STATES = snapshots.TARGET_STATES
 SCHEDULED_USASPENDING_TIMEOUT = 60
@@ -122,7 +122,6 @@ def main(argv=None) -> int:
         configured_key = os.environ.get("DOL_SNAPSHOT_SIGNING_KEY", "") if args.lane == "form5500" else ""
         admission_signature = None
         if configured_key:
-            from app import dol_admission_signature
             admission_signature = dol_admission_signature.sign(bundle["snapshot"], bundle["receipt"], configured_key.encode("utf-8"))
         snapshots.write_bundle(bundle, args.out)
         if admission_signature is not None:

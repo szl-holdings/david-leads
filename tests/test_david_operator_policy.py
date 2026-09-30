@@ -126,6 +126,16 @@ class OperatorPolicyTests(unittest.TestCase):
             missing = client.get("/readyz")
             self.assertEqual(missing.status_code, 200)
             self.assertEqual(missing.json()["operator_workflow"]["workspace_access"], "BLOCKED")
+            with patch(
+                "app.domain.operator_policy.load_operator_context",
+                side_effect=Hold("private-policy-path-and-operator-detail"),
+            ):
+                denied = client.get("/readyz").json()
+                self.assertEqual(
+                    denied["operator_workflow"]["blockers"],
+                    ["OPERATOR_POLICY_NOT_ADMITTED"],
+                )
+                self.assertNotIn("private-policy-path-and-operator-detail", json.dumps(denied))
             with patch.dict(os.environ, {"DAVID_OPERATOR_POLICY_JSON": json.dumps(self.policy)}):
                 current = client.get("/readyz").json()
                 self.assertEqual(current["operator_workflow"]["workspace_access"], "AVAILABLE")

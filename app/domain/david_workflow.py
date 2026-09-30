@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any
 
 from .david_reference import Hold, aware, digest, parse_stamp, stamp
 from .operator_policy import OperatorContext, PURPOSE

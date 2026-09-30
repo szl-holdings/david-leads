@@ -40,7 +40,20 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         self.assertIn("echo_snapshot.load_verified_records(states, 1)", admission)
         self.assertIn("federal_snapshot.load_lane(lane, states, 1)", admission)
         self.assertIn("states = list(federal_snapshot.TARGET_STATES)", admission)
-        self.assertNotIn("HF_TOKEN", admission)
+        # The canonical dataset is private. Its verifier receives an explicit
+        # read credential in this step, without a publisher environment or SDK
+        # token-cache fallback. Provider mutation still depends on admission.
+        verification = admission.split(
+            "- name: Verify complete fresh bundles using the runtime contract", 1
+        )[1]
+        self.assertIn(
+            "DAVID_DATASET_READ_TOKEN: ${{ secrets.HF_TOKEN }}", verification
+        )
+        self.assertEqual(admission.count("secrets.HF_TOKEN"), 1)
+        self.assertNotRegex(admission, r"(?m)^\s+HF_TOKEN:")
+        self.assertNotRegex(admission, r"(?m)^    env:")
+        for mutation in ("create_commit", "upload_folder", "add_space_secret", "add_space_variable"):
+            self.assertNotIn(mutation, admission)
         self.assertIn("needs: [classify, dataset-admission]", workflow)
 
     def test_all_actions_are_immutable_pins(self) -> None:

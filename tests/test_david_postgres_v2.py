@@ -23,11 +23,9 @@ import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 from app.domain.david_postgres import (
-    PostgresLedger,
     connect_postgres_ledger,
     verify_runtime_contract,
     apply_evidence_schema,
-    SCHEMA_PATH,
 )
 from app.domain.david_reference import (
     Grant,

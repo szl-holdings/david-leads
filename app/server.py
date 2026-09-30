@@ -497,8 +497,9 @@ def healthz():
             DAVID_USER or "", datetime.max.replace(tzinfo=timezone.utc), now)
         context.require("read", now)
         body["operator_policy"] = "VALID_CURRENT_POLICY"
-    except Hold as exc:
-        operator_blockers.append(str(exc))
+    except Hold:
+        # Public readiness must not relay private policy exception details.
+        operator_blockers.append("OPERATOR_POLICY_NOT_ADMITTED")
     body["operator_workflow"] = {
         "workspace_access": "BLOCKED" if operator_blockers else "AVAILABLE",
         "blockers": operator_blockers,
