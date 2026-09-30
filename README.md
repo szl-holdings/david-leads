@@ -22,6 +22,74 @@ tags:
 
 > **SZL Holdings flagship:** the governed lead-intelligence and broker-research surface.
 
+> **Repository disposition (2026-09-30):** this repo was briefly dispositioned
+> "ARCHIVED duplicate/hologram, canonical a11oy." That disposition was reversed
+> by owner order: **david-leads is a real vertical** — public insurance
+> intelligence + revenue frontier. Historical "Archived …" report titles in
+> this repo predate the reversal and are retained as provenance, not as current
+> status.
+
+## Vertical rebuild — v0 receipted scoring service (`backend/`)
+
+A self-contained FastAPI vertical that does what david-leads promises at v0
+scale: public-record-driven insurance lead intelligence where **evidence
+provenance is the product**.
+
+### Run it (offline, no keys, no licensed data)
+
+```bash
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --port 8000
+# open http://127.0.0.1:8000/ — source states, labeled demo leads, receipted scoring
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | liveness with a declared truth state |
+| `GET /v1/sources` | honest state of every ingestion adapter (DEMO / PUBLIC / LICENSED) |
+| `GET /v1/leads` | the synthetic demo dataset, labeled synthetic in both directions |
+| `POST /v1/score` | score a demo or inline lead; every response carries a receipt with `truth_state` |
+| `POST /v1/receipts/verify` | offline verification: payload hash, ECDSA check when keyed, explicit chain state |
+
+Live public-source probes are opt-in: `DAVID_LEADS_LIVE=1 uvicorn backend.main:app`.
+Signing is opt-in: install `cryptography` and set `SZL_COSIGN_PRIVATE_PEM`
+(verify with `SZL_COSIGN_PUBLIC_PEM`). Without a key, receipts are
+`UNSIGNED (hash-chained, honest)` — disclosed, never fabricated.
+
+### The vertical thesis
+
+Insurance lead intelligence is dominated by licensed black boxes (the
+Verisk / LexisNexis Risk / Zesty.ai / Cape Analytics pattern): a score arrives,
+the evidence behind it does not. david-leads inverts the deal. Every scoring
+decision emits a tamper-evident receipt (DSSE pre-authentication encoding,
+ECDSA-P256 when keyed); every source reports a truth state
+(`VERIFIED / UNKNOWN / UNAVAILABLE`); licensed sources are structurally
+`UNAVAILABLE` until licensed and their signals are denied by policy, not merely
+absent; and a record with no admitted evidence gets `INCOMPLETE` — never a
+number. The scorer is a disclosed weighted geometric mean (the estate
+Lambda-spine); the whole model fits in `backend/scoring.py`.
+
+### Honest state table (v0, verified 2026-09-30)
+
+| Component | State | Evidence / note |
+|---|---|---|
+| Service boot, `/healthz` | VERIFIED | HTTP 200 local run |
+| Receipted scoring over the synthetic demo set | VERIFIED (mechanics); records are synthetic and say so | demo-001…004 scored, receipt per decision |
+| Default-DENY gate (unevidenced + unlicensed signals) | VERIFIED | demo-003 rumor signal denied; demo-004 licensed-feed signal denied |
+| Missing evidence → `INCOMPLETE`, no score | VERIFIED | demo-005 (zero signals) |
+| DSSE/ECDSA-P256 signing with `SZL_COSIGN_PRIVATE_PEM` | VERIFIED | `SIGNATURE_VERIFIED` round-trip; tamper → `FAILED` |
+| UNSIGNED hash-chained fallback (no key) | VERIFIED | `HASH_INTEGRITY_VERIFIED`; tamper → `FAILED` |
+| USAspending + SEC EDGAR live probes (`DAVID_LEADS_LIVE=1`) | VERIFIED | probe 200 on 2026-09-30 |
+| EPA ECHO live probe | UNAVAILABLE | EPA service returned HTTP 5xx at probe time |
+| Verisk, LexisNexis Risk, Zesty.ai, Cape Analytics | UNAVAILABLE | licensed commercial sources; no license or credentials in this deployment |
+| Live award/filing parsing into lead records | NOT IMPLEMENTED in v0 | adapters prove reachability only; entity-resolution lane remains in legacy `app/` |
+| Durable receipt store | UNAVAILABLE | receipts chain in process memory; local ≠ remote |
+
+The legacy research platform (`app/`, tests, research docs) remains in tree and
+is unchanged by this rebuild; `backend/` is the clean v0 vertical surface.
+
+---
+
 David Leads helps insurance operators answer five questions quickly:
 
 1. Which organization should I research first?
