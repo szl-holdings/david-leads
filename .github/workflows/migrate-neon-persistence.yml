@@ -41,6 +41,11 @@ jobs:
             echo "::error::Persistence migration may run only from protected main"
             exit 1
           }
+          observed_main="$(git ls-remote https://github.com/szl-holdings/david-leads.git refs/heads/main | cut -f1)"
+          test "$observed_main" = "$GITHUB_SHA" || {
+            echo "::error::Migration source is no longer current protected main"
+            exit 1
+          }
           if [ -z "${DAVID_DATABASE_ADMIN_URL:-}" ]; then
             echo "::error::Missing protected environment secret: DAVID_DATABASE_ADMIN_URL"
             exit 1
@@ -55,7 +60,7 @@ jobs:
       - name: Install exact database client
         run: >-
           python3 -m pip install --disable-pip-version-check
-          "psycopg[binary]==3.2.9"
+          "psycopg[binary]==3.3.6"
 
       - name: Apply versioned schema in one transaction
         env:
@@ -73,6 +78,7 @@ jobs:
           import psycopg
           from psycopg import sql
           from psycopg.conninfo import conninfo_to_dict
+          from app.domain.david_postgres import RUNTIME_TABLE_PRIVILEGES, verify_runtime_contract
 
           def validated_fields(value, label):
               try:
@@ -115,18 +121,15 @@ jobs:
               Path("app/evidence_schema.sql"),
           )
           schema_bytes = b"".join(path.read_bytes() for path in schema_paths)
-          statements = [
-              statement.strip()
-              for path in schema_paths
-              for statement in path.read_text(encoding="utf-8").split(";")
-              if statement.strip()
-          ]
+          # Execute each complete SQL program through psycopg's simple query
+          # protocol. Splitting on semicolons corrupts quoted strings and DO blocks.
+          schema_programs = [path.read_text(encoding="utf-8") for path in schema_paths]
           try:
               with psycopg.connect(admin_dsn, connect_timeout=8) as connection:
                   with connection.cursor() as cursor:
                       cursor.execute("SET LOCAL statement_timeout = '5000ms'")
-                      for statement in statements:
-                          cursor.execute(statement)
+                      for program in schema_programs:
+                          cursor.execute(program, prepare=False)
                       cursor.execute(
                           """
                           SELECT
@@ -234,16 +237,7 @@ jobs:
                           "david_dealdesk_schema": {"SELECT"},
                           "david_dealdesk_state": {"SELECT", "INSERT", "UPDATE"},
                           "david_dealdesk_events": {"SELECT", "INSERT"},
-                          "source_grants": {"SELECT", "INSERT", "UPDATE"},
-                          "observations": {"SELECT", "INSERT", "UPDATE"},
-                          "identity_candidates": {"SELECT", "INSERT", "UPDATE"},
-                          "evidence_nodes": {"SELECT", "INSERT", "UPDATE"},
-                          "evidence_edges": {"SELECT", "INSERT"},
-                          "derivations": {"SELECT", "INSERT", "UPDATE"},
-                          "clearances": {"SELECT", "INSERT", "UPDATE"},
-                          "suppressions": {"SELECT", "INSERT", "UPDATE"},
-                          "outcomes": {"SELECT", "INSERT", "UPDATE"},
-                          "outbox": {"SELECT", "INSERT", "UPDATE"},
+                          **RUNTIME_TABLE_PRIVILEGES,
                       }
                       for table_name in table_privileges:
                           cursor.execute(
@@ -384,8 +378,12 @@ jobs:
                           "WHERE schema_name = %s",
                           ("evidence",),
                       )
-                      if cursor.fetchone() != (1,):
+                      if cursor.fetchone() != (2,):
                           raise RuntimeError("unsupported evidence schema version")
+              # The runtime login independently verifies the real schema and role;
+              # an administrator's successful migration is not runtime isolation.
+              with psycopg.connect(runtime_dsn, connect_timeout=8) as runtime_connection:
+                  verify_runtime_contract(runtime_connection)
           except Exception:
               raise SystemExit("versioned Neon schema migration failed")
 

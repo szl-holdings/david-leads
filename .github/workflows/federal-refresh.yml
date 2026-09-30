@@ -78,6 +78,7 @@ jobs:
         if: matrix.lane != 'echo'
         env:
           LANE: ${{ matrix.lane }}
+          DOL_SNAPSHOT_SIGNING_KEY: ${{ matrix.lane == 'form5500' && secrets.DOL_SNAPSHOT_SIGNING_KEY || '' }}
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -144,6 +145,7 @@ jobs:
       - name: Publish one atomic verified dataset commit
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DOL_SNAPSHOT_SIGNING_KEY: ${{ matrix.lane == 'form5500' && secrets.DOL_SNAPSHOT_SIGNING_KEY || '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -204,6 +206,7 @@ jobs:
             evidence/
             snapshot/snapshot.json
             snapshot/receipt.json
+            snapshot/admission-signature.json
             publication.json
             ${{ steps.attest_snapshot.outputs.bundle-path }}
           if-no-files-found: error

@@ -91,8 +91,12 @@ jobs:
           cache: pip
       - name: Install application and test dependencies
         run: python3 -m pip install --requirement requirements-dev.txt
-      - name: Run Postgres evidence-adapter and P1b API tests
-        run: python3 -m unittest -v tests.test_david_postgres tests.test_david_p1b_api
+      - name: Run runtime-role storage and authenticated workflow contracts
+        run: >-
+          python3 qa/run_required_tests.py
+          tests/test_david_postgres.py tests/test_david_postgres_v2.py
+          tests/test_david_workflow_api.py tests/test_david_p1b_api.py
+          --junitxml=postgres-test-results.xml
 
   operational-safety:
     runs-on: ubuntu-latest
@@ -129,8 +133,13 @@ jobs:
       - name: Compile application and operations modules
         run: python3 -m compileall -q app ops tools
       - name: Run full safety and application test suite
-        run: python3 -m unittest discover -s tests -t . -p "test_*.py" -v
-      - name: Run pytest safety and Federal Refresh regressions
-        run: python3 -m pytest -q
+        run: python3 qa/run_required_tests.py tests --junitxml=required-test-results.xml
       - name: Run all browser-state and truth-surface regressions
         run: node --test tests/*.test.mjs
+      - name: Preserve executed test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: operational-safety-${{ github.sha }}
+          path: required-test-results.xml
+          if-no-files-found: error

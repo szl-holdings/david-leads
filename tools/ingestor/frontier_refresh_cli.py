@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+from pathlib import Path
 import sys
 import time
 import urllib.error
 from collections.abc import Callable
 from functools import partial
 
-from app import federal_snapshot as snapshots
+from app import dol_admission_signature, federal_snapshot as snapshots
 
 DEFAULT_STATES = snapshots.TARGET_STATES
 SCHEDULED_USASPENDING_TIMEOUT = 60
@@ -117,7 +119,16 @@ def main(argv=None) -> int:
                                 per_state_limit=args.per_state_limit,
                                 report=lambda event: print(json.dumps(event, sort_keys=True),
                                                            file=sys.stderr, flush=True))
+        configured_key = os.environ.get("DOL_SNAPSHOT_SIGNING_KEY", "") if args.lane == "form5500" else ""
+        admission_signature = None
+        if configured_key:
+            admission_signature = dol_admission_signature.sign(bundle["snapshot"], bundle["receipt"], configured_key.encode("utf-8"))
         snapshots.write_bundle(bundle, args.out)
+        if admission_signature is not None:
+            with (Path(args.out) / dol_admission_signature.FILENAME).open("xb") as stream:
+                stream.write(snapshots.canonical(admission_signature) + b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
     except Exception as exc:
         # Providers can include arbitrary response bodies in errors; log only class.
         print(f"FEDERAL_REFRESH_FAILED_CLOSED lane={args.lane} error={type(exc).__name__}", file=sys.stderr)
@@ -125,7 +136,8 @@ def main(argv=None) -> int:
     snapshot = bundle["snapshot"]
     print(json.dumps({"state": "LOCAL_VERIFIED", "lane": args.lane,
                       "snapshot_id": snapshot["snapshot_id"], "record_count": snapshot["record_count"],
-                      "coverage": snapshot["coverage"], "receipt_state": "PAYLOAD_VERIFIED_UNSIGNED"}, sort_keys=True))
+                      "coverage": snapshot["coverage"], "receipt_state": "PAYLOAD_VERIFIED_UNSIGNED",
+                      "operator_admission_authentication": "HMAC_PRESENT" if admission_signature else "NOT_CONFIGURED"}, sort_keys=True))
     return 0
 
 

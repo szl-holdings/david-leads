@@ -7,6 +7,16 @@ INSERT INTO david_dealdesk_schema (schema_name, schema_version)
 VALUES ('evidence', 1)
 ON CONFLICT (schema_name) DO NOTHING;
 
+-- A replay of this migration may preserve V1 or V2; it must never silently
+-- reinterpret a database already migrated by a newer application contract.
+DO $$
+BEGIN
+    IF (SELECT schema_version FROM david_dealdesk_schema WHERE schema_name='evidence') NOT IN (1,2) THEN
+        RAISE EXCEPTION 'EVIDENCE_SCHEMA_VERSION_MISMATCH';
+    END IF;
+END
+$$;
+
 CREATE TABLE IF NOT EXISTS source_grants (
     tenant text NOT NULL,
     source_id text NOT NULL,
@@ -64,7 +74,7 @@ CREATE TABLE IF NOT EXISTS identity_candidates (
     ),
     CONSTRAINT identity_candidates_candidates_are_not_canonical CHECK (
         canonical_organization_id IS NULL
-        OR relationship IN ('SAME_ORGANIZATION_ID', 'SAME_NON_ORGANIZATION_RECORD')
+        OR (relationship = 'SAME_ORGANIZATION_ID' AND kind = 'organization')
     )
 );
 
@@ -223,3 +233,99 @@ CREATE POLICY outbox_tenant ON outbox
     FOR ALL
     USING (tenant = current_setting('david.tenant', true))
     WITH CHECK (tenant = current_setting('david.tenant', true));
+
+-- V2 preserves every original envelope byte. New decisions bind a scoped epoch.
+CREATE TABLE IF NOT EXISTS decision_scopes (
+    tenant text NOT NULL,
+    scope_id text NOT NULL,
+    decision_epoch bigint NOT NULL DEFAULT 0 CHECK (decision_epoch >= 0),
+    suppressed boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (tenant, scope_id)
+);
+ALTER TABLE decision_scopes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS decision_scopes_tenant ON decision_scopes;
+CREATE POLICY decision_scopes_tenant ON decision_scopes FOR ALL
+    USING (tenant = current_setting('david.tenant', true))
+    WITH CHECK (tenant = current_setting('david.tenant', true));
+ALTER TABLE evidence_nodes ADD COLUMN IF NOT EXISTS scope_id text NOT NULL DEFAULT 'legacy';
+ALTER TABLE evidence_nodes ADD COLUMN IF NOT EXISTS decision_epoch bigint NOT NULL DEFAULT 0;
+INSERT INTO decision_scopes (tenant, scope_id)
+SELECT DISTINCT tenant, scope_id FROM evidence_nodes ON CONFLICT DO NOTHING;
+
+ALTER TABLE source_grants ADD COLUMN IF NOT EXISTS scope_id text NOT NULL DEFAULT 'legacy';
+ALTER TABLE source_grants DROP CONSTRAINT IF EXISTS source_grants_pkey;
+ALTER TABLE source_grants ADD PRIMARY KEY (tenant,source_id,policy_revision,scope_id);
+ALTER TABLE observations ADD COLUMN IF NOT EXISTS scope_id text NOT NULL DEFAULT 'legacy';
+ALTER TABLE observations DROP CONSTRAINT IF EXISTS observations_tenant_source_id_source_record_id_revision_key;
+CREATE UNIQUE INDEX IF NOT EXISTS observations_scoped_source_revision
+    ON observations (tenant,source_id,source_record_id,revision,scope_id);
+
+CREATE TABLE IF NOT EXISTS source_grant_authorities (
+    tenant text NOT NULL,
+    source_id text NOT NULL,
+    policy_revision text NOT NULL,
+    revoked boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (tenant,source_id,policy_revision)
+);
+ALTER TABLE source_grant_authorities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS source_grant_authorities_tenant ON source_grant_authorities;
+CREATE POLICY source_grant_authorities_tenant ON source_grant_authorities FOR ALL
+    USING (tenant = current_setting('david.tenant', true))
+    WITH CHECK (tenant = current_setting('david.tenant', true));
+
+ALTER TABLE identity_candidates DROP CONSTRAINT IF EXISTS identity_candidates_candidates_are_not_canonical;
+ALTER TABLE identity_candidates ADD CONSTRAINT identity_candidates_candidates_are_not_canonical
+    CHECK (canonical_organization_id IS NULL
+        OR (relationship = 'SAME_ORGANIZATION_ID' AND kind = 'organization'));
+
+ALTER TABLE identity_candidates DROP CONSTRAINT IF EXISTS identity_candidates_typed_namespace;
+ALTER TABLE identity_candidates ADD CONSTRAINT identity_candidates_typed_namespace CHECK (
+    (namespace <> 'PARCEL' OR kind = 'parcel') AND
+    (namespace <> 'EPA_FRS' OR kind = 'facility') AND
+    (namespace <> 'USDOT' OR kind = 'carrier') AND
+    (namespace NOT IN ('SEC_CIK','UEI') OR kind = 'organization')
+);
+
+CREATE TABLE IF NOT EXISTS source_health (
+    tenant text NOT NULL,
+    source_id text NOT NULL,
+    revision bigint NOT NULL DEFAULT 0 CHECK (revision >= 0),
+    record jsonb NOT NULL,
+    PRIMARY KEY (tenant,source_id)
+);
+ALTER TABLE source_health ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS source_health_tenant ON source_health;
+CREATE POLICY source_health_tenant ON source_health FOR ALL
+    USING (tenant = current_setting('david.tenant', true))
+    WITH CHECK (tenant = current_setting('david.tenant', true));
+
+CREATE TABLE IF NOT EXISTS manual_tasks (
+    tenant text NOT NULL,
+    id text NOT NULL,
+    scope_id text NOT NULL,
+    decision_epoch bigint NOT NULL,
+    clearance_node text NOT NULL,
+    idempotency_key text NOT NULL,
+    request_digest text NOT NULL,
+    body text NOT NULL,
+    state text NOT NULL CHECK (state IN ('PENDING', 'REVOKED')),
+    PRIMARY KEY (tenant, id),
+    UNIQUE (tenant, scope_id, idempotency_key),
+    FOREIGN KEY (tenant, id) REFERENCES evidence_nodes (tenant, id),
+    FOREIGN KEY (tenant, clearance_node) REFERENCES evidence_nodes (tenant, id)
+);
+ALTER TABLE manual_tasks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS manual_tasks_tenant ON manual_tasks;
+CREATE POLICY manual_tasks_tenant ON manual_tasks FOR ALL
+    USING (tenant = current_setting('david.tenant', true))
+    WITH CHECK (tenant = current_setting('david.tenant', true));
+
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PENDING';
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS fencing_token bigint NOT NULL DEFAULT 0;
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS lease_until timestamptz;
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS worker text;
+ALTER TABLE outbox DROP CONSTRAINT IF EXISTS outbox_status_known;
+ALTER TABLE outbox ADD CONSTRAINT outbox_status_known
+    CHECK (status IN ('PENDING', 'LEASED', 'DISPATCHING', 'PUBLISHED', 'DELIVERY_UNKNOWN', 'CANCELLED'));
+UPDATE david_dealdesk_schema SET schema_version=2, applied_at=now()
+WHERE schema_name='evidence' AND schema_version=1;

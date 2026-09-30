@@ -24,7 +24,7 @@ HUB_SECRET = re.compile(r"secrets\.(?:HF_[A-Z0-9_]*|HUGGING[A-Z0-9_]*)")
 HUB_INSTALL = re.compile(r"huggingface[_-]hub(?P<spec>[^\s\"'\]]*)", re.IGNORECASE)
 
 
-def tested_hub_version() -> str:
+def pinned_hub_version() -> str:
     for line in (ROOT / "requirements-ingestor.txt").read_text(encoding="utf-8").splitlines():
         match = re.fullmatch(r"huggingface_hub==([0-9][0-9A-Za-z.+-]*)", line.strip())
         if match:
@@ -76,7 +76,7 @@ class HubWriteLockTests(unittest.TestCase):
                 self.assertNotIn("hf-write/", path.read_text(encoding="utf-8"))
 
     def test_every_hub_install_is_the_tested_exact_version(self) -> None:
-        expected = f"=={tested_hub_version()}"
+        expected = f"=={pinned_hub_version()}"
         seen = 0
         for path in WORKFLOWS.glob("*.y*ml"):
             for match in HUB_INSTALL.finditer(path.read_text(encoding="utf-8")):

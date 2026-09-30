@@ -394,8 +394,10 @@ def write_bundle(bundle: dict, out: str | Path) -> None:
 
 
 def _download(path: str, limit: int) -> bytes:
-    request = urllib.request.Request(f"{DATASET_BASE}/{path}", headers={"User-Agent": "SZL-David-Leads/FederalSnapshot-1"})
-    with urllib.request.urlopen(request, timeout=45) as response:
+    from .hf_dataset_transport import open_dataset_url
+
+    with open_dataset_url(f"{DATASET_BASE}/{path}", timeout=45,
+                          user_agent="SZL-David-Leads/FederalSnapshot-1") as response:
         result = response.read(limit + 1)
     if len(result) > limit:
         raise SnapshotError("dataset download exceeds bounds")

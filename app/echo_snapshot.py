@@ -112,12 +112,10 @@ PROJECTION_POLICY_SHA256 = _sha256(canonical_json(PROJECTION_POLICY))
 
 
 def _open_url(url: str) -> BinaryIO:
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-        method="GET",
-    )
-    return urllib.request.urlopen(request, timeout=HTTP_TIMEOUT_SECONDS)
+    from .hf_dataset_transport import open_dataset_url
+
+    return open_dataset_url(url, timeout=HTTP_TIMEOUT_SECONDS,
+                            user_agent=USER_AGENT, accept="application/json")
 
 
 def _load_json(url: str, label: str) -> dict[str, Any]:

@@ -155,6 +155,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Verify complete fresh bundles using the runtime contract
+        env:
+          DAVID_DATASET_READ_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           python3 - <<'PY'
           import json

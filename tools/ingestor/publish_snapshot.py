@@ -357,6 +357,7 @@ def _publish_frozen(
     remote_entry_not_found: type[BaseException] | None = None,
     verifier: Callable[[Path], int] = verify,
     clock: Callable[[], datetime] | None = None,
+    admission_signing_key: bytes | None = None,
 ) -> dict[str, object]:
     """Verify, atomically publish, read back, and receipt one snapshot.
 
@@ -380,6 +381,14 @@ def _publish_frozen(
         raise PublicationError("strict local snapshot verification failed")
 
     snapshot = _load_snapshot(snapshot_dir)
+    from app import dol_admission_signature
+    signature_file = snapshot_dir / dol_admission_signature.FILENAME
+    if signature_file.exists():
+        try:
+            dol_admission_signature.verify(json.loads(signature_file.read_bytes()), snapshot,
+                json.loads((snapshot_dir / "receipt.json").read_bytes()), admission_signing_key)
+        except (TypeError, ValueError, KeyError) as exc:
+            raise PublicationError("DOL admission signature verification failed") from exc
     prefix, digest = _publication_prefix(snapshot)
     latest_bytes = _canonical_json(_pointer(snapshot, prefix))
     lane = str(snapshot.get("lane") or "echo-exporter")
@@ -390,6 +399,8 @@ def _publish_frozen(
         f"{prefix}/records.jsonl": snapshot_dir / "records.jsonl",
         pointer_path: latest_bytes,
     }
+    if signature_file.exists():
+        payloads[f"{prefix}/{dol_admission_signature.FILENAME}"] = signature_file
     if lane == "echo-exporter":
         contact = _takedown_contact()
         payloads["latest.json"] = latest_bytes
@@ -537,6 +548,7 @@ def publish_snapshot(
     remote_entry_not_found: type[BaseException] | None = None,
     verifier: Callable[[Path], int] = verify,
     clock: Callable[[], datetime] | None = None,
+    admission_signing_key: bytes | None = None,
 ) -> dict[str, object]:
     """Freeze one bounded bundle, verify those bytes, and publish those bytes."""
     if dataset_id != DATASET_ID:
@@ -549,14 +561,16 @@ def publish_snapshot(
     output = publication_receipt.resolve()
     if output == source or source in output.parents or output.exists():
         raise PublicationError("publication receipt must be new and outside the bundle")
-    if {p.name for p in source.iterdir()} != set(FILES):
+    from app.dol_admission_signature import FILENAME as signature_filename
+    names = {p.name for p in source.iterdir()}
+    if names not in (set(FILES), set(FILES) | {signature_filename}):
         raise PublicationError("snapshot directory file set mismatch")
     if clock is not None and clock().tzinfo is None:
         raise PublicationError("publication clock must be timezone-aware")
     with tempfile.TemporaryDirectory(prefix="david-publication-frozen-") as folder:
         frozen = Path(folder)
         remaining = MAX_BUNDLE_BYTES
-        for name in FILES:
+        for name in sorted(names):
             original = source / name
             if original.is_symlink() or not original.is_file():
                 raise PublicationError("snapshot files must be regular files")
@@ -573,7 +587,7 @@ def publish_snapshot(
             dataset_id, frozen, output, token=token,
             api_factory=api_factory, operation_factory=operation_factory,
             remote_entry_not_found=remote_entry_not_found,
-            verifier=verifier, clock=clock,
+            verifier=verifier, clock=clock, admission_signing_key=admission_signing_key,
         )
 
 
@@ -599,6 +613,7 @@ def main() -> int:
             Path(args.snapshot),
             Path(args.receipt_out),
             token=token,
+            admission_signing_key=os.environ.get("DOL_SNAPSHOT_SIGNING_KEY", "").encode("utf-8") or None,
         )
     except Exception as exc:  # Deliberately omit exception text: it may be remote-controlled.
         print(
