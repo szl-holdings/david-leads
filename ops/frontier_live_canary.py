@@ -257,6 +257,7 @@ def evaluate(
     build: dict[str, Any],
     *,
     expected_revision: str = "",
+    expected_rotation_generation: str = "",
 ) -> dict[str, Any]:
     checked_at = datetime.now(timezone.utc)
     raw_sources = board.get("sources") or []
@@ -311,12 +312,22 @@ def evaluate(
         and release.get("state") == "GITHUB_OIDC_ATTESTED"
         and release.get("source_revision") == revision
     )
+    board_generation = str(board.get("rotation_generation") or "").lower()
+    build_generation = str(build.get("rotation_generation") or "").lower()
+    expected_generation = expected_rotation_generation.strip().lower()
+    generation_required = bool(expected_generation)
+    rotation_generation_bound = bool(
+        re.fullmatch(r"sha256:[0-9a-f]{64}", expected_generation)
+        and board_generation == expected_generation
+        and build_generation == expected_generation
+    )
 
     complete = bool(
         all(lane["operational"] for lane in lanes)
         and record_contract["complete"]
         and source_bound
         and release_attested
+        and (not generation_required or rotation_generation_bound)
     )
     return {
         "schema": "szl.david-frontier-live-canary/v1",
@@ -338,29 +349,51 @@ def evaluate(
             "expected_revision": expected_revision or None,
             "source_bound": source_bound,
             "release_attested": release_attested,
+            "rotation_generation": (
+                build_generation
+                if re.fullmatch(r"sha256:[0-9a-f]{64}", build_generation)
+                and board_generation == build_generation
+                else None
+            ),
+            "expected_rotation_generation": expected_generation or None,
+            "rotation_generation_bound": (
+                rotation_generation_bound if generation_required else None
+            ),
         },
         "complete": complete,
     }
 
 
-def run(expected_revision: str = "") -> dict[str, Any]:
+def run(
+    expected_revision: str = "",
+    expected_rotation_generation: str = "",
+) -> dict[str, Any]:
     query = urllib.parse.urlencode(
         {"states": STATES, "limit_per_source": 3},
         safe=",",
     )
     board = _get_json(f"/api/frontier-desk?{query}")
     build = _get_json("/api/build-info", timeout=60)
-    return evaluate(board, build, expected_revision=expected_revision)
+    return evaluate(
+        board,
+        build,
+        expected_revision=expected_revision,
+        expected_rotation_generation=expected_rotation_generation,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="david-frontier-live-canary.json")
     parser.add_argument("--expected-revision", default="")
+    parser.add_argument("--expected-rotation-generation", default="")
     args = parser.parse_args(argv)
     report: dict[str, Any]
     try:
-        report = run(args.expected_revision.strip())
+        report = run(
+            args.expected_revision.strip(),
+            args.expected_rotation_generation.strip(),
+        )
     except Exception as exc:
         report = {
             "schema": "szl.david-frontier-live-canary/v1",

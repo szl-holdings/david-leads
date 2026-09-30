@@ -8,39 +8,9 @@ name: CI — operational safety
 on:
   push:
     branches: [main]
-    paths:
-      - "app/**"
-      - "tests/**"
-      - "ops/**"
-      - "tools/**"
-      - "research/**"
-      - "qa/**"
-      - "*.md"
-      - "*.txt"
-      - "*.html"
-      - "*.docx"
-      - "build_portable.py"
-      - "doc_build_make_doc.js"
-      - "Dockerfile"
-      - "requirements*.txt"
-      - ".github/workflows/**"
+  # This workflow is a protected-branch gate. Keep it unconditional so a PR
+  # cannot evade required checks by changing a path outside a filter.
   pull_request:
-    paths:
-      - "app/**"
-      - "tests/**"
-      - "ops/**"
-      - "tools/**"
-      - "research/**"
-      - "qa/**"
-      - "*.md"
-      - "*.txt"
-      - "*.html"
-      - "*.docx"
-      - "build_portable.py"
-      - "doc_build_make_doc.js"
-      - "Dockerfile"
-      - "requirements*.txt"
-      - ".github/workflows/**"
   workflow_dispatch: {}
 
 permissions:

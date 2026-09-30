@@ -156,7 +156,7 @@ class ReleaseTruthSurfaceTests(unittest.TestCase):
         )
         self.assertNotIn("may remain secondary", normalized)
 
-    def test_ci_paths_cover_all_publication_and_collateral_inputs(self):
+    def test_ci_is_an_unconditional_protected_branch_gate(self):
         workflow = (
             self.root / ".github" / "workflows" / "ci.yml"
         ).read_text(encoding="utf-8")
@@ -166,26 +166,19 @@ class ReleaseTruthSurfaceTests(unittest.TestCase):
         pull_request_block = workflow.split("  pull_request:", 1)[1].split(
             "  workflow_dispatch:", 1
         )[0]
-        required_paths = (
-            "tools/**",
-            "research/**",
-            "qa/**",
-            "*.md",
-            "*.txt",
-            "*.html",
-            "*.docx",
-            "build_portable.py",
-            "doc_build_make_doc.js",
-            ".github/workflows/**",
-        )
-
         for trigger, block in (
             ("push", push_block),
             ("pull_request", pull_request_block),
         ):
-            for required_path in required_paths:
-                with self.subTest(trigger=trigger, required_path=required_path):
-                    self.assertIn(f'- "{required_path}"', block)
+            with self.subTest(trigger=trigger):
+                self.assertNotIn("paths:", block)
+                self.assertNotIn("paths-ignore:", block)
+
+        self.assertIn("branches: [main]", push_block)
+        self.assertIn(
+            "cannot evade required checks by changing a path outside a filter",
+            workflow,
+        )
 
     def test_data_policy_covers_form5500_and_constellation(self):
         with patch.object(server, "_PUBLIC_READONLY", True):
