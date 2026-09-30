@@ -20,7 +20,6 @@ from fastapi.staticfiles import StaticFiles
 from . import __version__, receipts, scoring
 from .adapters import ALL_ADAPTERS, get as get_adapter
 from .models import (
-    LeadRecord,
     ScoreRequest,
     ScoreResponse,
     TruthState,

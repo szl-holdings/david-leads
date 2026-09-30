@@ -21,9 +21,7 @@ class IngestionAdapter(Protocol):
 
     def status(self) -> AdapterStatus:
         """Current honest state of the source. Cheap; must not raise."""
-        ...
 
     def fetch(self) -> list[LeadRecord]:
         """Records available right now. Empty list with an UNAVAILABLE/UNKNOWN
         status is an honest answer; an invented record is not permitted."""
-        ...
