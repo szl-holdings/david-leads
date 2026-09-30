@@ -89,7 +89,7 @@ class PublicCredentialSafety(unittest.TestCase):
         self.assertIn("id-token: write", deploy_workflow)
         self.assertIn("attestations: write", deploy_workflow)
         self.assertIn(
-            "actions/attest@36051bcae73b7c2a8a6945a48cbf80953c6baa35",
+            "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6",
             deploy_workflow,
         )
         self.assertIn(
