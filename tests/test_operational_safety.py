@@ -118,6 +118,7 @@ class PublicCredentialSafety(unittest.TestCase):
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
+            "DAVID_DATASET_READ_TOKEN",
         ):
             self.assertNotIn(f"secrets.{name}", deploy_workflow)
 
@@ -238,9 +239,29 @@ class PublicCredentialSafety(unittest.TestCase):
             "DAVID_PASS",
             "DAVID_ACCESS_KEY",
             "DAVID_DATABASE_URL",
+            "DAVID_DATASET_READ_TOKEN",
         ):
             self.assertIn(f'normalized_secret("{name}")', workflow)
         self.assertNotIn(".strip()", workflow)
+
+    def test_rotation_installs_a_verified_fine_grained_dataset_reader(self):
+        workflow = (
+            ROOT / ".github" / "workflows" / "rotate-space-credentials.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "DAVID_DATASET_READ_TOKEN: ${{ secrets.DAVID_DATASET_READ_TOKEN }}",
+            workflow,
+        )
+        self.assertNotIn(
+            "DAVID_DATASET_READ_TOKEN: ${{ secrets.HF_TOKEN }}",
+            workflow,
+        )
+        self.assertIn('normalized_role != "finegrained"', workflow)
+        self.assertIn('dataset_id = "SZLHOLDINGS/david-leads-data"', workflow)
+        self.assertIn('filename="latest.json"', workflow)
+        self.assertIn("revision=dataset_revision", workflow)
+        self.assertIn('"DAVID_DATASET_READ_TOKEN": dataset_read_token', workflow)
+        self.assertIn('"credential_values_recorded": False', workflow)
 
     def test_rotation_timeout_diagnostics_never_include_response_or_secret_values(self):
         workflow = (

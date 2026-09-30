@@ -10,13 +10,16 @@ Use an approved local vault to generate and retain replacements for:
 - `DAVID_PASS`
 - `DAVID_ACCESS_KEY`
 - `DAVID_DATABASE_URL`
+- `DAVID_DATASET_READ_TOKEN` — a fine-grained Hugging Face token limited to read
+  access on `SZLHOLDINGS/david-leads-data`
 
 The protected GitHub environment `david-space-credential-rotation` is configured with these
 controls:
 
 - deployment branches restricted to the protected `main` branch only;
 - a required owner approval before a bound job can start; and
-- `DAVID_USER`, `DAVID_PASS`, `DAVID_ACCESS_KEY`, `DAVID_DATABASE_URL`, and
+- `DAVID_USER`, `DAVID_PASS`, `DAVID_ACCESS_KEY`, `DAVID_DATABASE_URL`,
+  `DAVID_DATASET_READ_TOKEN`, and
   `DAVID_DATABASE_ADMIN_URL` are stored as
   environment secrets.
 
@@ -25,9 +28,11 @@ protected-main deployment and the owner-approved rotation workflow. No `DAVID_*`
 repository scope. Copy replacements directly from the approved vault into the encrypted environment
 secrets. Never put values in a commit, workflow input, issue, pull request, model card, log, or chat.
 
-Run the `Rotate David Space credentials` workflow manually from current protected `main`. It uses
-the scoped publisher to update all four Hugging Face Space secrets, waits until the replacement
-triplet itself logs in, proves logout, and emits only secret names and boolean verification results.
+Run the `Rotate David Space credentials` workflow manually from current protected `main`. It first
+requires the dataset reader to be fine-grained and proves it can read `latest.json` at an immutable
+private-dataset revision. It then uses the separate scoped publisher to update the five Hugging Face
+Space secrets, waits until the replacement triplet itself logs in, proves logout, and emits only
+secret names, public repository revisions, and boolean verification results.
 Database readiness is reported separately: a database outage cannot invalidate a successful
 authentication rotation, and successful rotation does not prove persistence readiness.
 
