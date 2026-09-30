@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>david-leads — receipted insurance lead intelligence</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>david-leads</h1>
+    <p class="tagline">
+      Public-record-driven insurance lead intelligence. Every scoring decision
+      ships with a tamper-evident receipt and a declared truth state.
+      This instance scores a clearly-labeled synthetic demonstration dataset;
+      licensed commercial sources report <code>UNAVAILABLE</code> until licensed.
+    </p>
+    <p class="legend">
+      Truth states:
+      <span class="chip verified">VERIFIED</span>
+      <span class="chip unknown">UNKNOWN</span>
+      <span class="chip unavailable">UNAVAILABLE</span>
+      <span class="chip incomplete">INCOMPLETE</span>
+    </p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Source states</h2>
+      <p class="note">UNAVAILABLE is an audited answer, not a hidden error. No adapter fabricates records.</p>
+      <table id="sources">
+        <thead>
+          <tr><th>Source</th><th>Kind</th><th>State</th><th>Detail</th></tr>
+        </thead>
+        <tbody><tr><td colspan="4">loading…</td></tr></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Demo leads <span class="chip unknown">SYNTHETIC — not real organizations</span></h2>
+      <div id="leads">loading…</div>
+    </section>
+
+    <section id="result" hidden>
+      <h2>Scoring decision</h2>
+      <div id="result-summary"></div>
+      <h3>Receipt</h3>
+      <pre id="receipt"></pre>
+      <button id="verify-btn">Verify receipt offline</button>
+      <pre id="verify-out" hidden></pre>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Advisory research-priority signals only — not probabilities, quotes,
+      underwriting decisions, consumer reports, or permission to contact.
+      A signature proves receipt integrity, not score correctness.
+    </p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+{
+  "dataset": "synthetic-demo-v1",
+  "label": "SYNTHETIC DEMONSTRATION DATA — every organization below is invented. No real business, public record, or person is represented. Exists so the vertical runs offline; receipts declare synthetic=true on every one of these records.",
+  "generated": "2026-09-30",
+  "leads": [
+    {
+      "entity_type": "organization",
+      "id": "demo-001",
+      "legal_name": "Synthetic Harbor Logistics LLC (DEMO)",
+      "state": "NY",
+      "naics": "484110",
+      "synthetic": true,
+      "provenance_note": "Invented demonstration organization. Not a real business.",
+      "signals": [
+        {
+          "source": "demo_synthetic",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented federal contract award recorded 6 days ago (demonstration row)",
+          "observed_at": "2026-09-24T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-001/award-1",
+          "authority_tier": 1,
+          "event_id": "evt-demo-001-award"
+        },
+        {
+          "source": "demo_synthetic_edgar",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented registrant filing referencing fleet expansion (demonstration row)",
+          "observed_at": "2026-09-20T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-001/filing-1",
+          "authority_tier": 1,
+          "event_id": "evt-demo-001-expansion"
+        },
+        {
+          "source": "demo_synthetic_state",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented state business-license renewal (demonstration row)",
+          "observed_at": "2026-09-15T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-001/license-1",
+          "authority_tier": 2,
+          "event_id": "evt-demo-001-license"
+        }
+      ]
+    },
+    {
+      "entity_type": "organization",
+      "id": "demo-002",
+      "legal_name": "Synthetic Beacon Manufacturing Corp (DEMO)",
+      "state": "OH",
+      "naics": "332710",
+      "synthetic": true,
+      "provenance_note": "Invented demonstration organization. Not a real business.",
+      "signals": [
+        {
+          "source": "demo_synthetic",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented facility monitoring report recorded 32 days ago (demonstration row)",
+          "observed_at": "2026-08-29T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-002/facility-1",
+          "authority_tier": 1,
+          "event_id": "evt-demo-002-facility"
+        },
+        {
+          "source": "demo_synthetic_state",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented state incorporation amendment (demonstration row)",
+          "observed_at": "2026-08-20T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-002/amendment-1",
+          "authority_tier": 2,
+          "event_id": "evt-demo-002-amendment"
+        }
+      ]
+    },
+    {
+      "entity_type": "organization",
+      "id": "demo-003",
+      "legal_name": "Synthetic Northwind Dental Group PC (DEMO)",
+      "state": "IL",
+      "naics": "621210",
+      "synthetic": true,
+      "provenance_note": "Invented demonstration organization. Not a real business. Carries one deliberately unevidenced signal so the Default DENY gate is visible in the demo.",
+      "signals": [
+        {
+          "source": "demo_synthetic",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented professional-corporation registration recorded 95 days ago (demonstration row)",
+          "observed_at": "2026-06-27T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-003/registration-1",
+          "authority_tier": 2,
+          "event_id": "evt-demo-003-registration"
+        },
+        {
+          "source": "demo_synthetic_rumor",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Unevidenced demonstration claim with no reference — must be denied by policy",
+          "observed_at": "2026-09-01T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": null,
+          "authority_tier": 3,
+          "event_id": null
+        }
+      ]
+    },
+    {
+      "entity_type": "organization",
+      "id": "demo-004",
+      "legal_name": "Synthetic Cascadia Foods Cooperative (DEMO)",
+      "state": "WA",
+      "naics": null,
+      "synthetic": true,
+      "provenance_note": "Invented demonstration organization. Not a real business. Carries one licensed-class signal to show that unlicensed third-party data is denied by default.",
+      "signals": [
+        {
+          "source": "demo_synthetic",
+          "source_class": "SYNTHETIC_DEMO",
+          "signal": "Invented cooperative annual filing recorded 210 days ago (demonstration row)",
+          "observed_at": "2026-03-04T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-004/filing-1",
+          "authority_tier": 2,
+          "event_id": "evt-demo-004-filing"
+        },
+        {
+          "source": "demo_licensed_claims_feed",
+          "source_class": "LICENSED_THIRD_PARTY",
+          "signal": "Demonstration loss-history attribute from an unlicensed commercial feed — must be denied",
+          "observed_at": "2026-09-10T00:00:00Z",
+          "retrieved_at": "2026-09-30T00:00:00Z",
+          "evidence_ref": "SYNTHETIC://demo/demo-004/licensed-1",
+          "authority_tier": 3,
+          "event_id": null
+        }
+      ]
+    },
+    {
+      "entity_type": "organization",
+      "id": "demo-005",
+      "legal_name": "Synthetic Mesa Verde Solar installers Inc (DEMO)",
+      "state": "AZ",
+      "naics": "238220",
+      "synthetic": true,
+      "provenance_note": "Invented demonstration organization with zero signals, to show Law 4: missing evidence yields INCOMPLETE and no score, never a fabricated number.",
+      "signals": []
+    }
+  ]
+}
