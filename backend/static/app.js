@@ -15,7 +15,7 @@ async function getJSON(url, opts) {
 async function loadSources() {
   const tbody = document.querySelector("#sources tbody");
   try {
-    const data = await getJSON("/v1/sources");
+    const data = await getJSON("v1/sources");
     tbody.innerHTML = "";
     for (const a of data.adapters) {
       const tr = document.createElement("tr");
@@ -33,7 +33,7 @@ async function loadSources() {
 async function loadLeads() {
   const host = document.querySelector("#leads");
   try {
-    const data = await getJSON("/v1/leads");
+    const data = await getJSON("v1/leads");
     host.innerHTML = "";
     for (const lead of data.leads) {
       const div = document.createElement("div");
@@ -64,7 +64,7 @@ async function scoreLead(id) {
   const verifyOut = document.querySelector("#verify-out");
   verifyOut.hidden = true;
   try {
-    const data = await getJSON("/v1/score", {
+    const data = await getJSON("v1/score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ lead_id: id }),
@@ -95,7 +95,7 @@ async function verifyReceipt() {
   const out = document.querySelector("#verify-out");
   if (!lastReceipt) return;
   try {
-    const data = await getJSON("/v1/receipts/verify", {
+    const data = await getJSON("v1/receipts/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ receipt: lastReceipt }),

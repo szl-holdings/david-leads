@@ -2468,6 +2468,24 @@ from .workflow_api import make_router as _make_workflow_router
 app.include_router(_make_workflow_router(_workflow_context, _workflow_ledger))
 
 
+# v0 receipted vertical (backend/): mounted under /v0 so no existing route, readiness
+# probe, or canary changes. An import failure degrades to an honest 503 UNAVAILABLE
+# at /v0/healthz instead of taking the Space down (Zero-Bandaid).
+try:
+    from backend.main import app as _v0_app
+except Exception as _v0_exc:  # noqa: BLE001 - the whole point is to survive a broken sub-app
+    _V0_IMPORT_ERROR = type(_v0_exc).__name__
+
+    @app.get("/v0/healthz", include_in_schema=False)
+    def _v0_unavailable():
+        return JSONResponse(
+            status_code=503,
+            content={"status": "UNAVAILABLE", "service": "david-leads-v0",
+                     "detail": f"v0 backend failed to import ({_V0_IMPORT_ERROR}); parent service unaffected"},
+        )
+else:
+    app.mount("/v0", _v0_app, name="v0")
+
 # static frontend (disabled when deployed behind the proxy; deploy serves static from S3)
 if SERVE_STATIC:
     app.mount("/", StaticFiles(directory=os.path.join(APP_DIR, "static"), html=True), name="static")
