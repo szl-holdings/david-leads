@@ -50,9 +50,12 @@ jobs:
           egress-policy: audit
 
       - name: Check out canary contract
+        # The canary code comes from this repository's own commit for the event;
+        # the deployed revision under test is EXPECTED_REVISION (data, never a
+        # checkout ref), which keeps Scorecard's DangerousWorkflow check clean.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up Python
