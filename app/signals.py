@@ -44,11 +44,16 @@ def _public_url(url: str) -> str:
 
 
 def _state_fips(value) -> str:
-    """Admit a state FIPS code by allowlist membership (fail closed on anything else)."""
+    """Admit a state FIPS code by allowlist membership (fail closed on anything else).
+
+    Returns the allowlist's own constant, so the string that reaches a URL is never the
+    request's bytes — the property CodeQL's py/partial-ssrf query needs to see as well.
+    """
     code = str(value or "").strip()
-    if code not in STATE_FIPS:
-        raise ValueError("state must be a 2-digit Census state FIPS code")
-    return code
+    for known in STATE_FIPS:
+        if known == code:
+            return known
+    raise ValueError("state must be a 2-digit Census state FIPS code")
 
 
 def _host_is(final_url: str, domain: str) -> bool:
