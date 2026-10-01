@@ -148,7 +148,7 @@ class ReceiptSignatureHonesty(unittest.TestCase):
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.primitives.asymmetric import ec
         except Exception:  # pragma: no cover - stdlib-only environments skip this
-            self.skipTest("cryptography not installed; unsigned honesty is covered above")
+            raise unittest.SkipTest("cryptography not installed; unsigned honesty is covered above")
         key = ec.generate_private_key(ec.SECP256R1())
         priv_pem = key.private_bytes(
             serialization.Encoding.PEM,

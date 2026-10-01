@@ -130,7 +130,7 @@ class LocalSignerRoundTrips(unittest.TestCase):
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.primitives.asymmetric import ec
         except Exception:  # pragma: no cover - stdlib-only runners skip
-            self.skipTest("cryptography not installed; family/divergence locks above still run")
+            raise unittest.SkipTest("cryptography not installed; family/divergence locks above still run")
         key = ec.generate_private_key(ec.SECP256R1())
         os.environ["SZL_COSIGN_PRIVATE_PEM"] = key.private_bytes(
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,

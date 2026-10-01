@@ -16,6 +16,44 @@ unavailable (e.g. meeting wifi), we fall back to bundled sample signals clearly 
 from __future__ import annotations
 import json, os, urllib.request, urllib.error
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
+
+# Public-data origins this module is allowed to call. _get() refuses anything else, so a
+# request parameter can never redirect a fetch to an arbitrary host (CodeQL py/partial-ssrf).
+PUBLIC_DATA_HOSTS = frozenset({
+    "api.census.gov", "efts.sec.gov", "api.bls.gov",
+    "api.fiscaldata.treasury.gov", "api.stlouisfed.org", "data.ny.gov",
+})
+# Every state/territory FIPS code the Census ACS serves. Request input is admitted only by
+# membership here — an allowlist, not a pattern — before it is placed in a URL.
+STATE_FIPS = frozenset({
+    "01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18",
+    "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33",
+    "34", "35", "36", "37", "38", "39", "40", "41", "42", "44", "45", "46", "47", "48", "49",
+    "50", "51", "53", "54", "55", "56", "72",
+})
+
+
+def _public_url(url: str) -> str:
+    """Return url unchanged if its origin is on the public-data allowlist; raise otherwise."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or host not in PUBLIC_DATA_HOSTS:
+        raise ValueError(f"refusing to fetch outside the public-data allowlist: {host or url!r}")
+    return url
+
+
+def _state_fips(value) -> str:
+    """Admit a state FIPS code by allowlist membership (fail closed on anything else)."""
+    code = str(value or "").strip()
+    if code not in STATE_FIPS:
+        raise ValueError("state must be a 2-digit Census state FIPS code")
+    return code
+
+
+def _host_is(final_url: str, domain: str) -> bool:
+    host = (urlsplit(final_url).hostname or "").lower()
+    return host == domain or host.endswith("." + domain)
 
 UA = {"User-Agent": "SZL Holdings David-Leads research@szlholdings.com"}
 TIMEOUT = 6
@@ -31,14 +69,14 @@ class CensusKeyMissing(RuntimeError):
 
 
 def _get(url: str, headers=None, timeout=TIMEOUT):
-    req = urllib.request.Request(url, headers=headers or UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    req = urllib.request.Request(_public_url(url), headers=headers or UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - origin allowlisted above
         final_url = r.geturl()
         ctype = (r.headers.get("Content-Type") or "").lower()
         raw = r.read().decode()
     # Census returns HTTP 200 after 302-redirecting an unkeyed request to an HTML
     # error page; detect it explicitly instead of letting json.loads() throw opaquely.
-    if "missing_key" in final_url or ("census.gov" in final_url and "html" in ctype):
+    if "missing_key" in final_url or (_host_is(final_url, "census.gov") and "html" in ctype):
         raise CensusKeyMissing(f"Census redirected to {final_url} — CENSUS_API_KEY absent/invalid")
     return json.loads(raw)
 
@@ -92,6 +130,7 @@ def bls_wage_growth():
 def census_income_age(state_fips: str = "36"):  # 36 = New York (David's market)
     """Census ACS median household income for David's state → demographic fit signal."""
     try:
+        state_fips = _state_fips(state_fips)
         key = _census_key()
         keyq = f"&key={key}" if key else ""
         url = (f"https://api.census.gov/data/2023/acs/acs1?get=NAME,B19013_001E,B01002_001E"
@@ -214,6 +253,7 @@ def census_key_status() -> str:
 
 
 def _fetch_acs(dataset, county_q, state_fips, keyq):
+    state_fips = _state_fips(state_fips)
     url = (f"https://api.census.gov/data/2023/acs/{dataset}?get=NAME,B19013_001E,B01002_001E,B11003_001E"
            f"&for=county:{county_q}&in=state:{state_fips}{keyq}")
     data = _get(url, timeout=12)
@@ -232,6 +272,7 @@ def _fetch_acs(dataset, county_q, state_fips, keyq):
 def territory_index(state_fips: str = "36"):
     """County-level opportunity index. Prefers the MORE-CURRENT ACS 1-year (single-year, big counties),
     falls back to ACS 5-year (rolling avg, all counties), then honest sample offline. Tags the vintage."""
+    state_fips = _state_fips(state_fips)  # fail closed before any fetch; the server falls back to SAMPLE
     key = _census_key()
     keyq = f"&key={key}" if key else ""
     county_q = ",".join(_NY_METRO_FIPS) if state_fips == "36" else "*"
