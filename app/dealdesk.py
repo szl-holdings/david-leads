@@ -1352,10 +1352,12 @@ def _channel_value(channel_type: str, value: str) -> str:
             raise ValueError("business phone must contain a 10-digit US number")
         return f"+1{digits}"
     if channel_type == "BUSINESS_EMAIL":
-        match = re.fullmatch(r"[^@\s]+@([^@\s]+)", value.lower())
-        if not match or match.group(1) in _FREE_MAIL:
+        lowered = value.lower()
+        local, at, domain = lowered.partition("@")
+        if (not at or not local or not domain or "@" in domain
+                or any(ch.isspace() for ch in lowered) or domain in _FREE_MAIL):
             raise ValueError("use a role or business-domain email, not a personal/free-mail address")
-        return value.lower()
+        return lowered
     parsed = urlparse(value)
     if parsed.scheme != "https" or not parsed.netloc:
         raise ValueError("website channels must be valid HTTPS URLs")

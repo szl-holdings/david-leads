@@ -188,4 +188,5 @@ if __name__ == "__main__":
     import json
     out = warn_leads(["NY", "NJ"])
     print(json.dumps({k: v for k, v in out.items() if k != "leads"}, indent=2))
-    print("first lead:", json.dumps(out["leads"][0], indent=2, default=str))
+    # Shape only: lead rows are public WARN notices, but a smoke run never echoes a row.
+    print("leads:", len(out["leads"]), "fields:", sorted(out["leads"][0]) if out["leads"] else [])

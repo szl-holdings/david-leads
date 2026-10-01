@@ -40,12 +40,13 @@ class CensusKeyMissing(RuntimeError):
 
 def _get(url: str, headers=None, timeout=TIMEOUT):
     """Shared GET → parsed JSON. Mirrors signals.py._get, incl. Census missing-key detection."""
-    req = urllib.request.Request(url, headers=headers or UA)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    from app.signals import _public_url, _host_is  # single allowlist for both signal modules
+    req = urllib.request.Request(_public_url(url), headers=headers or UA)
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - origin allowlisted above
         final_url = r.geturl()
         ctype = (r.headers.get("Content-Type") or "").lower()
         raw = r.read().decode()
-    if "missing_key" in final_url or ("census.gov" in final_url and "html" in ctype):
+    if "missing_key" in final_url or (_host_is(final_url, "census.gov") and "html" in ctype):
         raise CensusKeyMissing(f"Census redirected to {final_url} — CENSUS_API_KEY absent/invalid")
     return json.loads(raw)
 
@@ -231,6 +232,8 @@ def census_extras(state_fips: str = "36"):
 
     Uses the Census/Newdave key (drop-in extension of an existing wired source). Sample fallback.
     """
+    from app.signals import _state_fips
+    state_fips = _state_fips(state_fips)  # allowlist membership before the code reaches any URL
     key = _census_key()
     out = []
     # --- Homeownership (tenure): B25003_001 total, _002 owner, _003 renter
