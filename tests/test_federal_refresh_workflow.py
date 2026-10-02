@@ -56,6 +56,44 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
             self.assertNotIn(mutation, admission)
         self.assertIn("needs: [classify, dataset-admission]", workflow)
 
+    def test_deploy_conclusion_requires_released_runtime_lanes(self) -> None:
+        workflow = WORKFLOW.with_name("hf-deploy.yml").read_text(encoding="utf-8")
+        admission = workflow.split("  live-admission:", 1)[1].split("  release-gate:", 1)[0]
+        self.assertIn("needs: [classify, release-receipt]", admission)
+        self.assertIn("ref: ${{ needs.classify.outputs.source_sha }}", admission)
+        self.assertIn("persist-credentials: false", admission)
+        self.assertIn(
+            "EXPECTED_REVISION: ${{ needs.classify.outputs.source_sha }}", admission
+        )
+        self.assertIn("python3 -m unittest tests.test_frontier_live_canary -v", admission)
+        self.assertIn("python3 ops/frontier_live_canary.py", admission)
+        self.assertIn('--expected-revision "$EXPECTED_REVISION"', admission)
+        self.assertIn("--output david-frontier-live-admission.json", admission)
+        self.assertIn("if: always()", admission)
+        self.assertIn("path: david-frontier-live-admission.json", admission)
+        self.assertNotIn("secrets.", admission)
+        self.assertNotIn("HF_TOKEN:", admission)
+
+        gate = workflow.split("  release-gate:", 1)[1]
+        self.assertIn("if: ${{ always() }}", gate)
+        self.assertIn(
+            "needs: [classify, dataset-admission, deploy, release-receipt, live-admission]",
+            gate,
+        )
+        self.assertIn("permissions: {}", gate)
+        self.assertIn("DEPLOY_ALLOWED: ${{ needs.classify.outputs.deploy_allowed }}", gate)
+        for dependency in (
+            "classify",
+            "dataset-admission",
+            "deploy",
+            "release-receipt",
+            "live-admission",
+        ):
+            self.assertIn(f"${{{{ needs.{dependency}.result }}}}", gate)
+        self.assertIn('if [ "$DEPLOY_ALLOWED" != true ]; then', gate)
+        self.assertIn('if [ "$result" != success ]; then', gate)
+        self.assertNotIn("secrets.", gate)
+
     def test_all_actions_are_immutable_pins(self) -> None:
         uses = re.findall(r"uses:\s+([^\s#]+)", self.workflow)
         self.assertEqual(len(uses), 5)
