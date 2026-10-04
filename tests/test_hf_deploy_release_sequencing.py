@@ -18,6 +18,7 @@ class DavidReleaseSequencingTests(unittest.TestCase):
         dockerfile = DOCKERFILE.read_text(encoding="utf-8")
         required = (
             "Dockerfile",
+            "README.md",
             "requirements.txt",
             "app/**",
             "PUBLICATION_READINESS.md",
@@ -64,6 +65,7 @@ class DavidReleaseSequencingTests(unittest.TestCase):
             '"app/**"',
             '"requirements.txt"',
             '"Dockerfile"',
+            '"README.md"',
             '"THIRD_PARTY_NOTICES.md"',
             '"research/COMPETITIVE_SYNTHESIS_2026-08-26.md"',
             '"ops/credential-rotation.md"',

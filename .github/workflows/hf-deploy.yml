@@ -20,6 +20,7 @@ on:
     branches: [main]
     paths:
       - "Dockerfile"
+      - "README.md"
       - "requirements.txt"
       - "app/**"
       - "PUBLICATION_READINESS.md"
