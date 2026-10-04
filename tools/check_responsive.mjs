@@ -33,6 +33,7 @@ try {
   browser = await chromium.launch({ headless: true });
   for (const route of routes) {
     for (const [view, selector] of [['broker', null], ['markets', '#marketsTab'], ['investor', '.role-switch [data-view-target="investors"]'], ['operator-sign-in', '#operatorTab']]) {
+    const expectedPanel = { broker: 'leadsView', markets: 'marketsView', investor: 'investorsView', 'operator-sign-in': 'operatorView' }[view];
     const target = new URL(route, base);
     assert.equal(target.origin, new URL(base).origin, 'routes must stay in the local preview');
     for (const [name, width, height, zoom] of cases) {
@@ -61,15 +62,15 @@ try {
           return rect.width * rect.height > innerWidth * innerHeight * .88;
         }).map(identify);
         const clippedHeadings = [...document.querySelectorAll('h1,h2,h3')].filter(element => visible(element) && element.scrollWidth > element.clientWidth + 2).map(identify);
-        return { applied_zoom: Number.parseFloat(getComputedStyle(document.documentElement).zoom), content_inline_size: document.querySelector('.content-shell')?.clientWidth ?? 0, title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
+        return { active_panel: document.querySelector('.view-panel.active:not([hidden])')?.id ?? null, applied_zoom: Number.parseFloat(getComputedStyle(document.documentElement).zoom), content_inline_size: document.querySelector('.content-shell')?.clientWidth ?? 0, title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
       });
       const result = { route, view, case: name, width, height, zoom, http_status: response?.status() ?? null, ...measured, page_errors: errors };
-      result.passed = result.http_status === 200 && measured.applied_zoom === zoom && measured.content_inline_size >= 240 && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
+      result.passed = result.http_status === 200 && measured.active_panel === expectedPanel && measured.applied_zoom === zoom && measured.content_inline_size >= 240 && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
       if (!result.passed || ['phone-320', 'desktop-1440', 'zoom-400'].includes(name)) {
         const filename = `${route.replace(/[^a-z0-9]+/gi, '-') || 'home'}--${view}--${name}.png`;
         await page.screenshot({ path: path.join(directory, filename) });
         result.screenshot = filename;
-        await page.locator('.content-shell').scrollIntoViewIfNeeded();
+        await page.locator('.view-panel.active').evaluate(element => element.scrollIntoView({ block: 'start' }));
         const workspaceFilename = filename.replace('.png', '--workspace.png');
         await page.screenshot({ path: path.join(directory, workspaceFilename) });
         result.workspace_screenshot = workspaceFilename;

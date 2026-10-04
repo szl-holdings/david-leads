@@ -994,6 +994,7 @@ select:focus-visible,
 }
 
 .metric-card {
+  container-type: inline-size;
   min-height: 118px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -1029,7 +1030,7 @@ select:focus-visible,
   display: block;
   margin: 10px 0 6px;
   font-family: var(--font-sans);
-  font-size: 30px;
+  font-size: clamp(14px, 20cqi, 30px);
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.04em;
@@ -2557,7 +2558,7 @@ select:focus-visible,
   }
 
   .metric-card strong {
-    font-size: 31px;
+    font-size: clamp(14px, 20cqi, 31px);
   }
 
   .metric-card:last-child {
@@ -2775,7 +2776,7 @@ select:focus-visible,
 
   .metric-card strong {
     margin-top: 8px;
-    font-size: 29px;
+    font-size: clamp(14px, 20cqi, 29px);
   }
 
   .metric-label {
