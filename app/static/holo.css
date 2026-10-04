@@ -311,11 +311,13 @@ h3 {
 }
 
 .app-header {
-  position: sticky;
-  top: 0;
+  /* Navigation must stay reachable without covering the workspace at zoom. */
+  position: relative;
   z-index: 60;
-  display: grid;
-  grid-template-columns: minmax(230px, 1fr) auto minmax(230px, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 18px;
   align-items: center;
   min-height: 72px;
   padding: max(10px, env(safe-area-inset-top)) max(22px, env(safe-area-inset-right)) 10px max(22px, env(safe-area-inset-left));
@@ -325,6 +327,7 @@ h3 {
 
 .brand {
   display: inline-flex;
+  flex: 1 1 230px;
   align-items: center;
   gap: 11px;
   width: fit-content;
@@ -359,6 +362,8 @@ h3 {
 
 .role-switch {
   display: flex;
+  flex: 1 1 260px;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 3px;
   border: 1px solid var(--line);
@@ -367,6 +372,7 @@ h3 {
 }
 
 .role-button {
+  flex: 1 1 110px;
   min-height: 44px;
   padding: 6px 14px;
   border: 0;
@@ -386,9 +392,32 @@ h3 {
 
 .header-status {
   display: flex;
+  flex: 1 1 280px;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 10px;
+}
+
+.developer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font: 600 11px/1.4 var(--font-mono);
+}
+
+.developer-links a {
+  display: inline-flex;
+  min-height: 44px;
+  min-width: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.developer-links a:hover {
+  color: var(--ink);
 }
 
 .live-pill,
@@ -406,7 +435,8 @@ h3 {
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .access-pill.confirmed {
@@ -2310,10 +2340,6 @@ select:focus-visible,
 }
 
 @media (max-width: 1050px) {
-  .app-header {
-    grid-template-columns: minmax(210px, 1fr) auto auto;
-  }
-
   .workspace {
     grid-template-columns: 230px minmax(0, 1fr);
   }
@@ -2357,30 +2383,17 @@ select:focus-visible,
     grid-template-columns: 1fr;
   }
   .app-header {
-    grid-template-columns: 1fr auto;
     gap: 8px 12px;
     min-height: 108px;
     padding-inline: 14px;
   }
 
-  .brand {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
   .role-switch {
-    grid-column: 1 / -1;
-    grid-row: 2;
     width: 100%;
   }
 
   .role-button {
     flex: 1;
-  }
-
-  .header-status {
-    grid-column: 2;
-    grid-row: 1;
   }
 
   .source-stamp {
@@ -2685,7 +2698,6 @@ select:focus-visible,
   }
 
   .app-header {
-    grid-template-columns: 1fr auto;
     min-height: 102px;
   }
 
