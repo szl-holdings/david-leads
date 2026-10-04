@@ -89,12 +89,12 @@
 .operator-followthrough { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 18px; }
 .operator-action-result:not(:empty) { margin-top: 22px; border-left: 3px solid var(--proof); padding: 18px; background: var(--void-raised); overflow-wrap: anywhere; }
 .operator-action-result p, .operator-action-result li { color: var(--muted); font-size: 12px; }
-@media (max-width: 1000px) {
+@container david-layout (max-width: 1000px) {
   .operator-heading { display: block; }
   .operator-boundary { display: inline-block; margin-top: 4px; }
   .operator-layout { grid-template-columns: 1fr; }
 }
-@media (max-width: 640px) {
+@container david-layout (max-width: 640px) {
   .operator-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .operator-scope-form, .operator-followthrough { grid-template-columns: 1fr; }
   .operator-card { padding: 18px; }
@@ -109,6 +109,12 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+/* Product layouts follow available inline space, including browser/CSS zoom.
+   Dialogs, notifications, and release prompts remain outside these containers. */
+.layout-shell {
+  container: david-layout / inline-size;
 }
 
 body {
@@ -2312,7 +2318,7 @@ select:focus-visible,
   transform: translate(-50%, 0);
 }
 
-@media (max-width: 1250px) {
+@container david-layout (max-width: 1250px) {
   .territory-toolbar {
     grid-template-columns: minmax(230px, 0.8fr) minmax(300px, 1.2fr);
   }
@@ -2339,7 +2345,7 @@ select:focus-visible,
   }
 }
 
-@media (max-width: 1050px) {
+@container david-layout (max-width: 1050px) {
   .workspace {
     grid-template-columns: 230px minmax(0, 1fr);
   }
@@ -2366,7 +2372,7 @@ select:focus-visible,
   }
 }
 
-@media (max-width: 820px) {
+@container david-layout (max-width: 820px) {
   .kanchay-states {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2684,7 +2690,7 @@ select:focus-visible,
   }
 }
 
-@media (max-width: 560px) {
+@container david-layout (max-width: 560px) {
   .access-pill {
     display: none;
   }
@@ -2839,6 +2845,9 @@ select:focus-visible,
     min-height: 44px;
   }
 
+}
+
+@media (max-width: 560px) {
   .release-banner {
     right: max(14px, env(safe-area-inset-right));
     bottom: max(14px, env(safe-area-inset-bottom));

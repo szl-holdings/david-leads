@@ -46,6 +46,7 @@ try {
       if (selector) await page.locator(selector).click();
       await page.evaluate(() => window.scrollTo(0, 0));
       if (zoom !== 1) await page.evaluate(value => { document.documentElement.style.zoom = String(value); }, zoom);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const measured = await page.evaluate(() => {
         const viewport = document.documentElement.clientWidth;
         const visible = element => {
@@ -60,14 +61,18 @@ try {
           return rect.width * rect.height > innerWidth * innerHeight * .88;
         }).map(identify);
         const clippedHeadings = [...document.querySelectorAll('h1,h2,h3')].filter(element => visible(element) && element.scrollWidth > element.clientWidth + 2).map(identify);
-        return { title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
+        return { applied_zoom: Number.parseFloat(getComputedStyle(document.documentElement).zoom), content_inline_size: document.querySelector('.content-shell')?.clientWidth ?? 0, title: document.title, has_main: Boolean(document.querySelector('main')), text_characters: document.body.innerText.trim().length, overflow_px: Math.max(0, document.documentElement.scrollWidth - viewport), blocking_overlays: overlays, clipped_headings: clippedHeadings, error_overlay: Boolean(document.querySelector('[data-nextjs-dialog],vite-error-overlay')) };
       });
       const result = { route, view, case: name, width, height, zoom, http_status: response?.status() ?? null, ...measured, page_errors: errors };
-      result.passed = result.http_status === 200 && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
+      result.passed = result.http_status === 200 && measured.applied_zoom === zoom && measured.content_inline_size >= 240 && measured.has_main && measured.text_characters > 100 && measured.overflow_px <= 1 && measured.blocking_overlays.length === 0 && measured.clipped_headings.length === 0 && !measured.error_overlay && errors.length === 0;
       if (!result.passed || ['phone-320', 'desktop-1440', 'zoom-400'].includes(name)) {
         const filename = `${route.replace(/[^a-z0-9]+/gi, '-') || 'home'}--${view}--${name}.png`;
         await page.screenshot({ path: path.join(directory, filename) });
         result.screenshot = filename;
+        await page.locator('.content-shell').scrollIntoViewIfNeeded();
+        const workspaceFilename = filename.replace('.png', '--workspace.png');
+        await page.screenshot({ path: path.join(directory, workspaceFilename) });
+        result.workspace_screenshot = workspaceFilename;
       }
       report.cases.push(result);
       await context.close();
