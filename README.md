@@ -18,6 +18,28 @@ tags:
   - szl-holdings
 ---
 
+<p><a href="https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab"><img src="https://raw.githubusercontent.com/szl-holdings/.github/main/profile/assets/szl/logos/szl_mark_holographic.svg" alt="SZL Holdings" width="112" /></a></p>
+
+# David Leads
+
+Inspect public-record evidence and advisory work-order priorities for broker research.
+
+**Artifact:** Evidence-based research application · **Stage:** Source admission required
+
+[Explore in Command Lab](https://huggingface.co/spaces/SZLHOLDINGS/szl-command-lab) · [Build](https://github.com/szl-holdings/david-leads) · [Evidence](https://github.com/szl-holdings/david-leads/blob/ebce92eba248bcc8533a2b92b6d3dbcf99383231/README.md)
+
+## Before you use it
+
+- Unverified or unavailable federal and licensed sources remain UNAVAILABLE; synthetic examples stay labeled.
+- Priority scores are advisory work-order signals, not probabilities, insurance quotes or autonomous decisions.
+
+<details>
+<summary>Technical details and original evidence</summary>
+
+The retained source below is exact and may contain historical observations. Its dates, use restrictions, licenses and evidence boundaries continue to apply.
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:START -->
+
 # David Leads — Evidence-Backed Broker Research
 
 > **SZL Holdings flagship:** the governed lead-intelligence and broker-research surface.
@@ -267,3 +289,7 @@ non-secret attestation reference to the Space. `receipt_minted=true` is fail-clo
 only when that reference matches the exact running source revision.
 
 © 2026 SZL Holdings · Apache-2.0
+
+<!-- SZL-PRESERVED-TECHNICAL-BODY:END -->
+
+</details>
