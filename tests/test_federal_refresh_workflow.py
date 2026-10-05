@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tests.test_hub_write_locks import pinned_hub_version
+
 
 WORKFLOW = Path(__file__).parents[1] / ".github" / "workflows" / "federal-refresh.yml"
 
@@ -154,7 +156,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         self.assertNotIn("Verify receipt hash-chain", self.workflow)
 
     def test_publisher_is_pinned_and_token_is_step_scoped(self) -> None:
-        self.assertIn("huggingface_hub==2.0.0", self.workflow)
+        self.assertIn(f"huggingface_hub=={pinned_hub_version()}", self.workflow)
         self.assertIn("--dataset SZLHOLDINGS/david-leads-data", self.workflow)
         self.assertIn("--receipt-out publication.json", self.workflow)
         self.assertEqual(self.workflow.count("secrets.HF_TOKEN"), 1)
