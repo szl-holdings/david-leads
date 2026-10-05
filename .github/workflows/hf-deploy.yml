@@ -263,7 +263,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check \
-            "huggingface_hub==2.0.0" "requests==2.32.5"
+            "huggingface_hub==2.1.1" "requests==2.32.5"
           python3 - <<'PY'
           import json
           import os
