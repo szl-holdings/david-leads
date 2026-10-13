@@ -113,3 +113,128 @@ jobs:
           name: operational-safety-${{ github.sha }}
           path: required-test-results.xml
           if-no-files-found: error
+
+  container-smoke:
+    # Build the exact application Dockerfile and boot it to /readyz against a
+    # disposable PostgreSQL service. The jobs above qualify setup-python 3.11;
+    # this one qualifies the base image and dependency set the Space runs.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: david_evidence_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d david_evidence_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DAVID_EVIDENCE_TEST_DSN: postgresql://postgres:postgres@127.0.0.1:5432/david_evidence_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install schema bootstrap dependencies
+        run: python3 -m pip install --requirement requirements-dev.txt
+      - name: Build the exact application Dockerfile
+        run: docker build --tag "david-leads:${GITHUB_SHA}" .
+      - name: Bootstrap the disposable schema with production runtime grants
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import os
+          from psycopg import sql
+          from tests.postgres_support import ROLE, admin_connection, bootstrap_test_database
+
+          runtime_dsn = bootstrap_test_database()
+          # The test bootstrap grants only the schema-version table. Production
+          # (migrate-neon-persistence.yml) also grants these deal-desk tables.
+          deal_desk_privileges = {
+              "david_dealdesk_state": "INSERT, SELECT, UPDATE",
+              "david_dealdesk_events": "INSERT, SELECT",
+          }
+          with admin_connection() as connection, connection.cursor() as cursor:
+              for table, privileges in deal_desk_privileges.items():
+                  for grantee in (sql.SQL("PUBLIC"), sql.Identifier(ROLE)):
+                      cursor.execute(
+                          sql.SQL("REVOKE ALL PRIVILEGES ON TABLE {} FROM {}").format(
+                              sql.Identifier(table), grantee
+                          )
+                      )
+                  cursor.execute(
+                      sql.SQL("GRANT {} ON TABLE {} TO {}").format(
+                          sql.SQL(privileges), sql.Identifier(table), sql.Identifier(ROLE)
+                      )
+                  )
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "david-smoke.env"), "w", encoding="utf-8") as stream:
+              stream.write(f"DAVID_DATABASE_URL={runtime_dsn}\n")
+          PY
+      - name: Boot the exact image and close readiness
+        run: |
+          set -euo pipefail
+          umask 077
+          env_file="$RUNNER_TEMP/david-smoke.env"
+          {
+            echo "DAVID_USER=smoke-$(openssl rand -hex 6)"
+            echo "DAVID_PASS=$(openssl rand -hex 24)"
+            echo "DAVID_ACCESS_KEY=$(openssl rand -hex 24)"
+            echo "SOURCE_GITHUB_SHA=${GITHUB_SHA}"
+          } >> "$env_file"
+          docker run -d --name david-smoke --network host --env-file "$env_file" "david-leads:${GITHUB_SHA}"
+          trap 'docker logs david-smoke || true; docker rm -f david-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in $(seq 1 60); do
+            code="$(curl --silent --output ready.json --write-out '%{http_code}' --max-time 5 http://127.0.0.1:7860/readyz || true)"
+            if [ "$code" = 200 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              echo "::error::David readiness did not converge (last HTTP ${code})"
+              cat ready.json || true
+              exit 1
+            fi
+            sleep 2
+          done
+          for path in / /healthz /api/build-info; do
+            curl --fail --silent --show-error --output /dev/null "http://127.0.0.1:7860${path}"
+          done
+          curl --fail --silent --show-error http://127.0.0.1:7860/api/build-info > build-info.json
+          docker exec david-smoke python -c "import sys; print(sys.version)"
+          test "$(docker exec david-smoke id -u)" = 10001
+          python3 - <<'PY'
+          import json
+          import os
+
+          with open("ready.json", encoding="utf-8") as stream:
+              ready = json.load(stream)
+          assert ready["status"] == "ready", ready
+          assert ready["authentication"] == "CONFIGURED", ready
+          assert ready["deal_desk_persistence"] == "POSTGRES_READY", ready
+          assert ready["evidence_persistence"] == "POSTGRES_READY", ready
+          with open("build-info.json", encoding="utf-8") as stream:
+              build = json.load(stream)["build"]
+          assert build["state"] == "OBSERVED", build
+          assert build["revision"] == os.environ["GITHUB_SHA"], build
+          PY
+          for attempt in $(seq 1 30); do
+            health="$(docker inspect --format '{{.State.Health.Status}}' david-smoke)"
+            if [ "$health" = healthy ]; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "::error::Dockerfile HEALTHCHECK is ${health}"
+              exit 1
+            fi
+            sleep 3
+          done
