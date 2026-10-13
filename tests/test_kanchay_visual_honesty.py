@@ -13,8 +13,9 @@ FONTS = (ROOT / "app" / "static" / "fonts" / "fonts.css").read_text(encoding="ut
 
 class KanchayVisualHonestyTests(unittest.TestCase):
     def test_tokens_and_type_are_kanchay(self):
-        self.assertIn("#080c14", CSS)
-        self.assertIn("#3af4c8", CSS)
+        self.assertIn("--void: #080b12;", CSS)
+        self.assertIn("--proof: #8fd9d5;", CSS)
+        self.assertIn("--muted: #aab7c9;", CSS)
         self.assertIn("#5b8dee", CSS)
         self.assertIn("#d7b96b", CSS)
         self.assertIn('"Space Grotesk"', CSS)
