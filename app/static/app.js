@@ -1290,8 +1290,10 @@ function bindEvents() {
   document.addEventListener("keydown", (event) => {
     const target = event.target;
     const isEditing = target?.matches?.("input, textarea, select, [contenteditable='true']");
-    if (event.key === "/" && !isEditing && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (event.key === "/" && !isEditing && !event.altKey && !event.ctrlKey && !event.metaKey
+        && !document.querySelector("dialog[open]")) {
       event.preventDefault();
+      switchView("leads");
       $("searchInput").focus();
     }
   });
