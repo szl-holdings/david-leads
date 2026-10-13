@@ -1,7 +1,7 @@
 # david-leads v0 vertical backend — loose pins; the service must run offline.
-fastapi>=0.142.2,<1.0
+fastapi>=0.143.0,<1.0
 uvicorn>=0.29,<1.0
-pydantic>=2.6,<3
+pydantic>=2.14.0,<3
 requests>=2.31,<3
 # Optional: install `cryptography` and set SZL_COSIGN_PRIVATE_PEM to mint
 # DSSE/ECDSA-P256 SIGNED receipts. Without it, receipts are honestly UNSIGNED
