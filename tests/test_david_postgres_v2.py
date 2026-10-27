@@ -686,29 +686,49 @@ print(json.dumps({'pid':os.getpid(),'writer_pid':r['pid'],'state':'REVOKED','pen
                     capture_output=True,
                     timeout=60,
                 )
-                try:
-                    subprocess.run(
-                        [
-                            binary("pg_restore"),
-                            *args,
-                            "--exit-on-error",
-                            "-d",
-                            target,
-                            str(archive),
-                        ],
-                        env=env,
-                        check=True,
-                        capture_output=True,
-                        timeout=60,
-                    )
-                except subprocess.CalledProcessError as exc:
-                    stderr = (exc.stderr or b"").decode("utf-8", "replace")
-                    stdout = (exc.stdout or b"").decode("utf-8", "replace")
-                    self.fail(
-                        "pg_restore failed with "
-                        f"exit={exc.returncode}; stderr={stderr[-4000:]!r}; "
-                        f"stdout={stdout[-1000:]!r}"
-                    )
+                # Newer pg_dump clients can emit SET transaction_timeout,
+                # which PostgreSQL 16 does not recognize. Render the custom
+                # archive to SQL and remove that client-only setting before
+                # replaying it into the disposable database.
+                rendered = Path(tmp) / "synthetic.sql"
+                subprocess.run(
+                    [
+                        binary("pg_restore"),
+                        "--file",
+                        str(rendered),
+                        str(archive),
+                    ],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+                rendered.write_text(
+                    "".join(
+                        line
+                        for line in rendered.read_text(encoding="utf-8").splitlines(
+                            keepends=True
+                        )
+                        if line.strip().lower() != "set transaction_timeout = 0;"
+                    ),
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    [
+                        binary("psql"),
+                        *args,
+                        "--dbname",
+                        target,
+                        "--set",
+                        "ON_ERROR_STOP=1",
+                        "--file",
+                        str(rendered),
+                    ],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
                 restored = connect_postgres_ledger(
                     make_conninfo(**{**conninfo_to_dict(self.dsn), "dbname": target})
                 )
