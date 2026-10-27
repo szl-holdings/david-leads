@@ -686,14 +686,43 @@ print(json.dumps({'pid':os.getpid(),'writer_pid':r['pid'],'state':'REVOKED','pen
                     capture_output=True,
                     timeout=60,
                 )
+                # Newer pg_dump clients can emit SET transaction_timeout,
+                # which PostgreSQL 16 does not recognize. Render the custom
+                # archive to SQL and remove that client-only setting before
+                # replaying it into the disposable database.
+                rendered = Path(tmp) / "synthetic.sql"
                 subprocess.run(
                     [
                         binary("pg_restore"),
-                        *args,
-                        "--exit-on-error",
-                        "-d",
-                        target,
+                        "--file",
+                        str(rendered),
                         str(archive),
+                    ],
+                    env=env,
+                    check=True,
+                    capture_output=True,
+                    timeout=60,
+                )
+                rendered.write_text(
+                    "".join(
+                        line
+                        for line in rendered.read_text(encoding="utf-8").splitlines(
+                            keepends=True
+                        )
+                        if line.strip().lower() != "set transaction_timeout = 0;"
+                    ),
+                    encoding="utf-8",
+                )
+                subprocess.run(
+                    [
+                        binary("psql"),
+                        *args,
+                        "--dbname",
+                        target,
+                        "--set",
+                        "ON_ERROR_STOP=1",
+                        "--file",
+                        str(rendered),
                     ],
                     env=env,
                     check=True,
