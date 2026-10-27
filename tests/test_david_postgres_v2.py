@@ -686,20 +686,29 @@ print(json.dumps({'pid':os.getpid(),'writer_pid':r['pid'],'state':'REVOKED','pen
                     capture_output=True,
                     timeout=60,
                 )
-                subprocess.run(
-                    [
-                        binary("pg_restore"),
-                        *args,
-                        "--exit-on-error",
-                        "-d",
-                        target,
-                        str(archive),
-                    ],
-                    env=env,
-                    check=True,
-                    capture_output=True,
-                    timeout=60,
-                )
+                try:
+                    subprocess.run(
+                        [
+                            binary("pg_restore"),
+                            *args,
+                            "--exit-on-error",
+                            "-d",
+                            target,
+                            str(archive),
+                        ],
+                        env=env,
+                        check=True,
+                        capture_output=True,
+                        timeout=60,
+                    )
+                except subprocess.CalledProcessError as exc:
+                    stderr = (exc.stderr or b"").decode("utf-8", "replace")
+                    stdout = (exc.stdout or b"").decode("utf-8", "replace")
+                    self.fail(
+                        "pg_restore failed with "
+                        f"exit={exc.returncode}; stderr={stderr[-4000:]!r}; "
+                        f"stdout={stdout[-1000:]!r}"
+                    )
                 restored = connect_postgres_ledger(
                     make_conninfo(**{**conninfo_to_dict(self.dsn), "dbname": target})
                 )
