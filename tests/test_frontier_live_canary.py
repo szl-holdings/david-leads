@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
 
 MODULE_PATH = Path(__file__).parents[1] / "ops" / "frontier_live_canary.py"
 SPEC = importlib.util.spec_from_file_location("frontier_live_canary", MODULE_PATH)
@@ -306,6 +310,50 @@ class FrontierLiveCanaryTests(unittest.TestCase):
         self.assertFalse(canary.evaluate(board, build)["complete"])
         board["opportunities"][0]["_sample"] = True
         self.assertFalse(canary.evaluate(board, self._build())["complete"])
+
+    def _failure_artifact(self, error: Exception, *, transport: bool = False) -> tuple[dict, str]:
+        target = canary.urllib.request if transport else canary
+        method = "urlopen" if transport else "run"
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "canary.json"
+            with patch.object(target, method, side_effect=error), patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                self.assertEqual(canary.main(["--output", str(output)]), 1)
+                report = json.loads(output.read_text(encoding="utf-8"))
+                printed = stdout.getvalue()
+            self.assertEqual(json.loads(printed), report)
+            self.assertFalse(report["complete"])
+            self.assertFalse(report["records_exported"])
+            return report, printed
+
+    def test_http_failure_retains_status_without_response_body_or_url(self) -> None:
+        sentinel = "PRIVATE-ORGANIZATION-RESPONSE-SENTINEL"
+        error = HTTPError("https://example.invalid/" + sentinel, 403, sentinel, {},
+                          io.BytesIO(sentinel.encode()))
+        report, printed = self._failure_artifact(error, transport=True)
+        self.assertNotIn(sentinel, printed)
+        self.assertEqual(report["failure"], "HTTP_ERROR")
+        self.assertEqual(report["http_status"], 403)
+
+    def test_unexpected_failure_does_not_export_exception_message(self) -> None:
+        sentinel = "PRIVATE-ORGANIZATION-EXCEPTION-SENTINEL"
+        report, printed = self._failure_artifact(RuntimeError(sentinel))
+        self.assertNotIn(sentinel, printed)
+        self.assertEqual(report["failure"], "PROBE_ERROR")
+
+    def test_http_failure_never_reads_response_body(self) -> None:
+        body = io.BytesIO(b"PRIVATE-RESPONSE-SENTINEL")
+        error = HTTPError("https://example.invalid/", 502, "Bad Gateway", {}, body)
+        with patch.object(body, "read", side_effect=AssertionError("body must remain unread")) as read:
+            report, _ = self._failure_artifact(error, transport=True)
+        read.assert_not_called()
+        self.assertTrue(body.closed)
+        self.assertEqual(report["http_status"], 502)
+
+    def test_invalid_json_diagnostic_does_not_export_document(self) -> None:
+        sentinel = "PRIVATE-ORGANIZATION-DOCUMENT-SENTINEL"
+        report, printed = self._failure_artifact(json.JSONDecodeError(sentinel, sentinel, 0))
+        self.assertNotIn(sentinel, printed)
+        self.assertEqual(report["failure"], "PROBE_ERROR")
 
 
 if __name__ == "__main__":
