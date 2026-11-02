@@ -70,11 +70,9 @@ def _get_json(path: str, timeout: int = 300) -> dict[str, Any]:
 
 
 def _as_count(value: Any) -> int:
-    try:
-        count = int(value)
-    except (TypeError, ValueError):
-        return -1
-    return count if count >= 0 else -1
+    # Counts are JSON integers. Coercion would turn true, "1", or 1.9 into a
+    # positive observation and could falsely qualify a malformed live lane.
+    return value if type(value) is int and value >= 0 else -1
 
 
 def _snapshot_time(value: Any, *, date_only: bool = False) -> datetime | None:
