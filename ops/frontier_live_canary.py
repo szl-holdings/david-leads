@@ -45,6 +45,15 @@ SCHEDULED_LANES = {
 }
 
 
+class ProbeFailure(RuntimeError):
+    """A diagnostic code safe to publish in an aggregate-only artifact."""
+
+    def __init__(self, code: str, *, http_status: int | None = None) -> None:
+        super().__init__(code)
+        self.code = code
+        self.http_status = http_status
+
+
 def _get_json(path: str, timeout: int = 300) -> dict[str, Any]:
     url = CANONICAL_SPACE + path
     request = urllib.request.Request(
@@ -57,15 +66,17 @@ def _get_json(path: str, timeout: int = 300) -> dict[str, Any]:
             raw = response.read(4_000_000)
             status = response.getcode()
     except urllib.error.HTTPError as exc:
-        body = exc.read(2048).decode("utf-8", "replace")
-        raise RuntimeError(f"HTTP_{exc.code}: {body[:300]}") from exc
+        # Error responses can contain organization records, request URLs or
+        # proxy diagnostics. Neither read them nor publish their exception text.
+        exc.close()
+        raise ProbeFailure("HTTP_ERROR", http_status=exc.code) from exc
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"TRANSPORT_{type(exc.reason).__name__}") from exc
+        raise ProbeFailure("TRANSPORT_ERROR") from exc
     if status != 200:
-        raise RuntimeError(f"HTTP_{status}")
+        raise ProbeFailure("HTTP_ERROR", http_status=status)
     value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict):
-        raise RuntimeError("NON_OBJECT_JSON")
+        raise ProbeFailure("NON_OBJECT_JSON")
     return value
 
 
@@ -402,8 +413,10 @@ def main(argv: list[str] | None = None) -> int:
             "sample_substitution": False,
             "records_exported": False,
             "complete": False,
-            "failure": f"{type(exc).__name__}: {str(exc)[:300]}",
+            "failure": exc.code if isinstance(exc, ProbeFailure) else "PROBE_ERROR",
         }
+        if isinstance(exc, ProbeFailure) and type(exc.http_status) is int and 100 <= exc.http_status <= 599:
+            report["http_status"] = exc.http_status
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     Path(args.output).write_text(serialized, encoding="utf-8")
     print(serialized, end="")
