@@ -117,6 +117,18 @@ class FrontierLiveCanaryTests(unittest.TestCase):
         self.assertFalse(report["required_lanes"][0]["operational"])
         self.assertFalse(report["required_lanes"][1]["operational"])
 
+    def test_non_integer_lane_counts_never_pass_or_raise(self) -> None:
+        for index in range(len(canary.REQUIRED_LANES)):
+            for count in (True, False, "1", 1.0, 1.9, None, [], {}, float("inf"), float("nan")):
+                with self.subTest(index=index, count=count):
+                    board = self._board()
+                    board["sources"][index]["count"] = count
+                    report = canary.evaluate(board, self._build())
+                    self.assertFalse(report["complete"])
+                    lane = report["required_lanes"][index]
+                    self.assertFalse(lane["operational"])
+                    self.assertEqual(lane["count"], -1)
+
     def test_record_hash_receipt_and_parser_are_mandatory(self) -> None:
         board = self._board()
         board["opportunities"][0].update(
