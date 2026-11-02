@@ -29,6 +29,14 @@ REQUIRED_LANES = (
     "epa-echo-monitoring-activity",
 )
 NON_PRODUCTION = {"SAMPLE", "EXAMPLE", "MOCK", "FIXTURE"}
+SOURCE_MODES = {"LIVE", "UNAVAILABLE", "NOT_APPLICABLE"} | NON_PRODUCTION
+REASON_CODES = {
+    "NO_MATCHING_RECORDS_IN_VERIFIED_SNAPSHOT",
+    "FORM5500_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "FMCSA_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "USASPENDING_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "ECHO_VERIFIED_SNAPSHOT_UNAVAILABLE",
+}
 USER_AGENT = "SZL-David-Leads-Live-Canary/1.0 research@szlholdings.com"
 SNAPSHOT_FRESHNESS_DAYS = 8
 ECHO_SOURCE_ID = "epa-echo-monitoring-activity"
@@ -84,6 +92,18 @@ def _as_count(value: Any) -> int:
     # Counts are JSON integers. Coercion would turn true, "1", or 1.9 into a
     # positive observation and could falsely qualify a malformed live lane.
     return value if type(value) is int and value >= 0 else -1
+
+
+def _reason_code(value: Any) -> str | None:
+    # Provider exception details can include source records. Preserve only
+    # known local diagnostic codes, never remote free text or its prefix.
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        code = value.partition(":")[0].strip()
+        if code in REASON_CODES:
+            return code
+    return "SOURCE_DIAGNOSTIC_REDACTED"
 
 
 def _snapshot_time(value: Any, *, date_only: bool = False) -> datetime | None:
@@ -202,6 +222,7 @@ def _record_contract(records: list[dict[str, Any]]) -> dict[str, Any]:
     invalid_hash = 0
     missing_source_id = 0
     missing_parser = 0
+    invalid_parser = 0
     dishonest_receipt = 0
     non_production = 0
     hashes: list[str] = []
@@ -228,6 +249,8 @@ def _record_contract(records: list[dict[str, Any]]) -> dict[str, Any]:
         parser = str(record.get("parser_version") or "").strip()
         if not parser:
             missing_parser += 1
+        elif not re.fullmatch(r"frontier-sources/[0-9]{1,4}\.[0-9]{1,4}(?:\.[0-9]{1,4})?", parser):
+            invalid_parser += 1
         else:
             parser_versions.add(parser)
         receipt_state = str(record.get("receipt_state") or "").strip().upper()
@@ -246,6 +269,7 @@ def _record_contract(records: list[dict[str, Any]]) -> dict[str, Any]:
         "invalid_hash": invalid_hash,
         "missing_source_record_id": missing_source_id,
         "missing_parser_version": missing_parser,
+        "invalid_parser_version": invalid_parser,
         "invalid_receipt_state": dishonest_receipt,
         "non_production_records": non_production,
         "complete": bool(records)
@@ -254,6 +278,7 @@ def _record_contract(records: list[dict[str, Any]]) -> dict[str, Any]:
                 invalid_hash,
                 missing_source_id,
                 missing_parser,
+                invalid_parser,
                 dishonest_receipt,
                 non_production,
             )
@@ -289,8 +314,10 @@ def evaluate(
             )
             continue
         mode = str(item.get("mode") or "UNAVAILABLE").strip().upper()
+        if mode not in SOURCE_MODES:
+            mode = "UNAVAILABLE"
         count = _as_count(item.get("count"))
-        reason = str(item.get("reason") or "").strip()[:240]
+        reason = _reason_code(item.get("reason"))
         snapshot_contract = _snapshot_contract(item, source_id, checked_at)
         lanes.append(
             {
@@ -354,8 +381,12 @@ def evaluate(
         },
         "record_contract": record_contract,
         "deployment": {
-            "source_revision": revision or None,
-            "expected_revision": expected_revision or None,
+            "source_revision": revision if re.fullmatch(r"[0-9a-f]{40}", revision) else None,
+            "expected_revision": (
+                expected_revision.lower()
+                if re.fullmatch(r"[0-9a-fA-F]{40}", expected_revision)
+                else None
+            ),
             "source_bound": source_bound,
             "release_attested": release_attested,
             "rotation_generation": (
@@ -364,7 +395,11 @@ def evaluate(
                 and board_generation == build_generation
                 else None
             ),
-            "expected_rotation_generation": expected_generation or None,
+            "expected_rotation_generation": (
+                expected_generation
+                if re.fullmatch(r"sha256:[0-9a-f]{64}", expected_generation)
+                else None
+            ),
             "rotation_generation_bound": (
                 rotation_generation_bound if generation_required else None
             ),
