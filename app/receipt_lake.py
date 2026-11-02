@@ -12,6 +12,7 @@ list is the fast read path. Honest: we never fabricate events — only real mint
 """
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 import os
 import threading
@@ -26,23 +27,24 @@ def _file_path() -> str | None:
 
 
 def append(receipt: dict[str, Any]) -> dict[str, Any]:
-    """Append one receipt to the append-only lake. Returns the stored receipt."""
+    """Append an isolated snapshot and return an independent copy of it."""
+    stored = deepcopy(receipt)
     with _LOCK:
-        _LAKE.append(receipt)
+        _LAKE.append(stored)
         path = _file_path()
         if path:
             try:
                 with open(path, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(receipt, sort_keys=True, separators=(",", ":")) + "\n")
+                    fh.write(json.dumps(stored, sort_keys=True, separators=(",", ":")) + "\n")
             except Exception:
                 pass  # honest: file mirror is best-effort, never breaks the write path
-    return receipt
+    return deepcopy(stored)
 
 
 def all() -> list[dict[str, Any]]:
-    """Return a shallow copy of every event in append order."""
+    """Return independent copies of every event in append order."""
     with _LOCK:
-        return list(_LAKE)
+        return deepcopy(_LAKE)
 
 
 def query(organ: str | None = None, decision: str | None = None,
@@ -55,8 +57,8 @@ def query(organ: str | None = None, decision: str | None = None,
     if decision is not None:
         out = [r for r in out if r.get("decision") == decision]
     if limit is not None and limit >= 0:
-        out = out[-limit:]
-    return out
+        out = out[-limit:] if limit else []
+    return deepcopy(out)
 
 
 def size() -> int:
