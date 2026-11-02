@@ -73,6 +73,51 @@ def test_each_capture_mints_new_standalone_receipt():
     assert a["receipt"]["prev_receipt_hash"] == "GENESIS"
 
 
+@pytest.mark.parametrize("lane", tuple(snap.LANES))
+@pytest.mark.parametrize("second_value", ["12345", "67890"])
+def test_repeated_identifier_system_is_not_publishable(lane, second_value):
+    row = fixture_record(lane)
+    row["authoritative_entity_ids"].append({
+        "system": row["authoritative_entity_ids"][0]["system"],
+        "value": second_value,
+    })
+    with pytest.raises(snap.SnapshotError, match="duplicate authoritative identifier system"):
+        snap.project_record(lane, row)
+
+
+@pytest.mark.parametrize("lane", ["fmcsa", "form5500"])
+@pytest.mark.parametrize("second_value", ["ID-NY", "OTHER-ID"])
+def test_runtime_rejects_duplicate_identity_disguised_by_identifier_list(lane, second_value):
+    bundle = make_bundle(lane)
+    repeated = copy.deepcopy(bundle["records"][0])
+    repeated["authoritative_entity_ids"].append({
+        "system": repeated["authoritative_entity_ids"][0]["system"],
+        "value": second_value,
+    })
+    repeated["normalized_record_hash"] = snap.digest(snap.canonical({
+        key: value for key, value in repeated.items() if key != "normalized_record_hash"
+    }))
+    records = [bundle["records"][0], repeated]
+    payload = b"".join(snap.canonical(row) + b"\n" for row in records)
+    snapshot = copy.deepcopy(bundle["snapshot"])
+    snapshot.update(record_count=2, records_file_sha256=snap.digest(payload),
+                    records_root_sha256=snap.digest(snap.canonical([
+                        row["normalized_record_hash"] for row in records
+                    ])))
+    snapshot["coverage"]["state_record_counts"]["NY"] = 2
+    snapshot["coverage"]["admission_counts"]["NY"].update(adapter_returned=2, selected=2)
+    checksum = snap.digest(snap.canonical({
+        key: value for key, value in snapshot.items()
+        if key not in {"snapshot_id", "snapshot_digest"}
+    }))
+    snapshot.update(snapshot_id=f"sha256:{checksum}", snapshot_digest=checksum)
+    receipt = snap._receipt(snapshot)
+    # All hashes and coverage counts agree: the repeated source identity itself
+    # must be rejected, even if a publisher minted a self-consistent bundle.
+    with pytest.raises(snap.SnapshotError, match="duplicate authoritative identifier system"):
+        snap.verify_bundle(snapshot, receipt, payload)
+
+
 def _awards_bundle(records):
     def collector(states, limit):
         return {"mode": "LIVE", "count": len(records), "records": records,
