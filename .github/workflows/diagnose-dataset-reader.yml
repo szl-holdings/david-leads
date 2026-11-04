@@ -1,0 +1,78 @@
+# Copyright 2026 SZL Holdings — SPDX-License-Identifier: Apache-2.0
+name: Diagnose David dataset reader
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: david-dataset-reader-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  admit:
+    name: Admit current protected-main diagnostic source
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require main dispatch before entering the protected environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main" || {
+            echo "::error::Dataset reader diagnostic requires protected main"
+            exit 1
+          }
+      - name: Check out exact dispatched source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Reject superseded source
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$current_main" && test "$GITHUB_SHA" = "$current_main" || {
+            echo "::error::Dataset reader diagnostic requires current protected main"
+            exit 1
+          }
+
+  diagnose:
+    name: Read four immutable pointers with the protected reader
+    needs: admit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment:
+      name: david-space-credential-rotation
+    steps:
+      - name: Check out exact admitted source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up supported Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install the exact reader client
+        run: python3 -m pip install --disable-pip-version-check "huggingface_hub==2.3.0"
+      - name: Recheck current main after protected admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/main"
+          current_main="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          test -n "$current_main" && test "$GITHUB_SHA" = "$current_main" || {
+            echo "::error::Protected main changed while awaiting diagnostic admission"
+            exit 1
+          }
+      - name: Diagnose only the dedicated reader
+        env:
+          DAVID_DATASET_READ_TOKEN: ${{ secrets.DAVID_DATASET_READ_TOKEN }}
+          HF_HUB_DISABLE_IMPLICIT_TOKEN: '1'
+          HF_HUB_DISABLE_PROGRESS_BARS: '1'
+          HF_DEBUG: '0'
+        run: python3 -m ops.dataset_reader_diagnostic

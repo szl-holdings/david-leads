@@ -112,6 +112,42 @@ class FrontierLiveCanaryTests(unittest.TestCase):
         self.assertEqual(missing["mode"], "UNAVAILABLE")
         self.assertEqual(missing["reason"], "SOURCE_NOT_RETURNED")
 
+    def test_duplicate_required_lanes_never_choose_a_favorable_observation(self) -> None:
+        for index, source_id in enumerate(canary.REQUIRED_LANES):
+            for position in (0, len(canary.REQUIRED_LANES)):
+                with self.subTest(source_id=source_id, position=position):
+                    board = self._board()
+                    conflicting = dict(board["sources"][index])
+                    conflicting.update(mode="UNAVAILABLE", count=0,
+                                       reason="private diagnostic must not enter the artifact")
+                    board["sources"].insert(position, conflicting)
+                    report = canary.evaluate(board, self._build())
+                    self.assertFalse(report["complete"])
+                    lane = report["required_lanes"][index]
+                    self.assertFalse(lane["operational"])
+                    self.assertEqual(lane["reason"], "SOURCE_ID_DUPLICATED")
+                    self.assertEqual(lane["count"], -1)
+                    self.assertFalse(lane["snapshot"]["complete"])
+                    self.assertNotIn("private diagnostic", json.dumps(report))
+
+    def test_identical_duplicate_lane_is_still_ambiguous(self) -> None:
+        for index, source_id in enumerate(canary.REQUIRED_LANES):
+            with self.subTest(source_id=source_id):
+                board = self._board()
+                board["sources"].append(dict(board["sources"][index]))
+                report = canary.evaluate(board, self._build())
+                self.assertFalse(report["complete"])
+                self.assertEqual(report["required_lanes"][index]["reason"],
+                                 "SOURCE_ID_DUPLICATED")
+
+    def test_unrelated_source_rows_do_not_replace_required_lanes(self) -> None:
+        board = self._board()
+        board["sources"].extend([
+            {"source_id": "optional-source", "mode": "UNAVAILABLE"},
+            {"source_id": "optional-source", "mode": "LIVE", "count": 1},
+        ])
+        self.assertTrue(canary.evaluate(board, self._build())["complete"])
+
     def test_non_live_or_zero_count_never_passes(self) -> None:
         board = self._board()
         board["sources"][0]["mode"] = "UNAVAILABLE"

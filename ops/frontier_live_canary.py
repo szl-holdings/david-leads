@@ -296,23 +296,25 @@ def evaluate(
     checked_at = datetime.now(timezone.utc)
     raw_sources = board.get("sources") or []
     sources = [item for item in raw_sources if isinstance(item, dict)]
-    by_id = {str(item.get("source_id") or ""): item for item in sources}
     lanes: list[dict[str, Any]] = []
 
     for source_id in REQUIRED_LANES:
-        item = by_id.get(source_id)
-        if item is None:
+        # Every required lane must have exactly one observation. Choosing the
+        # first or last duplicate could hide a contradictory unavailable lane.
+        matches = [item for item in sources if item.get("source_id") == source_id]
+        if len(matches) != 1:
             lanes.append(
                 {
                     "source_id": source_id,
                     "mode": "UNAVAILABLE",
                     "count": -1,
-                    "reason": "SOURCE_NOT_RETURNED",
+                    "reason": "SOURCE_ID_DUPLICATED" if matches else "SOURCE_NOT_RETURNED",
                     "snapshot": _snapshot_contract({}, source_id, checked_at),
                     "operational": False,
                 }
             )
             continue
+        item = matches[0]
         mode = str(item.get("mode") or "UNAVAILABLE").strip().upper()
         if mode not in SOURCE_MODES:
             mode = "UNAVAILABLE"
