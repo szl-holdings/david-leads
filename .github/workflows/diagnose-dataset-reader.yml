@@ -58,7 +58,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install the exact reader client
-        run: python3 -m pip install --disable-pip-version-check "huggingface_hub==2.3.0"
+        run: python3 -m pip install --disable-pip-version-check "huggingface_hub==2.4.0"
       - name: Recheck current main after protected admission
         shell: bash
         run: |
