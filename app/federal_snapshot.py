@@ -184,10 +184,14 @@ def validate_record(lane: str, item: dict, *, hashed: bool = True) -> None:
     ids = item["authoritative_entity_ids"]
     if not isinstance(ids, list) or not 1 <= len(ids) <= 2:
         raise SnapshotError("invalid authoritative IDs")
+    systems = set()
     for entry in ids:
         _exact(entry, {"system", "value"}, "entity identifier")
         if entry["system"] not in {"fmcsa": {"USDOT"}, "form5500": {"DOL Form 5500 ACK ID"}, "usaspending": {"UEI", "Federal Award ID"}}[lane]:
             raise SnapshotError("unapproved identifier system")
+        if entry["system"] in systems:
+            raise SnapshotError("duplicate authoritative identifier system")
+        systems.add(entry["system"])
         if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", entry["value"]):
             raise SnapshotError("invalid public entity identifier")
     if not isinstance(item["limitations"], list) or not 1 <= len(item["limitations"]) <= 12:
