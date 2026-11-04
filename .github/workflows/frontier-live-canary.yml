@@ -33,6 +33,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Fail closed when main Deploy failed — do not soft-skip the canary badge.
+  # Live snapshots / deploy admission stay the real breakage; this job only
+  # makes the follow-on workflow honest instead of conclusion=skipped.
+  upstream-deploy-failed:
+    name: Upstream deploy blocked live canary
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+
+      - name: Fail closed — live lanes not re-proven after deploy failure
+        env:
+          UPSTREAM_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          UPSTREAM_RUN_ID: ${{ github.event.workflow_run.id }}
+          UPSTREAM_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          echo "::error title=UPSTREAM_DEPLOY_FAILED::Deploy to HuggingFace Space concluded ${UPSTREAM_CONCLUSION} for main@${UPSTREAM_SHA}; frontier live-lanes will not soft-skip. See https://github.com/${GITHUB_REPOSITORY}/actions/runs/${UPSTREAM_RUN_ID}"
+          echo "OWNER/product: restore four federal verified snapshots (FORM5500/FMCSA/USASPENDING/ECHO) so deploy live-admission and this canary can pass honestly."
+          exit 1
+
   live-lanes:
     name: Prove four federal lanes through deployed runtime
     if: >-
