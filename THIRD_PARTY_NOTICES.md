@@ -28,7 +28,10 @@ Their upstream licences include:
 - cryptography — Apache-2.0 OR BSD-3-Clause
 - Pydantic — MIT
 - Psycopg 3 — LGPL-3.0-only
+- huggingface_hub — Apache-2.0
+- Requests — Apache-2.0
 - HTTPX (development/test) — BSD-3-Clause
+- PyYAML (development/test) — MIT
 - pytest (development/test) — MIT
 
 Release automation should generate an SPDX or CycloneDX SBOM from the exact resolved environment
