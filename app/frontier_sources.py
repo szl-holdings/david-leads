@@ -103,6 +103,34 @@ class SourceConfigurationUnavailable(RuntimeError):
     """A source is lawful but cannot run until an external credential exists."""
 
 
+# Reason codes that may be surfaced on the board. The surfaced reason is always one of
+# these constants (never the exception text), so no exception detail can leak to HTTP
+# clients (CodeQL py/stack-trace-exposure).
+_PUBLIC_REASON_CODES: tuple[str, ...] = (
+    "CHICAGO_API_REQUEST_FAILED",
+    "CHICAGO_REUSE_APPROVAL_NOT_CONFIGURED",
+    "CHICAGO_SOCRATA_APP_TOKEN_NOT_CONFIGURED",
+    "SAM_API_REQUEST_FAILED",
+    "SAM_GOV_API_KEY_NOT_CONFIGURED",
+    "ECHO_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "FMCSA_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "FORM5500_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "USASPENDING_VERIFIED_SNAPSHOT_UNAVAILABLE",
+    "NOT_IMPLEMENTED",
+)
+
+
+def _public_reason(exc: BaseException) -> str:
+    """Map a lane failure to a constant reason code; never echo exception text."""
+    if isinstance(exc, SourceConfigurationUnavailable):
+        text = str(exc)
+        for code in _PUBLIC_REASON_CODES:
+            if text.startswith(code):
+                return code
+        return "SOURCE_CONFIGURATION_UNAVAILABLE"
+    return type(exc).__name__
+
+
 FMCSA_SELECT = (
     "legal_name,dba_name,dot_number,add_date,status_code,classdef,business_org_desc,"
     "truck_units,power_units,bus_units,total_drivers,phy_city,phy_state,phy_zip"
@@ -1131,11 +1159,7 @@ def frontier_opportunities(
             records.extend(result.pop("records", []))
             sources.append(result)
         except Exception as exc:
-            reason = (
-                str(exc)
-                if isinstance(exc, SourceConfigurationUnavailable)
-                else type(exc).__name__
-            )
+            reason = _public_reason(exc)
             sources.append({
                 "source": source["label"],
                 "source_id": source["id"],
