@@ -2,3 +2,5 @@
 -r requirements-ingestor.txt
 httpx==0.28.1
 pytest==9.2.0
+# Imported directly by the workflow-contract tests (also a transitive dependency).
+pyyaml==6.0.3
