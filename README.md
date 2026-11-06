@@ -1,5 +1,4 @@
 ---
-thumbnail: https://huggingface.co/spaces/SZLHOLDINGS/david-leads/resolve/main/og-card.png
 title: David Leads — Evidence-Backed Broker Research
 emoji: 🛡️
 colorFrom: blue
@@ -22,28 +21,15 @@ tags:
 [![org: szl-holdings](https://img.shields.io/badge/org-szl--holdings-black)](https://github.com/szl-holdings)
 [![doctrine](https://img.shields.io/badge/doctrine-control%20before%20action%20%C2%B7%20evidence%20after-blue)](https://a-11-oy.com)
 
+<!-- Native identity: szl-brand@4309f6fce89179331b0b3ed8c99494e76c5be256; Orbit v2 icon sha256 6e2b7d72a3af3d9602b79de41df0194ede6496a9661f057108ec224c0efc92e6. -->
+<p><a href="https://github.com/szl-holdings"><img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/4309f6fce89179331b0b3ed8c99494e76c5be256/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings — Orbit v2" width="32" height="32" /></a></p>
+
 **Control before action. Evidence after.**
 
 Part of the [szl-holdings](https://github.com/szl-holdings) estate ·
 Product: [a-11-oy.com](https://a-11-oy.com) ·
 Proof: [a11oy.net](https://a11oy.net)
 <!-- /szl:header -->
-
-
-<!-- Native identity: szl-brand@4309f6fce89179331b0b3ed8c99494e76c5be256; Orbit v2 icon. -->
-<p>
-  <a href="https://github.com/szl-holdings">
-    <img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/4309f6fce89179331b0b3ed8c99494e76c5be256/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings — Orbit v2" width="32" height="32" />
-  </a>
-</p>
-
-**Control before action. Evidence after.**
-
-[Product](https://a-11-oy.com) · [Proof](https://a11oy.net) · [GitHub organization](https://github.com/szl-holdings)
-<!-- /szl:header -->
-
-<!-- Native identity: szl-brand@4309f6fce89179331b0b3ed8c99494e76c5be256; Orbit v2 icon sha256 6e2b7d72a3af3d9602b79de41df0194ede6496a9661f057108ec224c0efc92e6. -->
-<p><a href="https://github.com/szl-holdings"><img src="https://raw.githubusercontent.com/szl-holdings/szl-brand/4309f6fce89179331b0b3ed8c99494e76c5be256/kit/logos/orbit-v2/suite/szl-icon-32.svg" alt="SZL Holdings — Orbit v2" width="32" height="32" /></a></p>
 
 # David Leads
 
@@ -57,6 +43,30 @@ Inspect public-record evidence and advisory work-order priorities for broker res
 
 - Unverified or unavailable federal and licensed sources remain UNAVAILABLE; synthetic examples stay labeled.
 - Priority scores are advisory work-order signals, not probabilities, insurance quotes or autonomous decisions.
+- The four federal lanes (DOL Form 5500, FMCSA, USAspending, EPA ECHO) are read from verified scheduled snapshots in
+  the **private** Hugging Face Dataset `SZLHOLDINGS/david-leads-data`; anonymous requests to it return HTTP 401.
+  The Space reads it only with a dedicated fine-grained read credential, `DAVID_DATASET_READ_TOKEN`.
+  Without a working reader every federal lane reports `UNAVAILABLE` (fail-closed); no sample record is substituted.
+- A merge is not a live state. The running Space reports its revision at `/api/build-info`, and the
+  [frontier live-lanes canary](https://github.com/szl-holdings/david-leads/actions/workflows/frontier-live-canary.yml)
+  re-checks all four lanes against the deployed revision every six hours and after each successful deployment.
+
+## Run and verify locally
+
+```bash
+# v0 receipted scoring service: offline, synthetic demo records, no keys
+pip install -r backend/requirements.txt
+uvicorn backend.main:app --port 8000   # then GET /healthz, /v1/sources, /v1/leads; POST /v1/score
+
+# Test suites (CI uses Python 3.11; the Space image runs Python 3.14)
+pip install -r requirements-dev.txt
+python -m unittest tests.test_david_reference   # offline evidence kernel
+# Full suite. It needs a disposable PostgreSQL database (CI uses the DSN below),
+# and the runner fails the gate on any skipped test.
+DAVID_EVIDENCE_TEST_DSN=postgresql://postgres:postgres@127.0.0.1:5432/david_evidence_test \
+  python qa/run_required_tests.py tests
+node --test tests/*.test.mjs                    # browser-state and truth-surface regressions
+```
 
 <details>
 <summary>Technical details and original evidence</summary>
