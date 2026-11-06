@@ -463,6 +463,96 @@ class FrontierLiveCanaryTests(unittest.TestCase):
         self.assertNotIn(sentinel, printed)
         self.assertEqual(report["failure"], "PROBE_ERROR")
 
+    def _run_main(self, board: dict, build: dict) -> tuple[int, str, str, str]:
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "canary.json"
+            with patch.object(canary, "_get_json", side_effect=[board, build]), \
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout, \
+                    patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                code = canary.main(["--output", str(output)])
+            return code, stdout.getvalue(), stderr.getvalue(), output.read_text(encoding="utf-8")
+
+    def test_complete_proof_emits_no_failure_annotation(self) -> None:
+        code, stdout, stderr, contents = self._run_main(self._board(), self._build())
+        self.assertEqual(code, 0)
+        self.assertEqual(stdout, contents)
+        self.assertEqual(stderr, "")
+
+    def test_failure_annotation_names_lanes_by_local_code_only(self) -> None:
+        sentinel = "PRIVATE ORGANIZATION SENTINEL"
+        board = self._board()
+        board["sources"][0].update(
+            mode="UNAVAILABLE", count=0,
+            reason="FORM5500_VERIFIED_SNAPSHOT_UNAVAILABLE: " + sentinel,
+        )
+        board["sources"][1]["reason"] = sentinel
+        board["sources"][1]["mode"] = "UNAVAILABLE"
+        code, stdout, stderr, contents = self._run_main(board, self._build())
+        self.assertEqual(code, 1)
+        # The aggregate artifact and stdout are unchanged by the annotation.
+        self.assertEqual(stdout, contents)
+        self.assertNotIn("::error", stdout)
+        self.assertNotIn(sentinel, stderr)
+        self.assertNotIn("ACME", stderr)
+        self.assertEqual(stderr.count("\n"), 1)
+        self.assertTrue(stderr.startswith("::error title=FRONTIER_LIVE_CANARY_INCOMPLETE::2/4 "))
+        self.assertIn("dol-form5500-benefit-timing=FORM5500_VERIFIED_SNAPSHOT_UNAVAILABLE", stderr)
+        self.assertIn("fmcsa-company-census=SOURCE_DIAGNOSTIC_REDACTED", stderr)
+        self.assertNotIn(canary.READER_HINT, stderr)
+
+    def test_failure_annotation_points_at_reader_when_no_lane_has_metadata(self) -> None:
+        board = self._board()
+        for source in board["sources"]:
+            prefix = canary.SCHEDULED_LANES.get(source["source_id"], ("echo",))[0].upper()
+            for key in ("snapshot", "dataset", "snapshot_receipt", "delivery", "source_path"):
+                source.pop(key, None)
+            source.update(mode="UNAVAILABLE", count=0, reason=f"{prefix}_VERIFIED_SNAPSHOT_UNAVAILABLE")
+        board["opportunities"] = []
+        annotation = canary.failure_annotation(canary.evaluate(board, self._build()))
+        self.assertIsNotNone(annotation)
+        self.assertIn("::0/4 required federal lanes verified", annotation)
+        for source_id in canary.REQUIRED_LANES:
+            self.assertIn(f"{source_id}=", annotation)
+        self.assertIn("epa-echo-monitoring-activity=ECHO_VERIFIED_SNAPSHOT_UNAVAILABLE", annotation)
+        self.assertIn("RECORD_CONTRACT_INCOMPLETE", annotation)
+        self.assertTrue(annotation.endswith(canary.READER_HINT))
+        self.assertNotIn("\n", annotation)
+
+    def test_failure_annotation_reports_deployment_checks(self) -> None:
+        build = self._build()
+        build["receipt_minted"] = False
+        annotation = canary.failure_annotation(
+            canary.evaluate(self._board(), build, expected_revision="c" * 40)
+        )
+        self.assertIn("::4/4 required federal lanes verified", annotation)
+        self.assertIn("SOURCE_REVISION_UNBOUND", annotation)
+        self.assertIn("RELEASE_NOT_ATTESTED", annotation)
+        self.assertNotIn("c" * 40, annotation)
+
+    def test_probe_failure_annotation_keeps_status_without_response_body(self) -> None:
+        sentinel = "PRIVATE-ORGANIZATION-RESPONSE-SENTINEL"
+        error = HTTPError("https://example.invalid/" + sentinel, 402, sentinel, {},
+                          io.BytesIO(sentinel.encode()))
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "canary.json"
+            with patch.object(canary.urllib.request, "urlopen", side_effect=error), \
+                    patch("sys.stdout", new_callable=io.StringIO), \
+                    patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                self.assertEqual(canary.main(["--output", str(output)]), 1)
+        self.assertEqual(
+            stderr.getvalue(),
+            "::error title=FRONTIER_LIVE_CANARY_INCOMPLETE::"
+            "Probe of the deployed runtime failed: HTTP_ERROR (HTTP 402).\n",
+        )
+
+    def test_failure_annotation_redacts_unexpected_codes(self) -> None:
+        self.assertEqual(
+            canary.failure_annotation({"complete": False, "failure": "secret value\n::x"}),
+            "::error title=FRONTIER_LIVE_CANARY_INCOMPLETE::"
+            "Probe of the deployed runtime failed: REDACTED.",
+        )
+        self.assertIsNone(canary.failure_annotation({"complete": True}))
+
 
 if __name__ == "__main__":
     unittest.main()
