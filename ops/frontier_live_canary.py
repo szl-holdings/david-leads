@@ -428,6 +428,75 @@ def run(
     )
 
 
+_ANNOTATION_CODE = re.compile(r"[A-Z0-9_]{1,64}")
+READER_HINT = (
+    "No lane exposed verified snapshot metadata. Check that federal-refresh "
+    "published fresh pointers and that the Space can read the private dataset "
+    "with DAVID_DATASET_READ_TOKEN (docs/FEDERAL_PUBLICATION_CONTRACT.md)."
+)
+
+
+def _annotation_code(value: Any) -> str:
+    # The annotation repeats only local diagnostic codes already present in the
+    # aggregate artifact; anything else is replaced, never echoed.
+    return value if isinstance(value, str) and _ANNOTATION_CODE.fullmatch(value) else "REDACTED"
+
+
+def failure_annotation(report: dict[str, Any]) -> str | None:
+    """Return one GitHub error annotation for an incomplete report, else None.
+
+    It names the failing lanes and deployment checks by local code so the run
+    summary states why the canary failed. It never adds remote text, records,
+    or URLs beyond what the aggregate artifact already contains.
+    """
+    if report.get("complete") is True:
+        return None
+    title = "FRONTIER_LIVE_CANARY_INCOMPLETE"
+    if "failure" in report:
+        detail = _annotation_code(report.get("failure"))
+        status = report.get("http_status")
+        if type(status) is int and 100 <= status <= 599:
+            detail += f" (HTTP {status})"
+        return f"::error title={title}::Probe of the deployed runtime failed: {detail}."
+
+    lanes = [lane for lane in report.get("required_lanes") or [] if isinstance(lane, dict)]
+    failing = []
+    for lane in lanes:
+        if lane.get("operational") is True:
+            continue
+        source_id = lane.get("source_id")
+        source_id = source_id if source_id in REQUIRED_LANES else "UNKNOWN_LANE"
+        errors = (lane.get("snapshot") or {}).get("errors") or []
+        code = lane.get("reason") or (errors[0] if errors else None)
+        if not code:
+            code = "NO_LIVE_RECORDS" if lane.get("mode") == "LIVE" else f"MODE_{lane.get('mode')}"
+        failing.append(f"{source_id}={_annotation_code(code)}")
+    checks = []
+    if not (report.get("record_contract") or {}).get("complete"):
+        checks.append("RECORD_CONTRACT_INCOMPLETE")
+    deployment = report.get("deployment") or {}
+    if not deployment.get("source_bound"):
+        checks.append("SOURCE_REVISION_UNBOUND")
+    if not deployment.get("release_attested"):
+        checks.append("RELEASE_NOT_ATTESTED")
+    if deployment.get("rotation_generation_bound") is False:
+        checks.append("ROTATION_GENERATION_UNBOUND")
+
+    verified = sum(1 for lane in lanes if lane.get("operational") is True)
+    message = f"{verified}/{len(REQUIRED_LANES)} required federal lanes verified by the deployed runtime"
+    if failing:
+        message += ": " + ", ".join(failing)
+    if checks:
+        message += "; failed checks: " + ", ".join(checks)
+    message += "."
+    if lanes and all(
+        "SNAPSHOT_METADATA_MISSING" in ((lane.get("snapshot") or {}).get("errors") or [])
+        for lane in lanes
+    ):
+        message += " " + READER_HINT
+    return f"::error title={title}::{message}"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="david-frontier-live-canary.json")
@@ -455,6 +524,11 @@ def main(argv: list[str] | None = None) -> int:
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     Path(args.output).write_text(serialized, encoding="utf-8")
     print(serialized, end="")
+    annotation = failure_annotation(report)
+    if annotation:
+        # stdout stays byte-identical to the artifact; the summary goes to
+        # stderr, where the Actions runner also reads workflow commands.
+        print(annotation, file=sys.stderr)
     return 0 if report.get("complete") is True else 1
 
 
