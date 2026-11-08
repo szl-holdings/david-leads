@@ -2252,6 +2252,27 @@ class WebhookReq(BaseModel):
     lead_id: str | None = None  # optional: export a single enriched lead; default = all ranked leads
 
 
+# Constant rejection texts raised by _webhook_destination. The response reason is always
+# drawn from this tuple, never from the exception object (CodeQL py/stack-trace-exposure).
+_WEBHOOK_REJECTION_REASONS: tuple[str, ...] = (
+    "CRM webhook is disabled until DAVID_CRM_WEBHOOK_ALLOWLIST is configured",
+    "destination must be an approved HTTPS CRM hostname",
+    "destination credentials are not permitted",
+    "destination port is invalid",
+    "approved CRM hostname could not be resolved",
+    "approved CRM hostname did not resolve to an address",
+    "approved CRM hostname resolves to a non-public address",
+)
+
+
+def _webhook_rejection_reason(exc: Exception) -> str:
+    text = str(exc)
+    for known in _WEBHOOK_REJECTION_REASONS:
+        if known in text:
+            return known
+    return "destination rejected"
+
+
 def _webhook_destination(
     url: str,
 ) -> tuple[urllib.parse.ParseResult, str, tuple[str, ...]]:
@@ -2429,7 +2450,7 @@ def webhook_test(req: WebhookReq, authorization: str | None = Header(default=Non
         parsed, hostname, validated_addresses = _webhook_destination(req.url)
     except ValueError as exc:
         return {"ok": True, "sent": False,
-                "reason": str(exc), "would_send": payload}
+                "reason": _webhook_rejection_reason(exc), "would_send": payload}
     try:
         body = json.dumps(payload).encode("utf-8")
         status = _post_validated_webhook(parsed, hostname, validated_addresses, body)
