@@ -102,7 +102,7 @@ class FederalRefreshWorkflowContractTests(unittest.TestCase):
         for action in uses:
             self.assertRegex(action, r"^[^@]+@[0-9a-f]{40}$")
         self.assertIn(
-            "step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43",
+            "step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a",
             uses,
         )
         self.assertIn(
