@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "david-leads"
+version = "0.1.0"
+description = "David Leads — official-source broker research with evidence receipts. Public Space: SZLHOLDINGS/david-leads."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{ name = "Stephen Lutar", email = "stephen@szlholdings.com" }]
+dependencies = ["fastapi==0.162.0", "uvicorn[standard]==0.54.0", "cryptography==50.0.2", "pydantic==2.14.2", "psycopg[binary]==3.3.6", "huggingface-hub==2.4.0", "requests==2.34.2"]
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/SZLHOLDINGS/david-leads"
+Repository = "https://github.com/szl-holdings/david-leads"
+
+[tool.setuptools]
+packages = ["app", "backend"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["build", "dist", ".venv", "node_modules"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
