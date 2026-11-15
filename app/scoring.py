@@ -336,8 +336,8 @@ def model_card() -> dict:
                 "A4": "IsBounded (Λ ≤ max xᵢ)",
             },
             "uniqueness": "Conjecture 1 (OPEN — CAUCHY_ND sorry + missing symmetry axiom; NOT a theorem)",
-            "doi": "10.5281/zenodo.20434308",
-            "doi_url": "https://doi.org/10.5281/zenodo.20434308",
+            "doi": "10.5281/zenodo.24239654",
+            "doi_url": "https://doi.org/10.5281/zenodo.24239654",
             "classical_citations": [
                 "Aczél 1957 (functional equations / quasi-arithmetic means)",
                 "Guo et al. 2017 (calibration of modern neural networks)",
@@ -346,7 +346,7 @@ def model_card() -> dict:
             "self_test": "L1 archetype Λ score == 87.2 at age 0 (canonical drop-in reproduction)",
         },
         "doctrine": "honest by design · open methodology · cryptographically receipted · "
-                    "Λ uniqueness is Conjecture 1 (OPEN) · DOI 10.5281/zenodo.20434308 · Open the Black Box",
+                    "Λ uniqueness is Conjecture 1 (OPEN) · DOI 10.5281/zenodo.24239654 · Open the Black Box",
         "life_event_taxonomy": _taxonomy_card(),
         "urgency_window": {
             "tiers": {"ACT_NOW": "< 48h since trigger", "WARM": "<= 14 days", "COLD": "> 14 days"},
