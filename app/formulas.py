@@ -11,7 +11,7 @@ Opening-line / Sensitivity), each part GROUNDED by a real formula verdict, then 
 the whole brief via the khipu 3-of-4 consensus (honest UNSIGNED when no signing is available).
 
 Anchors: Lean commit 1dca00032dfc9aa8559cc6c2e4b63192fcf52371; classical cites Aczél 1957,
-Guo 2017, McAllester 1999; DOI 10.5281/zenodo.20434308 (Λ-Spine), 10.5281/zenodo.20162352 (a11oy).
+Guo 2017, McAllester 1999; DOI 10.5281/zenodo.24239654 (Λ-Spine), 10.5281/zenodo.20162352 (a11oy).
 """
 from __future__ import annotations
 
