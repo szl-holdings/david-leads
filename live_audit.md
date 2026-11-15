@@ -281,9 +281,9 @@ Full methodology card. Confirmed:
 - 5 axes, weights sum to 1.0 (0.3+0.2+0.2+0.2+0.1)
 - HOT bucket: score ≥ 80
 - Λ uniqueness: **`"Conjecture 1 (OPEN — CAUCHY_ND sorry + missing symmetry axiom; NOT a theorem)"`** ✓
-- DOI: **`10.5281/zenodo.20434308`** with `doi_url` ✓
+- DOI: **`10.5281/zenodo.24239654`** with `doi_url` ✓
 - FCRA note present in model lapse section ✓
-- doctrine field: `"honest by design · open methodology · cryptographically receipted · Λ uniqueness is Conjecture 1 (OPEN) · DOI 10.5281/zenodo.20434308 · Open the Black Box"` ✓
+- doctrine field: `"honest by design · open methodology · cryptographically receipted · Λ uniqueness is Conjecture 1 (OPEN) · DOI 10.5281/zenodo.24239654 · Open the Black Box"` ✓
 
 **PASS**
 
@@ -581,7 +581,7 @@ This is not a fabrication (same public source, same data), but it inflates `sign
 | Signals labeled public, fabricated=0 | **PASS** | All signals public:true; fabricated:0 in governance |
 | SAMPLE/GAP states labeled honestly | **PASS** | [SAMPLE] in source names; GAP states have gap:true, count:null |
 | /api/model — Λ as Conjecture 1 (OPEN) | **PASS** | "Conjecture 1 (OPEN — CAUCHY_ND sorry + missing symmetry axiom; NOT a theorem)" |
-| /api/model — DOI 10.5281/zenodo.20434308 | **PASS** | doi and doi_url both present |
+| /api/model — DOI 10.5281/zenodo.24239654 | **PASS** | doi and doi_url both present |
 | /api/model — advisory/non-FCRA notes | **PASS** | FCRA: false + note in lapse; advisory: true in wealth/lapse/receptivity/gap |
 | Λ score: 87.2 (sample) / 88.1 (live) | **PASS** | Both confirmed |
 | est_premium has advisory label | **FAIL — P1** | Bare dollar number, no advisory/note field |
