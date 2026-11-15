@@ -65,7 +65,7 @@ Audited `index.html`, `app.js`, `holo.css` at **390 / 768 / 1280 px**.
 | Endpoint | Result |
 |---|---|
 | `/api/run` (sample) | **200**, 8 leads, **L1 Λ = 87.2** ✓, brief 3 items |
-| `/api/model` | **200**, DOI **10.5281/zenodo.20434308**, uniqueness **"Conjecture 1 (OPEN …)"** ✓ |
+| `/api/model` | **200**, DOI **10.5281/zenodo.24239654**, uniqueness **"Conjecture 1 (OPEN …)"** ✓ |
 | `/api/brief/L1` | **200**, **4 parts** (Priority / Why now / Opening line / Sensitivity); receipt verify → **VERIFIED** ✓ |
 | `/api/routing` | **200**, **8** routed rows ✓ |
 | `/api/export.csv` | **200**, header + **8** data rows (9 lines) ✓ |
