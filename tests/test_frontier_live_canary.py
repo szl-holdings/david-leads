@@ -283,7 +283,10 @@ class FrontierLiveCanaryTests(unittest.TestCase):
 
     def test_stale_or_future_source_dates_fail_for_every_lane(self) -> None:
         for index in range(4):
-            for days, error in ((-9, "SNAPSHOT_STALE"), (2, "SNAPSHOT_AS_OF_FUTURE")):
+            for days, error in (
+                (-15 if index == 3 else -9, "SNAPSHOT_STALE"),
+                (2, "SNAPSHOT_AS_OF_FUTURE"),
+            ):
                 with self.subTest(index=index, days=days):
                     board = self._board()
                     changed = datetime.now(timezone.utc) + timedelta(days=days)
@@ -301,7 +304,7 @@ class FrontierLiveCanaryTests(unittest.TestCase):
     def test_fresh_republication_cannot_rejuvenate_stale_echo_export(self) -> None:
         board = self._board()
         source = board["sources"][3]
-        old = (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+        old = (datetime.now(timezone.utc) - timedelta(days=15)).date().isoformat()
         source["snapshot"]["source"]["source_as_of"] = old
         report = canary.evaluate(board, self._build())
         snapshot = report["required_lanes"][3]["snapshot"]

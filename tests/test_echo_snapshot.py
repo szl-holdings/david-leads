@@ -257,7 +257,7 @@ class EchoSnapshotVerification(unittest.TestCase):
 
     def test_stale_snapshot_fails_closed(self):
         files = _bundle()
-        stale_clock = NOW + timedelta(days=9)
+        stale_clock = NOW + timedelta(days=15)
         with mock.patch.object(
             echo_snapshot, "_open_url", side_effect=_opener(files)
         ):

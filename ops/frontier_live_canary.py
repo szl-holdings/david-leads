@@ -39,6 +39,7 @@ REASON_CODES = {
 }
 USER_AGENT = "SZL-David-Leads-Live-Canary/1.0 research@szlholdings.com"
 SNAPSHOT_FRESHNESS_DAYS = 8
+ECHO_SNAPSHOT_FRESHNESS_DAYS = 14  # weekly EPA Exporter cadence; two-cycle headroom
 ECHO_SOURCE_ID = "epa-echo-monitoring-activity"
 SCHEDULED_LANES = {
     "dol-form5500-benefit-timing": (
@@ -175,7 +176,9 @@ def _snapshot_contract(
         errors.append("SNAPSHOT_AS_OF_INVALID")
     elif as_of > now:
         errors.append("SNAPSHOT_AS_OF_FUTURE")
-    elif now - as_of > timedelta(days=SNAPSHOT_FRESHNESS_DAYS):
+    elif now - as_of > timedelta(
+        days=ECHO_SNAPSHOT_FRESHNESS_DAYS if echo else SNAPSHOT_FRESHNESS_DAYS
+    ):
         errors.append("SNAPSHOT_STALE")
     if as_of is not None and created is not None and as_of > created:
         errors.append("SNAPSHOT_AS_OF_AFTER_CREATION")
@@ -206,7 +209,9 @@ def _snapshot_contract(
         "created_at": created_value if created is not None else None,
         "source_as_of": as_of_value if as_of is not None else None,
         "freshness_basis": "SOURCE_EXPORT_DATE" if echo else "SCHEDULED_CAPTURE_TIMESTAMP",
-        "freshness_max_days": SNAPSHOT_FRESHNESS_DAYS,
+        "freshness_max_days": ECHO_SNAPSHOT_FRESHNESS_DAYS
+        if echo
+        else SNAPSHOT_FRESHNESS_DAYS,
         "age_seconds": int((now - as_of).total_seconds()) if as_of is not None else None,
         "record_count": record_count if valid_count else None,
         "source_path": source_path if source_path == expected_source_path else [],
@@ -379,6 +384,7 @@ def evaluate(
             "verified_lanes": sum(lane["snapshot"]["complete"] for lane in lanes),
             "required_lanes": len(REQUIRED_LANES),
             "freshness_max_days": SNAPSHOT_FRESHNESS_DAYS,
+            "echo_freshness_max_days": ECHO_SNAPSHOT_FRESHNESS_DAYS,
             "complete": all(lane["snapshot"]["complete"] for lane in lanes),
         },
         "record_contract": record_contract,

@@ -33,7 +33,7 @@ ECHO_MEMBER_NAME = "ECHO_EXPORTER.csv"
 PARSER_NAME = "david-leads-echo-exporter"
 PARSER_VERSION = "3.0.0"
 RECORD_SCHEMA = "szl.david-leads.echo-facility/v3"
-FRESHNESS_DAYS = 8
+FRESHNESS_DAYS = 14  # EPA posts the Exporter weekly; a two-cycle budget keeps the fail-closed cap realistic
 MAX_INSPECTION_AGE_DAYS = 365
 DEFAULT_TARGET_STATES = frozenset(
     "AL CT DC DE FL GA IL IN KY ME MD MA MI MS NH NJ NY NC OH PA RI SC TN VT VA WV WI".split()
