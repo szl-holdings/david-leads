@@ -204,7 +204,7 @@
   "count": 9
  },
  "model": {
-  "doi": "10.5281/zenodo.20434308",
+  "doi": "10.5281/zenodo.24239654",
   "uniqueness": "Conjecture 1 (OPEN)",
   "has_conjecture1": true,
   "receptivity_advisory": true
@@ -373,7 +373,7 @@
    "export_wealth_col_string": "Mass-Affluent",
    "webhook_ok": true,
    "pulse_live_states": 7,
-   "model_doi": "10.5281/zenodo.20434308",
+   "model_doi": "10.5281/zenodo.24239654",
    "model_uniqueness": "Conjecture 1 (OPEN)"
   },
   "live_probes": {
@@ -484,7 +484,7 @@
    "verify_brief_verdict": "VERIFIED",
    "routing_rows": 8,
    "pulse_http": 200,
-   "model_doi": "10.5281/zenodo.20434308",
+   "model_doi": "10.5281/zenodo.24239654",
    "model_uniqueness": "Conjecture 1 (OPEN)"
   },
   "frontend": {
