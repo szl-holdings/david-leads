@@ -28,6 +28,18 @@ def admin_dsn():
         raise RuntimeError(
             "Tests require an explicitly disposable local PostgreSQL service"
         )
+    # A forwarded production endpoint can use localhost as its address. Require
+    # the exact disposable database name as a second, independent guard.
+    if config.get("dbname") != "david_evidence_test":
+        raise RuntimeError("Destructive tests require david_evidence_test database")
+    # libpq hostaddr overrides DNS resolution of host. An apparently local
+    # host=localhost with a remote hostaddr must never reach the TRUNCATE path.
+    if config.get("hostaddr") not in (None, "127.0.0.1", "::1"):
+        raise RuntimeError("Destructive tests require a local hostaddr")
+    if config.get("service") or os.environ.get("PGSERVICE"):
+        raise RuntimeError("Destructive tests forbid service-based routing")
+    if os.environ.get("PGHOSTADDR") not in (None, "", "127.0.0.1", "::1"):
+        raise RuntimeError("Destructive tests forbid remote PGHOSTADDR")
     return value
 
 

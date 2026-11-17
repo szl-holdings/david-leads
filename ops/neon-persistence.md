@@ -23,6 +23,18 @@ Schema creation is a separate owner-approved operation:
    `DAVID_DATABASE_URL`.
 8. Confirm live health independently reports `POSTGRES_READY`.
 
+**Destructive test boundary:** PostgreSQL tests apply synthetic schemas and call
+`TRUNCATE ... CASCADE`. `tests/postgres_support.py` and the legacy test adapter
+reject any test DSN that does not name exactly `david_evidence_test` on the
+explicit local PostgreSQL service. Remote hosts, remote `hostaddr`, and libpq
+service-based routing are refused *before* opening a connection. A local
+forwarding proxy could still disguise a remote service, so run these tests only
+against the ephemeral CI `postgres:16-alpine` service or an independently
+verified disposable instance. Never use a production Neon URL for `DAVID_EVIDENCE_TEST_DSN`.
+The production `DAVID_DATABASE_URL` is a different credential and is never
+accepted as a test DSN. This preflight is a safety restriction, not an
+independent database identity attestation.
+
 Evidence-kernel tables (`source_grants`, `observations`, `identity_candidates`,
 `evidence_nodes`, `evidence_edges`, `derivations`, `clearances`, `suppressions`,
 `outcomes`, `outbox`) are an expand-only addition in `app/evidence_schema.sql`.
