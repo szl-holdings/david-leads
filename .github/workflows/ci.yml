@@ -64,6 +64,7 @@ jobs:
       - name: Run runtime-role storage and authenticated workflow contracts
         run: >-
           python3 qa/run_required_tests.py
+          tests/test_postgres_test_dsn_guard.py
           tests/test_david_postgres.py tests/test_david_postgres_v2.py
           tests/test_david_workflow_api.py tests/test_david_p1b_api.py
           --junitxml=postgres-test-results.xml

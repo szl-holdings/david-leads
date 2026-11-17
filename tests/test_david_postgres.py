@@ -27,7 +27,11 @@ DSN = os.environ.get("DAVID_EVIDENCE_TEST_DSN")
 
 def _require_dsn() -> str:
     if DSN:
-        return DSN
+        # The same pre-connect guard used by v2/migration tests must own this
+        # legacy test path too: it performs destructive TRUNCATE CASCADE.
+        from tests.postgres_support import admin_dsn
+
+        return admin_dsn()
     if os.environ.get("CI"):
         raise RuntimeError("DAVID_EVIDENCE_TEST_DSN is required in CI")
     raise unittest.SkipTest("DAVID_EVIDENCE_TEST_DSN is not configured")
