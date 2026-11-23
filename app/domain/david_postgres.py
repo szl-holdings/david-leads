@@ -1096,6 +1096,9 @@ def verify_runtime_contract(connection):
     """Fail admission for privileged roles, incomplete migrations or weakened RLS."""
     with connection.transaction():
         with connection.cursor() as cursor:
+            # Bound every runtime-role/schema query without changing the
+            # deadline of subsequently admitted ledger transactions.
+            cursor.execute("SET LOCAL statement_timeout = '4000ms'")
             cursor.execute(
                 "SELECT r.rolsuper,r.rolbypassrls,r.rolcreaterole,r.rolcreatedb,r.rolreplication,current_user=session_user FROM pg_roles r WHERE r.rolname=current_user"
             )
