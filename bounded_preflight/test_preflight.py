@@ -12,6 +12,12 @@ class Clock:
 
 
 class QueryTests(unittest.TestCase):
+    def test_package_exports_are_defined(self):
+        import bounded_preflight as api
+        for name in api.__all__:
+            with self.subTest(name=name):
+                self.assertTrue(isinstance(getattr(api, name), type))
+
     def test_name_required(self):
         with self.assertRaises(PreflightError):
             PreflightQuery("", "SELECT 1", timeout_s=1.0)
@@ -72,15 +78,10 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(ctl.in_flight, 0)
 
     def test_timeout_discards_result_fail_closed(self):
-        class SlowClock:
-            def __init__(self):
-                self.t = 0.0
-
-            def __call__(self):
-                self.t += 0.4
-                return self.t
-
-        ctl = AdmissionController(max_statements=2, clock=SlowClock())
+        # A deterministic callable bound method keeps the production clock
+        # contract explicit and avoids misclassifying an instance as non-callable.
+        ticks = iter((0.4, 0.8))
+        ctl = AdmissionController(max_statements=2, clock=ticks.__next__)
         rec = ctl.execute(PreflightQuery("slow", "SELECT like_sleep_report()", timeout_s=0.1,
                                           execute=lambda: "SHOULD_BE_DISCARDED"))
         self.assertEqual(rec.executed, True)
@@ -103,7 +104,7 @@ class ExecutionTests(unittest.TestCase):
     def test_record_as_dict_has_opaque_guard(self):
         ctl = AdmissionController(max_statements=2)
         rec = ctl.execute(PreflightQuery("q", "SELECT 1", timeout_s=5.0,
-                                         execute=lambda: object()))
+                                         execute=object))
         d = rec.as_dict()
         self.assertEqual(d["result"], "<opaque>")
 
